@@ -1,8 +1,14 @@
 [
-    { "id": "01-wall-types", "name": "1 · Wall Type & Fire-Rating Explorer", "extensionId": "Drywall.WallTypes" },
-    { "id": "02-takeoff", "name": "2 · Framing & Finish Takeoff", "extensionId": "Drywall.Takeoff" },
-    { "id": "03-progress", "name": "3 · Install Progress Tracker", "extensionId": "Drywall.Progress" },
-    { "id": "04-punch", "name": "4 · Field QC / Punch Viewer", "extensionId": "Drywall.Punch" },
-    { "id": "05-field-layout", "name": "5 · Field Layout Tablet Viewer", "extensionId": "Drywall.FieldLayout" },
-    { "id": "06-shop-drawings", "name": "6 · Framing Shop Drawings", "extensionId": "Drywall.ShopDrawings" }
+    { "id": "01-wall-types", "name": "1 · Wall Type & Fire-Rating Explorer", "extensionId": "Drywall.WallTypes",
+      "for": "PMs and estimators", "summary": "Colors every wall by wall type or fire rating, in 3D and on the plan, level by level, with a count for each." },
+    { "id": "02-takeoff", "name": "2 · Framing & Finish Takeoff", "extensionId": "Drywall.Takeoff",
+      "for": "Estimators", "summary": "Studs, track, headers, sills and cripples by mark and cut length, plus board and finish, with the walls colored by stud size." },
+    { "id": "03-progress", "name": "3 · Install Progress Tracker", "extensionId": "Drywall.Progress",
+      "for": "Superintendents", "summary": "Mark walls Framed, Boarded, Taped or Finished and see progress by level in color, in 3D and on the plan." },
+    { "id": "04-punch", "name": "4 · Field QC / Punch Viewer", "extensionId": "Drywall.Punch",
+      "for": "Foremen and QC", "summary": "Pin punch items on walls in 3D or on the plan, with type, notes and markup, and jump to any item in 3D." },
+    { "id": "05-field-layout", "name": "5 · Field Layout Tablet Viewer", "extensionId": "Drywall.FieldLayout",
+      "for": "Layout crews on a tablet", "summary": "Big touch buttons: pick a level to cut the model and open its plans, and measure in fractional inches." },
+    { "id": "06-shop-drawings", "name": "6 · Framing Shop Drawings", "extensionId": "Drywall.ShopDrawings",
+      "for": "Detailers and the shop", "summary": "Pick a wall to see it framed in elevation with every member tagged and its context, then print its 11x17 shop drawing." }
 ]

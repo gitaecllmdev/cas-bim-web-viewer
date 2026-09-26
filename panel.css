@@ -61,3 +61,7 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .home-card.soon { opacity: 0.75; }
 .home-card.soon .open { color: var(--muted); font-weight: 400; }
 .tabs { display: inline-flex; gap: 0.3em; }
+.home-section { font-size: 1.05em; margin: 12px 0 0; }
+.home-section .muted { font-weight: 400; font-size: 0.9em; margin-left: 0.4em; }
+.home-num { display: inline-grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; }
+.home-for { font-size: 0.85em; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em; }

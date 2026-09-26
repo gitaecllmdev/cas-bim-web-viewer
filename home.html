@@ -10,14 +10,16 @@
 </head>
 
 <body>
-    <!-- Home: the three ways in, for people who were just sent the link. -->
+    <!-- Home: every way in, for people who were just sent the link. Reports first (no 3D needed), then the six viewers
+         (listed from demos/demos.json, so new demos show up here too). -->
     <header class="bar"><a class="brand" href="home.html">CAS BIM Web Viewer</a><span id="project"></span></header>
     <main id="home-main">
         <section class="hero">
             <img src="demos/06-shop-drawings/cas-logo.png" alt="" width="64" height="64">
             <div><h1>CAS BIM Web Viewer</h1>
-                <p class="muted">Framing shop drawings, takeoff and the 3D model for the project, in the browser. No login or install.</p></div>
+                <p class="muted">Framing and drywall tools for the project model, in the browser, built on Autodesk Platform Services. No login or install.</p></div>
         </section>
+        <h2 class="home-section">Reports <span class="muted">open instantly</span></h2>
         <div class="home-cards">
             <a class="card home-card" href="panels.html">
                 <span class="home-icon" aria-hidden="true">▦</span>
@@ -29,21 +31,25 @@
                 <h2>Takeoff</h2>
                 <p>Framing and finish quantities by level: studs, track, headers, sills and cripples by mark and cut length, board and finish. Download as CSV.</p>
                 <span class="open">Open the takeoff ›</span></a>
-            <a class="card home-card" href="index.html?demo=06-shop-drawings" id="viewer-card">
-                <span class="home-icon" aria-hidden="true">◈</span>
-                <h2>3D model viewer</h2>
-                <p>The model in 3D beside its plans: pick a wall to see it framed, its context and its shop drawing. Six demos, from wall types to field layout.</p>
-                <span class="open" id="viewer-open">Open the 3D viewer ›</span></a>
         </div>
+        <h2 class="home-section">3D viewers <span class="muted">the model in 3D beside its plans</span></h2>
+        <div class="home-cards" id="viewers"><p class="muted">Loading the viewers…</p></div>
     </main>
     <script type="module">
-        // On a review site that isn't connected to its token service yet, say so on the 3D card (the other two work).
         import { CONFIG } from './config.js';
-        import { loadState } from './helpers.js';
-        if (CONFIG.mode === 'static' && !CONFIG.tokenUrl) {
-            document.getElementById('viewer-card').classList.add('soon');
-            document.getElementById('viewer-open').textContent = 'Coming soon (the viewer service is being connected)';
-        }
+        import { loadState, fetchJson, escapeHtml } from './helpers.js';
+        // A review site that isn't connected to its token service yet can't open the 3D viewers: say so on their cards.
+        const offline = CONFIG.mode === 'static' && !CONFIG.tokenUrl;
+        const demos = await fetchJson('demos/demos.json').catch(() => []);
+        document.getElementById('viewers').innerHTML = demos.map(d => {
+            const [num, ...rest] = d.name.split(' · ');
+            return `<a class="card home-card viewer-card ${offline ? 'soon' : ''}" href="index.html?demo=${encodeURIComponent(d.id)}&layout=split">
+                <span class="home-num" aria-hidden="true">${escapeHtml(num)}</span>
+                <h2>${escapeHtml(rest.join(' · ') || d.name)}</h2>
+                ${d.for ? `<span class="home-for">For: ${escapeHtml(d.for)}</span>` : ''}
+                <p>${escapeHtml(d.summary || '')}</p>
+                <span class="open">${offline ? 'Coming soon (the viewer service is being connected)' : 'Open the viewer ›'}</span></a>`;
+        }).join('') || '<p class="muted">No viewers listed.</p>';
         loadState('takeoff-snapshot').then(s => { if (s?.project) document.getElementById('project').textContent = s.project; }).catch(() => {});
     </script>
 </body>
