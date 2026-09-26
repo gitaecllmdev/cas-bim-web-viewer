@@ -1,7 +1,7 @@
 // Panel shops index (pure; tested in tests/shop-drawings.test.js). Demo 6 saves one record per picked wall
 // ('shop-panel-<externalId>') and keeps this index of them ('shop-panel-index': { panels: { key: entry } }) so the
 // panel gallery (core/client/panels.html) and the panel page's Previous / Next can list every panel without a server.
-import { frameWall, flipLayout } from '../common/framing.mjs';
+import { frameWall, flipLayout, isDoor } from '../common/framing.mjs';
 
 export const INDEX_STATE = 'shop-panel-index';
 
@@ -13,14 +13,34 @@ export function indexEntry(record) {
         key: record.key, mark: record.mark, level: record.info?.level || '', wallType: record.info?.wallType || '',
         lengthIn: record.frame?.lengthIn || 0, heightIn: record.frame?.heightIn || 0, savedAt: record.savedAt || '',
         sideA: line(record, 'SIDE A (AS DRAWN)'), sideB: line(record, 'SIDE B (FAR SIDE)'), head: line(record, 'HEAD OF WALL').split('.')[0],
+        ...countOpenings(record),
         frame: record.frame, flip: !!record.view?.flip,
     };
 }
 
-// Level (natural order: L2 before L10), then panel mark.
-export function sortPanels(entries) {
+// Doors and windows as drawn (the layout leaves out slivers under 6"), so the card and the sheet agree.
+function countOpenings(record) {
+    let openings = [];
+    try { openings = record.frame ? entryLayout(record).openings : []; } catch { /* incomplete record */ }
+    return { doors: openings.filter(isDoor).length, windows: openings.filter(o => !isDoor(o)).length };
+}
+
+// Orders: 'complex' (default: most openings first, then longest; the panels worth showing), or 'level'
+// (level in natural order, L2 before L10, then panel mark).
+export const openingsOf = (p) => (p.doors != null ? p.doors + (p.windows ?? 0) : (p.frame?.openings?.length ?? 0));
+export function sortPanels(entries, order = 'complex') {
     const nat = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
-    return [...entries].sort((a, b) => nat(a.level, b.level) || nat(a.mark, b.mark));
+    const byLevel = (a, b) => nat(a.level, b.level) || nat(a.mark, b.mark);
+    if (order === 'level') return [...entries].sort(byLevel);
+    return [...entries].sort((a, b) => openingsOf(b) - openingsOf(a) || (b.doors ?? 0) - (a.doors ?? 0) || (b.lengthIn || 0) - (a.lengthIn || 0) || byLevel(a, b));
+}
+
+// "2 doors · 3 windows" (or "No openings").
+export function openingsText(p) {
+    const doors = p.doors ?? (p.frame?.openings || []).filter(isDoor).length;
+    const windows = p.windows ?? (p.frame?.openings || []).filter(o => !isDoor(o)).length;
+    const part = (n, one) => (n ? `${n} ${one}${n === 1 ? '' : 's'}` : '');
+    return [part(doors, 'door'), part(windows, 'window')].filter(Boolean).join(' · ') || 'No openings';
 }
 
 // The layout as drawn for an index entry or a record (flipped when the panel is viewed from side B).

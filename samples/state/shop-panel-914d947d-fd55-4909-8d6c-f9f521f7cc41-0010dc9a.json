@@ -1,36 +1,48 @@
 {
-  "key": "6fef491d-aa42-4de7-b3e6-dd364fb54430-0016308f",
-  "mark": "S04-14048",
-  "dbId": 14048,
+  "key": "914d947d-fd55-4909-8d6c-f9f521f7cc41-0010dc9a",
+  "mark": "S04-10097",
+  "dbId": 10097,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T22:30:19.340Z",
+  "savedAt": "2026-09-26T22:30:05.172Z",
   "frame": {
-    "lengthIn": 328.5298500145717,
-    "heightIn": 160.13247406370633,
+    "lengthIn": 439.36935975059464,
+    "heightIn": 160.27309978323578,
     "openings": [
       {
-        "left": 28.927156605056624,
-        "right": 72.31789151264157,
-        "bottom": 25.82781839737199,
-        "top": 125.00664104328041
+        "left": 0,
+        "right": 48.35826286563149,
+        "bottom": 20.72496979955635,
+        "top": 118.82316018412308
       },
       {
-        "left": 107.44372453306747,
-        "right": 149.80134670475752,
-        "bottom": 25.82781839737199,
-        "top": 125.00664104328041
+        "left": 64.93823870527658,
+        "right": 114.67816622421182,
+        "bottom": 20.72496979955635,
+        "top": 118.82316018412308
       },
       {
-        "left": 184.92717972518344,
-        "right": 228.31791463276835,
-        "bottom": 25.82781839737199,
-        "top": 125.00664104328041
+        "left": 132.63980671716064,
+        "right": 182.37973423609589,
+        "bottom": 20.72496979955635,
+        "top": 118.82316018412308
       },
       {
-        "left": 263.4437476531943,
-        "right": 305.8013698248843,
-        "bottom": 25.82781839737199,
-        "top": 125.00664104328041
+        "left": 216.92135056868983,
+        "right": 266.661278087625,
+        "bottom": 20.72496979955635,
+        "top": 118.82316018412308
+      },
+      {
+        "left": 284.6229185805739,
+        "right": 334.36284609950917,
+        "bottom": 20.72496979955635,
+        "top": 117.44149553081931
+      },
+      {
+        "left": 352.32448659245796,
+        "right": 402.06441411139326,
+        "bottom": 20.72496979955635,
+        "top": 118.82316018412308
       }
     ],
     "studIn": 6,
@@ -41,7 +53,7 @@
     "notes": []
   },
   "info": {
-    "mark": "S04-14048",
+    "mark": "S04-10097",
     "project": "Snowdon Towers (Arch)",
     "level": "L3",
     "wallType": "Chase - GWB & Metal Stud 6 5/8\"",
@@ -58,11 +70,15 @@
       ],
       [
         "SIDE A (AS DRAWN)",
-        "303 Live/Work Unit"
+        "-"
       ],
       [
         "SIDE B (FAR SIDE)",
-        "NO ROOM FOUND"
+        "-"
+      ],
+      [
+        "ROOMS",
+        "The wall is not on SD104 - Fourth Floor Plan; open its level plan to read the rooms."
       ],
       [
         "HEAD OF WALL",
@@ -74,15 +90,15 @@
       ],
       [
         "LEFT END",
-        "Meets Party - 6 1/8\" (2-hr), Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 6 5/8\""
+        "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 6 5/8\""
       ],
       [
         "RIGHT END",
-        "Meets Soffit - Beam Wrap 9 1/4\" (One Side)"
+        "Meets Chase - GWB & Metal Stud 6 5/8\", Party - 6 1/8\" (2-hr)"
       ],
       [
         "WITHIN 1 FT",
-        "Floors (2): Finish Floor - Laminate"
+        "Floors (4): Finish Floor - Laminate"
       ]
     ]
   },
@@ -93,11 +109,15 @@
     ],
     [
       "SIDE A (AS DRAWN)",
-      "303 Live/Work Unit"
+      "-"
     ],
     [
       "SIDE B (FAR SIDE)",
-      "NO ROOM FOUND"
+      "-"
+    ],
+    [
+      "ROOMS",
+      "The wall is not on SD104 - Fourth Floor Plan; open its level plan to read the rooms."
     ],
     [
       "HEAD OF WALL",
@@ -109,15 +129,15 @@
     ],
     [
       "LEFT END",
-      "Meets Party - 6 1/8\" (2-hr), Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 6 5/8\""
+      "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 6 5/8\""
     ],
     [
       "RIGHT END",
-      "Meets Soffit - Beam Wrap 9 1/4\" (One Side)"
+      "Meets Chase - GWB & Metal Stud 6 5/8\", Party - 6 1/8\" (2-hr)"
     ],
     [
       "WITHIN 1 FT",
-      "Floors (2): Finish Floor - Laminate"
+      "Floors (4): Finish Floor - Laminate"
     ]
   ],
   "view": {

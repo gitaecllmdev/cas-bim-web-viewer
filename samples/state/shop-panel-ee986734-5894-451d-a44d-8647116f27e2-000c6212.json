@@ -1,0 +1,108 @@
+{
+  "key": "ee986734-5894-451d-a44d-8647116f27e2-000c6212",
+  "mark": "P02-6214",
+  "dbId": 6214,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T22:31:41.342Z",
+  "frame": {
+    "lengthIn": 161,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 105,
+        "right": 143,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "P02-6214",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L3",
+    "wallType": "Interior - 4 7/8\" Partition (NR)",
+    "assembly": "3 5/8\" stud, 1 layer each side",
+    "board": "1 + 1 layers, 5/8\" Regular",
+    "fireRating": "NR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L3"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "204 Two Story Studio Unit"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "204 Two Story Studio Unit"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Laminate\"; 12'-10\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\"."
+      ],
+      [
+        "LEFT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "RIGHT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Nothing else in the model"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L3"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "204 Two Story Studio Unit"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "204 Two Story Studio Unit"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Laminate\"; 12'-10\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\"."
+    ],
+    [
+      "LEFT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "RIGHT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Nothing else in the model"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

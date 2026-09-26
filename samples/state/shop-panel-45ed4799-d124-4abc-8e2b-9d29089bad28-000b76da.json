@@ -1,0 +1,110 @@
+{
+  "key": "45ed4799-d124-4abc-8e2b-9d29089bad28-000b76da",
+  "mark": "P06-5364",
+  "dbId": 5364,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T22:31:39.192Z",
+  "frame": {
+    "lengthIn": 626.9554277878952,
+    "heightIn": 155.26482380954144,
+    "openings": [
+      {
+        "left": 190.641619107918,
+        "right": 229.94916943944747,
+        "bottom": 0,
+        "top": 84.51123321278838
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": [
+      "Gap across the wall from 12'-9 1/4\" to 12'-11 1/4\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ]
+  },
+  "info": {
+    "mark": "P06-5364",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L3",
+    "wallType": "Interior - 6 1/8\" Partition (2-hr)",
+    "assembly": "3 5/8\" stud, 2 layers each side",
+    "board": "2 + 2 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L3"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "307 Live/Work Unit"
+      ],
+      [
+        "HEAD OF WALL",
+        "PARTIAL HEIGHT. Top of wall 0'-4 3/4\" below floor \"Finish Floor - Polished Concrete (Brown)\" (13'-4\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Party - 6 1/8\" (2-hr), Interior - 6 1/8\" Partition (2-hr)"
+      ],
+      [
+        "RIGHT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (4): Party - 6 1/8\" (2-hr), Interior - 8 1/2\" Partition (2-hr), Interior - 4 7/8\" Partition (NR), ...; Lighting Fixtures (3): 18\" D x 15\" H; Floors (1): Cores - Mechanical Space; Wall Sweeps (1): Base_Simple"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L3"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "307 Live/Work Unit"
+    ],
+    [
+      "HEAD OF WALL",
+      "PARTIAL HEIGHT. Top of wall 0'-4 3/4\" below floor \"Finish Floor - Polished Concrete (Brown)\" (13'-4\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Party - 6 1/8\" (2-hr), Interior - 6 1/8\" Partition (2-hr)"
+    ],
+    [
+      "RIGHT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (4): Party - 6 1/8\" (2-hr), Interior - 8 1/2\" Partition (2-hr), Interior - 4 7/8\" Partition (NR), ...; Lighting Fixtures (3): 18\" D x 15\" H; Floors (1): Cores - Mechanical Space; Wall Sweeps (1): Base_Simple"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

@@ -40,9 +40,10 @@ async function start() {
 // Previous / All panels / Next in the header (gallery order: level, then mark); the arrow keys do the same.
 async function pager() {
     const index = await loadState(INDEX_STATE).catch(() => ({}));
-    const list = sortPanels(Object.values(index.panels || {}));
+    const order = new URLSearchParams(location.search).get('order') === 'level' ? 'level' : 'complex';
+    const list = sortPanels(Object.values(index.panels || {}), order);
     const i = list.findIndex(p => p.key === key);
-    const href = (p) => (p ? `panel.html?p=${encodeURIComponent(p.key)}` : '#');
+    const href = (p) => (p ? `panel.html?p=${encodeURIComponent(p.key)}${order === 'level' ? '&order=level' : ''}` : '#');
     const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
     const nav = document.createElement('nav');
     nav.className = 'pager';

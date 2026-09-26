@@ -1,0 +1,107 @@
+{
+  "key": "7e4e1325-068d-4889-a124-dd475f3ddae2-0013483e",
+  "mark": "S03-11436",
+  "dbId": 11436,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T22:31:00.334Z",
+  "frame": {
+    "lengthIn": 362.1049164468809,
+    "heightIn": 291.05901511869536,
+    "openings": [
+      {
+        "left": 310.5393429022301,
+        "right": 362.1049164468809,
+        "bottom": 0,
+        "top": 100.83934382065037
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "S03-11436",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 35",
+    "wallType": "Chase - GWB & Metal Stud 4 1/4\"",
+    "assembly": "3 5/8\" stud chase, 1 layer one side",
+    "board": "1 + 0 layers, 5/8\" Regular",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 35"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "105 Commercial/Retail"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "101 Café"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\"; 24'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Exterior - 10 1/4\" Rainscreen w Insultation on Metal Stud, Exterior - 14 5/8\" Rainscreen w Insultation on Metal Stud, Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 3 1/8\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Core - Concrete 18\", Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (6): Concrete Slab 6\", Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown), ...; Walls (4): Soffit - Beam Wrap Large (Both Sides), Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 12\", ...; Handrails (1): Pipe - Wall Mount; Stairs (1): 7\" max riser 11\" tread"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 35"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "105 Commercial/Retail"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "101 Café"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\"; 24'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Exterior - 10 1/4\" Rainscreen w Insultation on Metal Stud, Exterior - 14 5/8\" Rainscreen w Insultation on Metal Stud, Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 3 1/8\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Core - Concrete 18\", Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (6): Concrete Slab 6\", Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown), ...; Walls (4): Soffit - Beam Wrap Large (Both Sides), Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 12\", ...; Handrails (1): Pipe - Wall Mount; Stairs (1): 7\" max riser 11\" tread"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

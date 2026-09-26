@@ -1,0 +1,114 @@
+{
+  "key": "049439b4-5467-47c4-a72e-459e7fd736c2-00101c52",
+  "mark": "X04-9924",
+  "dbId": 9924,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T22:30:28.628Z",
+  "frame": {
+    "lengthIn": 175,
+    "heightIn": 220,
+    "openings": [
+      {
+        "left": 163,
+        "right": 175,
+        "bottom": 0,
+        "top": 60
+      },
+      {
+        "left": 174,
+        "right": 175,
+        "bottom": 214,
+        "top": 220
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X04-9924",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L3",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L3"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "301 Office Unit"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side B); 18'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
+      ],
+      [
+        "BASE OF WALL",
+        "19'-5 3/8\" ABOVE SLAB. Base of wall 19'-5 3/8\" above floor \"Hardscape - Brick Walk\" (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Meets Solar Wall (Multi-Level), Living Wall"
+      ],
+      [
+        "RIGHT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Soffit - Beam Wrap Large (Both Sides)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Nothing else in the model"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L3"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "301 Office Unit"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side B); 18'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
+    ],
+    [
+      "BASE OF WALL",
+      "19'-5 3/8\" ABOVE SLAB. Base of wall 19'-5 3/8\" above floor \"Hardscape - Brick Walk\" (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Meets Solar Wall (Multi-Level), Living Wall"
+    ],
+    [
+      "RIGHT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Soffit - Beam Wrap Large (Both Sides)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Nothing else in the model"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

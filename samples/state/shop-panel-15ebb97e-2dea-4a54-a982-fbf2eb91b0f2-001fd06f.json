@@ -1,0 +1,116 @@
+{
+  "key": "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd06f",
+  "mark": "W-22254",
+  "dbId": 22254,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T22:32:26.184Z",
+  "frame": {
+    "lengthIn": 229,
+    "heightIn": 23,
+    "openings": [
+      {
+        "left": 58,
+        "right": 64,
+        "bottom": 0,
+        "top": 23
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "W-22254",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L3",
+    "wallType": "Soffit - Beam Wrap 10 1/2\" (Two Sides)",
+    "assembly": "Beam-wrap soffit, 3 5/8\" framing, 2 sides",
+    "board": "1 + 1 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L3"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "-"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "-"
+      ],
+      [
+        "ROOMS",
+        "The wall is not on SD103 - Third Floor Plan; open its level plan to read the rooms."
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 1'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "8'-4\" ABOVE SLAB. Base of wall 8'-4\" above floor \"Finish Floor - Polished Concrete (Brown)\" (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Meets Chase - GWB & Metal Stud 3 1/8\", Party - 6 1/8\" (2-hr), Interior - 6 1/8\" Partition (2-hr), Core - Concrete 10\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Interior - 7 1/4\" Partition (NR), Chase - GWB & Metal Stud 2 1/4\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (2): Finish Floor - Polished Concrete (Brown), Finish Floor - Laminate; Lighting Fixtures (1): 18\" D x 15\" H; Wall Sweeps (1): Base_Simple"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L3"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "-"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "-"
+    ],
+    [
+      "ROOMS",
+      "The wall is not on SD103 - Third Floor Plan; open its level plan to read the rooms."
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 1'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "8'-4\" ABOVE SLAB. Base of wall 8'-4\" above floor \"Finish Floor - Polished Concrete (Brown)\" (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Meets Chase - GWB & Metal Stud 3 1/8\", Party - 6 1/8\" (2-hr), Interior - 6 1/8\" Partition (2-hr), Core - Concrete 10\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Interior - 7 1/4\" Partition (NR), Chase - GWB & Metal Stud 2 1/4\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (2): Finish Floor - Polished Concrete (Brown), Finish Floor - Laminate; Lighting Fixtures (1): 18\" D x 15\" H; Wall Sweeps (1): Base_Simple"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

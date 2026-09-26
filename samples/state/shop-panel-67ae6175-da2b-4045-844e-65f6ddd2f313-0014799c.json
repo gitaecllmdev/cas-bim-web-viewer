@@ -3,22 +3,22 @@
   "mark": "W01-12066",
   "dbId": 12066,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T21:38:07.950Z",
+  "savedAt": "2026-09-26T22:30:26.111Z",
   "frame": {
-    "lengthIn": 324.95422321286253,
-    "heightIn": 160.42043930761565,
+    "lengthIn": 324.95451042558943,
+    "heightIn": 160.42058109617705,
     "openings": [
       {
-        "left": 150.13707781353773,
-        "right": 190.24218764044164,
+        "left": 150.13721051308877,
+        "right": 190.24235578713305,
         "bottom": 0,
-        "top": 88.43690884907016
+        "top": 88.43698701455915
       },
       {
-        "left": 131.62702712419747,
-        "right": 324.95422321286253,
-        "bottom": 154.2504224111689,
-        "top": 160.42043930761565
+        "left": 131.62714346352988,
+        "right": 324.95451042558943,
+        "bottom": 154.2505587463241,
+        "top": 160.42058109617705
       }
     ],
     "studIn": 3.625,
@@ -54,7 +54,7 @@
       ],
       [
         "HEAD OF WALL",
-        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\"; 13'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side B); 13'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
       ],
       [
         "BASE OF WALL",
@@ -89,7 +89,7 @@
     ],
     [
       "HEAD OF WALL",
-      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\"; 13'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side B); 13'-4\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4."
     ],
     [
       "BASE OF WALL",
