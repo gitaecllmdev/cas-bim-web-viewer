@@ -1,0 +1,9 @@
+{
+    "_comment": "Maps demo concepts to model property display names. Starting guesses for Revit models: the Tech Lead confirms them in the week-1 property audit and edits this file, not the demo code.",
+    "wallCategory": { "property": "Category", "value": "Revit Walls" },
+    "wallType": "Type Name",
+    "fireRating": "Fire Rating",
+    "level": "Base Constraint",
+    "length": "Length",
+    "area": "Area"
+}

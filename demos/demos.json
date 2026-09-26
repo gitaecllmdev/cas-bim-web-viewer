@@ -1,0 +1,8 @@
+[
+    { "id": "01-wall-types", "name": "1 · Wall Type & Fire-Rating Explorer", "extensionId": "Drywall.WallTypes" },
+    { "id": "02-takeoff", "name": "2 · Framing & Finish Takeoff", "extensionId": "Drywall.Takeoff" },
+    { "id": "03-progress", "name": "3 · Install Progress Tracker", "extensionId": "Drywall.Progress" },
+    { "id": "04-punch", "name": "4 · Field QC / Punch Viewer", "extensionId": "Drywall.Punch" },
+    { "id": "05-field-layout", "name": "5 · Field Layout Tablet Viewer", "extensionId": "Drywall.FieldLayout" },
+    { "id": "06-shop-drawings", "name": "6 · Framing Shop Drawings", "extensionId": "Drywall.ShopDrawings" }
+]

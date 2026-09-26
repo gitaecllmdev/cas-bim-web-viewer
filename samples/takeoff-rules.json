@@ -1,0 +1,206 @@
+{
+    "_comment": "Framing and finish takeoff rules for Demo 2. Each wall type gets the FIRST assembly whose 'match' (case-insensitive regex on the Revit type name) fits. Starting assumptions for Snowdon Towers: an estimator should confirm them (the Assemblies tab in the demo can override any type). studIn = stud depth in inches, rows = stud rows (2 = double-stud wall), layers = [side A, side B] layers of board, sheathingSides = exterior sheathing faces, track = top and bottom track. scope: framed | excluded (not in framing/drywall scope). Settings: mils = stud/track thickness for member names (33 mil = 20 ga), orderLengths = exact | half | inch | stock, splitTallWalls = frame walls over the longest stock stud in lifts.",
+    "settings": {
+        "studSpacingIn": 16,
+        "mils": 33,
+        "orderLengths": "exact",
+        "splitTallWalls": false,
+        "sheet": {
+            "label": "4' x 12'",
+            "sf": 48
+        },
+        "sheathingSheet": {
+            "label": "4' x 8'",
+            "sf": 32
+        },
+        "framingWastePct": 5,
+        "boardWastePct": 10,
+        "studStockFt": [
+            8,
+            9,
+            10,
+            12,
+            14,
+            16,
+            20
+        ],
+        "trackStockFt": 10,
+        "tapeLfPerSf": 0.37,
+        "compoundLbPerSf": 0.14,
+        "compoundLbPerBox": 62,
+        "screwsPerSfPerLayer": 1,
+        "tapeFtPerRoll": 500
+    },
+    "assemblies": [
+        {
+            "match": "Concrete|CMU|Steel Plate|Pilaster|Living Wall|Solar Wall|Foundation|Retaining|^Generic",
+            "scope": "excluded",
+            "label": "Not framing/drywall scope (concrete, CMU, steel, glazing, generic)"
+        },
+        {
+            "match": "Rainscreen.*for Concrete Core",
+            "scope": "excluded",
+            "label": "Rainscreen on concrete (no studs)"
+        },
+        {
+            "match": "^Party - ",
+            "label": "Double 3 5/8\" stud, 2 layers each side",
+            "studIn": 3.625,
+            "rows": 2,
+            "layers": [
+                2,
+                2
+            ]
+        },
+        {
+            "match": "^Interior - 4 7/8\"",
+            "label": "3 5/8\" stud, 1 layer each side",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                1
+            ]
+        },
+        {
+            "match": "^Interior - 5 1/2\"",
+            "label": "3 5/8\" stud, 2 layers + 1 layer",
+            "studIn": 3.625,
+            "layers": [
+                2,
+                1
+            ]
+        },
+        {
+            "match": "^Interior - 6 1/8\"",
+            "label": "3 5/8\" stud, 2 layers each side",
+            "studIn": 3.625,
+            "layers": [
+                2,
+                2
+            ]
+        },
+        {
+            "match": "^Interior - 7 1/4\"",
+            "label": "6\" stud, 1 layer each side",
+            "studIn": 6,
+            "layers": [
+                1,
+                1
+            ]
+        },
+        {
+            "match": "^Interior - 8 1/2\"",
+            "label": "6\" stud, 2 layers each side",
+            "studIn": 6,
+            "layers": [
+                2,
+                2
+            ]
+        },
+        {
+            "match": "^Chase - .* 2 1/4\"",
+            "label": "1 5/8\" stud chase, 1 layer one side",
+            "studIn": 1.625,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Chase - .* 3 1/8\"",
+            "label": "2 1/2\" stud chase, 1 layer one side",
+            "studIn": 2.5,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Chase - .* 4 1/4\"",
+            "label": "3 5/8\" stud chase, 1 layer one side",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Chase - .* 6 5/8\"",
+            "label": "6\" stud chase, 1 layer one side",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Furring - ",
+            "label": "7/8\" furring channel @ 24\", 1 layer",
+            "studIn": 0.875,
+            "spacingIn": 24,
+            "track": false,
+            "layers": [
+                1,
+                0
+            ],
+            "member": "furring channel"
+        },
+        {
+            "match": "^Soffit - Beam Wrap.*One Side",
+            "label": "Beam-wrap soffit, 3 5/8\" framing, 1 side",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Soffit - Beam Wrap",
+            "label": "Beam-wrap soffit, 3 5/8\" framing, 2 sides",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                1
+            ]
+        },
+        {
+            "match": "^Exterior - .*EIFS",
+            "label": "6\" CFS + exterior sheathing (EIFS by others)",
+            "studIn": 6,
+            "layers": [
+                0,
+                0
+            ],
+            "sheathingSides": 1
+        },
+        {
+            "match": "^Exterior - GWB on Metal Stud",
+            "label": "6\" CFS, 1 layer inside (panel by others)",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ]
+        },
+        {
+            "match": "^Exterior - .*Two Sides",
+            "label": "6\" CFS, exterior sheathing both sides",
+            "studIn": 6,
+            "layers": [
+                0,
+                0
+            ],
+            "sheathingSides": 2
+        },
+        {
+            "match": "^Exterior - .*on Metal Stud",
+            "label": "6\" CFS, exterior sheathing + 1 layer inside",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ],
+            "sheathingSides": 1
+        }
+    ]
+}

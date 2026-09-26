@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAS BIM Web Viewer</title>
+    <!-- The Viewer SDK must be loaded from the Autodesk-hosted URL (do not bundle it). -->
+    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.css">
+    <link rel="stylesheet" href="main.css">
+</head>
+
+<body>
+    <header id="header">
+        <span class="title">CAS BIM Web Viewer</span>
+        <label>Demo <select id="demos"></select></label>
+        <label>Model <select id="models"></select></label>
+        <label>Level <select id="levels"><option value="">All levels</option></select></label>
+        <span class="layout" role="group" aria-label="Layout">
+            <button data-layout="3d" title="3D model only">3D</button><button data-layout="split" title="3D and 2D side by side">Split</button><button data-layout="2d" title="2D plan or sheet only">2D</button>
+        </span>
+    </header>
+    <main id="main">
+        <div id="views" class="layout-split">
+            <div id="preview"></div>
+            <section id="pane2d">
+                <div class="pane2d-bar"><label>Plan / sheet <select id="sheets"></select></label> <button id="master" disabled>☆ Set as master</button></div>
+                <div id="viewer2d"></div>
+            </section>
+        </div>
+        <aside id="panel"></aside>
+    </main>
+    <div id="overlay"></div>
+    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.js"></script>
+    <script src="main.js" type="module"></script>
+</body>
+
+</html>

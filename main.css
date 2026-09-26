@@ -1,0 +1,171 @@
+body, html {
+    margin: 0;
+    padding: 0;
+    height: 100vh;
+    font-family: ArtifaktElement, "Segoe UI", sans-serif;
+}
+
+body {
+    display: flex;
+    flex-direction: column;
+}
+
+#header {
+    flex: 0 0 auto;
+    min-height: 3em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.4em 1em;
+    padding: 0.3em 1em;
+    border-bottom: 1px solid #ddd;
+    box-sizing: border-box;
+}
+
+#header .title {
+    flex: 1 0 auto;
+    font-weight: 600;
+}
+
+#header select {
+    height: 2em;
+    font-size: 1em;
+    max-width: 22em;
+}
+
+#header .layout button {
+    font: inherit;
+    height: 2em;
+    padding: 0 0.8em;
+    border: 1px solid #999;
+    background: white;
+    cursor: pointer;
+}
+
+#header .layout button + button { border-left: none; }
+#header .layout button.active { background: #1f3b57; color: white; border-color: #1f3b57; }
+
+#main {
+    flex: 1 1 auto;
+    position: relative;
+    display: flex;
+    min-height: 0;
+}
+
+/* 3D and 2D viewers side by side; #views gets layout-3d / layout-split / layout-2d */
+#views {
+    flex: 1 1 auto;
+    display: flex;
+    min-width: 0;
+}
+
+#preview, #pane2d {
+    position: relative;
+    flex: 1 1 50%;
+    min-width: 0;
+}
+
+#pane2d {
+    display: flex;
+    flex-direction: column;
+    border-left: 1px solid #ddd;
+}
+
+#views.layout-3d #pane2d, #views.layout-2d #preview { display: none; }
+#views.layout-2d #pane2d { border-left: none; }
+
+.pane2d-bar {
+    flex: 0 0 auto;
+    padding: 0.3em 0.6em;
+    border-bottom: 1px solid #ddd;
+    font-size: 0.9em;
+    background: #fafafa;
+}
+
+.pane2d-bar select { font: inherit; max-width: calc(100% - 15em); }
+.pane2d-bar button { font: inherit; margin-left: 0.4em; padding: 0.1em 0.6em; cursor: pointer; border: 1px solid #999; background: white; }
+.pane2d-bar button.active { background: #fff4d6; border-color: #c9a227; }
+.pane2d-bar button:disabled { cursor: default; opacity: 0.5; }
+
+#viewer2d {
+    position: relative;
+    flex: 1 1 auto;
+}
+
+#panel {
+    flex: 0 0 340px;
+    overflow: auto;
+    padding: 1em;
+    border-left: 1px solid #ddd;
+    box-sizing: border-box;
+}
+
+#panel.wide {
+    flex-basis: 480px;
+}
+
+#panel:empty {
+    display: none;
+}
+
+#overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: none;
+}
+
+#overlay > .notification {
+    margin: auto;
+    padding: 1em;
+    max-width: 50%;
+    background: white;
+}
+
+/* Custom viewer toolbar buttons (core/client/tools.js): a text glyph as the icon */
+.adsk-button-icon[class*="dw-icon-"]::before {
+    display: block;
+    font: 600 18px/28px "Segoe UI Symbol", "Segoe UI", sans-serif;
+    text-align: center;
+}
+.dw-icon-isolate::before { content: "◎"; }
+.dw-icon-hide::before { content: "⊘"; }
+.dw-icon-showall::before { content: "◉"; }
+.dw-icon-fit::before { content: "⤢"; }
+.dw-icon-xray::before { content: "◌"; }
+.dw-icon-top::before { content: "⊤"; }
+.dw-icon-building::before { content: "▦"; }
+
+/* Helpers for demo panels */
+.demo-panel h2 { font-size: 1.1em; margin: 0 0 0.5em; }
+.demo-panel .muted { color: #666; font-size: 0.9em; }
+.demo-panel .warn { color: #a15c00; }
+.demo-panel table { width: 100%; border-collapse: collapse; font-size: 0.9em; }
+.demo-panel td, .demo-panel th { padding: 0.25em; border-bottom: 1px solid #eee; text-align: left; }
+.demo-panel td.num, .demo-panel th.num { text-align: right; white-space: nowrap; }
+.demo-panel h3 { font-size: 0.95em; margin: 1em 0 0.4em; }
+.demo-panel .row { display: flex; flex-wrap: wrap; gap: 0.4em; align-items: center; margin: 0.5em 0; }
+.demo-panel button { font: inherit; padding: 0.3em 0.8em; cursor: pointer; }
+.demo-panel button.active { background: #1f3b57; color: white; }
+.demo-panel select, .demo-panel input, .demo-panel textarea { font: inherit; max-width: 100%; box-sizing: border-box; }
+.demo-panel tr.clickable { cursor: pointer; }
+.demo-panel tr.clickable:hover { background: #f3f6fa; }
+.demo-panel tr.selected { background: #e3edf7; }
+.demo-panel tr.hi, .demo-panel tr.hi:hover { background: #ffe3cc; } /* highlighted member mark (Demo 6) */
+.demo-panel tr.subtotal td { font-weight: 600; }
+.demo-panel tr.total td { font-weight: 700; border-top: 2px solid #999; }
+.demo-panel .swatch { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; vertical-align: -0.1em; margin-right: 0.4em; border: 1px solid rgba(0,0,0,0.2); }
+.demo-panel .bar { height: 0.5em; background: #eee; border-radius: 3px; overflow: hidden; }
+.demo-panel .bar > span { display: block; height: 100%; background: #59a14f; }
+.demo-panel .stack { display: flex; height: 0.8em; background: #eee; border-radius: 3px; overflow: hidden; }
+.demo-panel .stack > span { display: block; height: 100%; }
+.demo-panel .note { font-size: 0.8em; color: #666; margin-top: 1em; }
+.demo-panel.touch button, .demo-panel.touch select { min-height: 48px; min-width: 48px; font-size: 1.05em; }
+
+/* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
+@media (max-width: 900px) {
+    #main { flex-direction: column; }
+    #panel, #panel.wide { flex: 0 0 40%; border-left: none; border-top: 1px solid #ddd; }
+    #header .title { flex-basis: 100%; }
+}
