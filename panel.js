@@ -4,8 +4,9 @@
 // Data: state 'shop-panel-<id>' (written by Demo 6 when the wall is picked) and 'panel-notes-<id>' (links, comments),
 // through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
 import { loadState, saveState, escapeHtml, sharedStateOn } from './helpers.js';
-import { frameWall, fmtFtIn } from './demos/common/framing.mjs';
+import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf } from './demos/06-shop-drawings/sheet.mjs';
+import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const key = (new URLSearchParams(location.search).get('p') || '').toLowerCase();
@@ -28,18 +29,38 @@ async function start() {
     record = await loadState(`shop-panel-${key}`).catch(() => ({}));
     if (!record?.frame) return notFound('This panel has not been published yet. Pick the wall in the viewer (Demo 6) so its panel page is saved.');
     notes = { links: [], comments: [], ...(await loadState(notesName).catch(() => ({}))) };
-    const { notes: scanNotes = [], ...frameOptions } = record.frame;
-    layout = frameWall(frameOptions);
-    layout.notes.push(...scanNotes);
+    layout = entryLayout(record); // drawn from side B when it was flipped in the viewer
     info = { ...record.info, conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null) };
     document.title = `${record.mark} · CAS BIM Web Viewer`;
     document.getElementById('panel-title').textContent = `${record.mark} · ${record.info?.wallType || ''} · ${record.info?.level || ''}`;
     render();
+    pager().catch(err => console.warn('Panel list not loaded:', err.message));
+}
+
+// Previous / All panels / Next in the header (gallery order: level, then mark); the arrow keys do the same.
+async function pager() {
+    const index = await loadState(INDEX_STATE).catch(() => ({}));
+    const list = sortPanels(Object.values(index.panels || {}));
+    const i = list.findIndex(p => p.key === key);
+    const href = (p) => (p ? `panel.html?p=${encodeURIComponent(p.key)}` : '#');
+    const prev = i > 0 ? list[i - 1] : null, next = i >= 0 && i < list.length - 1 ? list[i + 1] : null;
+    const nav = document.createElement('nav');
+    nav.className = 'pager';
+    nav.setAttribute('aria-label', 'Panels');
+    nav.innerHTML = `<a href="${href(prev)}" class="${prev ? '' : 'disabled'}" title="${escapeHtml(prev?.mark || '')}">‹ Previous</a>
+        <a href="panels.html">All panels${i >= 0 ? ` (${i + 1} of ${list.length})` : ''}</a>
+        <a href="${href(next)}" class="${next ? '' : 'disabled'}" title="${escapeHtml(next?.mark || '')}">Next ›</a>`;
+    document.querySelector('.bar').appendChild(nav);
+    document.addEventListener('keydown', (e) => {
+        if (e.target.closest('input, textarea, select') || e.altKey || e.ctrlKey || e.metaKey) return;
+        if (e.key === 'ArrowLeft' && prev) location.href = href(prev);
+        if (e.key === 'ArrowRight' && next) location.href = href(next);
+    });
 }
 
 function notFound(message) {
     main.innerHTML = `<section class="card"><h2>Panel not found</h2><p>${escapeHtml(message)}</p>
-        <p><a class="button secondary" href="index.html?demo=06-shop-drawings">Open the viewer</a></p></section>`;
+        <p><a class="button" href="panels.html">All panel shops</a> <a class="button secondary" href="index.html?demo=06-shop-drawings">Open the viewer</a></p></section>`;
 }
 
 function render() {

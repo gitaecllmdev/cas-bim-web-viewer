@@ -30,3 +30,17 @@ td { border-top: 1px solid var(--line); padding: 0.35em 0.4em; vertical-align: t
 td:first-child { white-space: nowrap; color: var(--muted); font-size: 0.9em; }
 .comment { border-top: 1px solid var(--line); padding: 0.5em 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment .who { font-size: 0.85em; color: var(--muted); }
+/* Header links, pager (panel.html) and the panel gallery (panels.html). */
+.bar-link, .pager a { color: #fff; }
+.bar-link { margin-left: auto; }
+.pager { margin-left: auto; display: flex; gap: 0.9em; align-items: baseline; }
+.pager a.disabled { opacity: 0.4; pointer-events: none; }
+input[type="search"] { flex: 3 1 16em; border: 1px solid var(--line); border-radius: 6px; padding: 0.45em 0.6em; min-width: 0; }
+select { font: inherit; border: 1px solid var(--line); border-radius: 6px; padding: 0.4em; }
+.gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 12px; }
+.panel-card { display: grid; gap: 0.15em; color: inherit; text-decoration: none; }
+.panel-card:hover, .panel-card:focus-visible { border-color: var(--accent); box-shadow: 0 2px 10px rgba(31, 59, 87, 0.18); }
+.thumb { height: 130px; background: #fafafa; border: 1px solid var(--line); border-radius: 4px; padding: 6px; margin-bottom: 0.3em; }
+.thumb svg { width: 100%; height: 100%; display: block; }
+.panel-mark { font-weight: 700; font-size: 1.1em; }
+.open { color: var(--accent); font-weight: 600; margin-top: 0.3em; }

@@ -3,7 +3,7 @@
   "mark": "S04-14048",
   "dbId": 14048,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T15:32:05.498Z",
+  "savedAt": "2026-09-26T21:32:13.721Z",
   "frame": {
     "lengthIn": 328.5298500145717,
     "heightIn": 160.13247406370633,
@@ -58,11 +58,15 @@
       ],
       [
         "SIDE A (AS DRAWN)",
-        "303 Live/Work Unit"
+        "-"
       ],
       [
         "SIDE B (FAR SIDE)",
-        "NO ROOM FOUND"
+        "-"
+      ],
+      [
+        "ROOMS",
+        "The wall is not on SD104 - Fourth Floor Plan; open its level plan to read the rooms."
       ],
       [
         "HEAD OF WALL",
@@ -93,11 +97,15 @@
     ],
     [
       "SIDE A (AS DRAWN)",
-      "303 Live/Work Unit"
+      "-"
     ],
     [
       "SIDE B (FAR SIDE)",
-      "NO ROOM FOUND"
+      "-"
+    ],
+    [
+      "ROOMS",
+      "The wall is not on SD104 - Fourth Floor Plan; open its level plan to read the rooms."
     ],
     [
       "HEAD OF WALL",
@@ -119,5 +127,8 @@
       "WITHIN 1 FT",
       "Floors (2): Finish Floor - Laminate"
     ]
-  ]
+  ],
+  "view": {
+    "flip": false
+  }
 }

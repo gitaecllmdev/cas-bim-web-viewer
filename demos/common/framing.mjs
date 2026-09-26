@@ -39,6 +39,25 @@ function fmtInchesShort(inches) {
 // Openings from the model scan: { left, right, bottom, top } in inches. A door reaches the floor (bottom ≈ 0).
 export const isDoor = (o) => o.bottom <= 1;
 
+// CAS shop-drawing function codes (the FUNCTION column of the cut list and the sheet legend).
+export const FUNCTIONS = {
+    TTOP: 'TOP TRACK', TBOT: 'BOTTOM TRACK', HDD: 'DOOR HEADER', HDW: 'WINDOW HEADER', SBW: 'WINDOW SILL',
+    EV: 'END STUD', SV: 'STUD', SD: 'JAMB STUD', CR: 'CRIPPLE STUD',
+};
+const FUNC_OF_ROLE = { 'top track': 'TTOP', 'bottom track': 'TBOT', 'sill track': 'SBW', 'end stud': 'EV', stud: 'SV', 'jamb stud': 'SD', cripple: 'CR' };
+
+// The same panel seen from its other face (side B): mirrored left to right, labels unchanged. Ordinates on the
+// sheet then run from the other end. Pure: returns a new layout.
+export function flipLayout(layout) {
+    const L = layout.lengthIn;
+    return {
+        ...layout, flipped: !layout.flipped,
+        members: layout.members.map(m => ({ ...m, x: round16(L - m.x - m.w) })),
+        openings: layout.openings.map(o => ({ ...o, left: round16(L - o.right), right: round16(L - o.left) })).sort((a, b) => a.left - b.left),
+        ticks: [...new Set(layout.members.filter(m => m.orient === 'v').map(m => round16(L - m.x - m.w)))].sort((a, b) => a - b),
+    };
+}
+
 // Seat allowance: studs are cut 1/16" short of the track-to-track height (the CAS CF engine's total seat allowance).
 export const SEAT_ALLOWANCE_IN = 1 / 16;
 
@@ -66,7 +85,7 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     const notes = [];
     if (rows > 1) notes.push(`${rows} stud rows: elevation shows one row; quantities are for all rows.`);
     if (lifts > 1) notes.push(`${lifts} lifts of ${fmtFtIn(liftH)}: each lift has its own top and bottom track.`);
-    return { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes,
+    return { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
         studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn };
 }
 
@@ -79,7 +98,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
         .sort((a, b) => a.left - b.left);
     const studType = memberType(studIn, 'stud', mils, member), trackType = memberType(studIn, 'track', mils, member);
     const members = [];
-    const add = (m) => members.push({ ...m, lengthIn: floor8(m.lengthIn) });
+    const add = (m) => members.push({ func: FUNC_OF_ROLE[m.role], ...m, lengthIn: floor8(m.lengthIn) });
     const studLen = (bottom, top) => top - bottom - cutbackIn; // studs are cut short of the track-to-track height
 
     // Tracks: top full length; bottom broken at door openings.
@@ -108,7 +127,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
         // Head track over the opening; sill track under a window. Kept within the wall ends; no head track when the
         // opening runs up to the top track.
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
-        if (o.top < H - trackLegIn - 1) add({ role: 'head track', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: trackLegIn, lengthIn: x1 - x0 });
+        if (o.top < H - trackLegIn - 1) add({ role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: trackLegIn, lengthIn: x1 - x0 });
         if (!isDoor(o)) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y: o.bottom - trackLegIn, w: x1 - x0, h: trackLegIn, lengthIn: x1 - x0 });
     }
 
@@ -151,7 +170,8 @@ function labelMembers(members, rows) {
         const list = groups.get(key);
         list.forEach(m => { m.mark = mark; });
         const roles = [...new Set(list.map(m => m.role))].join(', ');
-        cutList.push({ mark, qty: list.length * rows, type, lengthIn: Number(len), roles });
+        const func = [...new Set(list.map(m => m.func))].join('/');
+        cutList.push({ mark, qty: list.length * rows, type, lengthIn: Number(len), roles, func });
     }
     cutList.sort((a, b) => a.mark[0].localeCompare(b.mark[0]) || Number(a.mark.slice(1)) - Number(b.mark.slice(1)));
     return { cutList };

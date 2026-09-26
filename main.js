@@ -26,8 +26,8 @@ demoSelect.onchange = () => {
 const offline = CONFIG.mode === 'static' && !CONFIG.tokenUrl;
 const viewer = offline ? null : await initViewer(document.getElementById('preview'));
 if (offline) {
-    showNotification('This review site is not connected to its viewer token service yet, so the models can\'t load here. '
-        + 'Panel pages opened from the QR codes on the shop drawings still work.');
+    showNotification('This review site is not connected to its viewer token service yet, so the 3D models can\'t load here. '
+        + 'The framing shop drawings are all here: <a href="panels.html"><b>open the panel shops</b></a>.');
 } else {
     const views = new Views(viewer);
     viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true });

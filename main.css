@@ -43,6 +43,7 @@ body {
 }
 
 #header .layout button + button { border-left: none; }
+#header .shops-link { font-weight: 600; color: #1f3b57; white-space: nowrap; }
 #header .layout button.active { background: #1f3b57; color: white; border-color: #1f3b57; }
 
 #main {

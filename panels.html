@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Panel shops · CAS BIM Web Viewer</title>
+    <link rel="stylesheet" href="panel.css">
+</head>
+
+<body>
+    <!-- Panel shop gallery: every framing shop drawing, one click to open it. The link to send reviewers. -->
+    <header class="bar">
+        <a class="brand" href="panels.html">CAS BIM Web Viewer</a><span>Panel shops</span>
+        <a class="bar-link" href="index.html?demo=06-shop-drawings">3D viewer ↗</a>
+    </header>
+    <main id="panels-main">
+        <section class="card">
+            <div class="row">
+                <input type="search" id="search" placeholder="Find a panel: mark, wall type, room…" aria-label="Find a panel">
+                <select id="level" aria-label="Level"><option value="">All levels</option></select>
+                <span class="muted" id="count"></span>
+            </div>
+        </section>
+        <div class="gallery" id="gallery"><p class="muted">Loading the panels…</p></div>
+    </main>
+    <script src="panels.js" type="module"></script>
+</body>
+
+</html>

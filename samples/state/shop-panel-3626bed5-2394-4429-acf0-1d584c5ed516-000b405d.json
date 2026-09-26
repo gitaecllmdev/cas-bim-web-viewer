@@ -1,0 +1,101 @@
+{
+  "key": "3626bed5-2394-4429-acf0-1d584c5ed516-000b405d",
+  "mark": "P03-5247",
+  "dbId": 5247,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T21:29:48.151Z",
+  "frame": {
+    "lengthIn": 181,
+    "heightIn": 131,
+    "openings": [],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "P03-5247",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 35",
+    "wallType": "Interior - 7 1/4\" Partition (1 hr)",
+    "assembly": "6\" stud, 1 layer each side",
+    "board": "1 + 1 layers, 5/8\" Type X",
+    "fireRating": "1 HR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 35"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "102 Café Kitchen"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Ceramic Tile (Wood)\"; 10'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: M1, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Interior - 4 7/8\" Partition (NR)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (1): Finish Floor - Polished Concrete (Grey); Walls (1): Interior - 4 7/8\" Partition (1-hr)"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 35"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "102 Café Kitchen"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Ceramic Tile (Wood)\"; 10'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: M1, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Interior - 4 7/8\" Partition (NR)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (1): Finish Floor - Polished Concrete (Grey); Walls (1): Interior - 4 7/8\" Partition (1-hr)"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

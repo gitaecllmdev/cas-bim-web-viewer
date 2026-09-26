@@ -8,19 +8,20 @@
 // Framing context for each picked wall (./context.js reads it, ./conditions.mjs interprets it): the rooms on each side
 // (from the level plan), head of wall (full height to the slab above, or partial), base, what the ends meet, and what
 // else is within 1 ft. Each picked wall gets a panel page (core/client/panel.html) that the sheet's QR code links to.
-// Viewer3D (isolate, fitToView, clientToWorld, worldToClient, setGhosting, getCamera, CAMERA_CHANGE_EVENT, setCutPlanes,
+// Viewer3D (isolate, fitToView, clientToWorld, worldToClient, setGhosting, getCamera, CAMERA_CHANGE_EVENT, GEOMETRY_LOADED_EVENT, setCutPlanes,
 //   loadDocumentNode with keepCurrentModels + globalOffset, hideModel, showModel, unloadModel, setThemingColor, clearThemingColors):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Navigation (setView, getTarget, getEyeVector, setVerticalFov): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
 // Document / BubbleNode (search for the 3D viewables): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
 import { loadPropertyMap, getWallData, onModelReady, getBulkProperties, propValue, escapeHtml, fetchJson, downloadCsv, loadState, saveState, markContextNode } from '../../helpers.js';
 import { assemblyFor, boardFor } from '../02-takeoff/calc.mjs';
-import { frameWall, fmtFtIn } from '../common/framing.mjs';
+import { frameWall, fmtFtIn, flipLayout } from '../common/framing.mjs';
 import { renderSheet, renderSheetPdf } from './sheet.mjs';
 import { scanWall, lookAtWall, saveScan, ensure3dShown } from '../common/wallscan.js';
 import { roomsBeside, probeSlabs, probeNearby, contextBox, wallPoint, wallSize } from './context.js';
 import { headOfWall, baseOfWall, summarizeNearby, conditionLines } from './conditions.mjs';
 import { CONFIG } from '../../config.js';
+import { INDEX_STATE, indexEntry } from './panels.mjs';
 
 const EXTENSION_ID = 'Drywall.ShopDrawings';
 const STATE_NAME = 'shop-drawings';
@@ -76,6 +77,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             this.rules = rules;
             this.overrides = takeoff.overrides || {}; // same assemblies as the takeoff demo
             this.settings = { ...this.settings, spacingIn: rules.settings.studSpacingIn, ...saved.settings };
+            this.flips = saved.flips || {}; // wall externalId -> true: the panel is drawn as seen from side B
             const { walls } = await getWallData(model, map);
             const extra = await getBulkProperties(model, walls.map(w => w.dbId), ['Type Mark', 'Unconnected Height', 'Base Offset', 'Width', 'Top Constraint', 'Top Offset', 'Top is Attached']);
             const byId = new Map(extra.map(r => [r.dbId, r]));
@@ -99,7 +101,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     render() {
         const level = this.views.level?.name;
-        const framed = this.walls.filter(w => w.asm.scope === 'framed' && (!level || (w.level ?? NOT_SET) === level))
+        const framed = this.framedList = this.walls.filter(w => w.asm.scope === 'framed' && (!level || (w.level ?? NOT_SET) === level))
             .sort((a, b) => (a.level || '').localeCompare(b.level || '', undefined, { numeric: true }) || b.length - a.length);
         const c = this.current;
         this.panel.innerHTML = `<div class="demo-panel"><h2>Framing Shop Drawings</h2>
@@ -138,11 +140,13 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const $ = (s) => this.panel.querySelector(s);
         if (c?.layout) {
             $('[data-sheet]').onclick = () => this.showSheet();
+            this.panel.querySelectorAll('[data-step]').forEach(b => b.onclick = () => this.step(Number(b.dataset.step)));
             $('[data-svg]').onclick = () => this.downloadSvg();
             $('[data-pdf]').onclick = () => this.downloadPdf();
             $('[data-print]').onclick = () => this.printSheet();
             $('[data-csv]').onclick = () => this.exportCutList();
             $('[data-elev]').onclick = () => this.elevationCamera();
+            $('[data-flip]').onchange = (e) => this.setFlip(e.target.checked);
             $('[data-exit]').onclick = () => this.exit();
             this.panel.querySelectorAll('tr[data-mark]').forEach(tr => tr.onclick = () => this.setHighlight(tr.dataset.mark));
             this.bindHighlightClear();
@@ -153,17 +157,20 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const c = this.current, lay = c.layout;
         if (c.error) return `<p class="warn">${escapeHtml(c.error)}</p>`;
         return `<h3>${escapeHtml(c.mark)} <span class="muted">${escapeHtml(c.wall.wallType || '')}</span></h3>
+            ${this.stepperHtml()}
+            <div class="row"><button data-sheet class="active">Open shop drawing</button><button data-pdf>Download PDF</button><button data-print>Print</button>
+                <label title="Draw the panel as seen from its other face (side B): mirrored, ordinates from the other end, labels unchanged">
+                    <input type="checkbox" data-flip ${this.isFlipped(c) ? 'checked' : ''}> Flip panel</label></div>
             <p class="muted">${escapeHtml(c.wall.asm.label || '')} · ${fmtFtIn(lay.lengthIn)} long × ${fmtFtIn(lay.heightIn)} high ·
                 ${lay.openings.length} opening(s) · ${lay.cutList.reduce((a, r) => a + r.qty, 0)} members</p>
             ${lay.notes.map(t => `<p class="warn">${escapeHtml(t)}</p>`).join('')}
-            ${this.contextHtml()}
-            <div class="row"><button data-sheet>Shop drawing</button><button data-pdf>Download PDF</button><button data-svg>Download SVG</button>
-                <button data-print>Print</button><button data-csv>Cut list CSV</button><button data-elev>Elevation view</button><button data-exit>Back to model</button>
+            <div class="row"><button data-svg>Download SVG</button><button data-csv>Cut list CSV</button><button data-elev>Elevation view</button><button data-exit>Back to model</button>
                 <a href="${escapeHtml(this.panelUrl(c))}" target="_blank" rel="noopener" title="The page the QR code on the sheet opens: the panel drawing, links and comments">Panel page ↗</a></div>
+            ${this.contextHtml()}
             <p class="muted">Click a mark here or a label in the 3D view to highlight all of its members.</p>
             <div data-hi-status>${this.highlightHtml()}</div>
             <table><thead><tr><th>Mark</th><th class="num">Qty</th><th>Member</th><th class="num">Length</th></tr></thead><tbody>
-            ${lay.cutList.map(r => `<tr class="clickable ${r.mark === this.highlight ? 'hi' : ''}" data-mark="${escapeHtml(r.mark)}" title="Highlight the ${r.qty} ${escapeHtml(r.mark)} members"><td><b>${r.mark}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)}<br><span class="muted">${escapeHtml(r.roles)}</span></td><td class="num">${fmtFtIn(r.lengthIn)}</td></tr>`).join('')}
+            ${lay.cutList.map(r => `<tr class="clickable ${r.mark === this.highlight ? 'hi' : ''}" data-mark="${escapeHtml(r.mark)}" title="Highlight the ${r.qty} ${escapeHtml(r.mark)} members"><td><b>${r.mark}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b><br><span class="muted">${escapeHtml(r.roles)}</span></td><td class="num">${fmtFtIn(r.lengthIn)}</td></tr>`).join('')}
             </tbody></table>`;
     }
 
@@ -177,7 +184,29 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     async saveSettings() {
-        await saveState(STATE_NAME, { settings: this.settings }).catch(err => console.warn('Settings not saved:', err.message));
+        await saveState(STATE_NAME, { settings: this.settings, flips: this.flips }).catch(err => console.warn('Settings not saved:', err.message));
+    }
+
+    // --- Flip: the panel drawn from side B (sheet, 3D drawing and camera); the members and labels don't change -------
+
+    isFlipped(c = this.current) {
+        return !!(c?.wall?.externalId && this.flips?.[c.wall.externalId]);
+    }
+
+    // The layout as drawn: flipped when the panel is viewed from side B.
+    viewLayout(c = this.current) {
+        return this.isFlipped(c) ? flipLayout(c.layout) : c.layout;
+    }
+
+    async setFlip(on) {
+        const c = this.current;
+        if (!c?.wall?.externalId) return;
+        if (on) this.flips[c.wall.externalId] = true; else delete this.flips[c.wall.externalId];
+        this.saveSettings();
+        this.savePanel(c).catch(err => console.warn('Panel page not saved:', err.message));
+        if (!this.contextShown) await this.elevationCamera();
+        this.drawOverlay();
+        if (this.modal) this.refreshSheetPreview();
     }
 
     // --- Pick a wall: scan its geometry, lay out the framing, show it in elevation ------------------------------
@@ -245,7 +274,9 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     // Look straight at side A of the wall with a narrow field of view.
     async elevationCamera() {
-        if (this.elevation) await lookAtWall(this.viewer, this.elevation);
+        if (!this.elevation) return;
+        const e = this.elevation;
+        await lookAtWall(this.viewer, this.isFlipped() ? { ...e, n: e.n.clone().negate(), u: e.u.clone().negate() } : e);
     }
 
     // --- 3D overlay: the framing drawn on the wall face, kept in place as the camera moves ------------------------
@@ -264,15 +295,18 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             this.overlay.addEventListener('click', (e) => { const el = onLabel(e); if (el) { e.stopPropagation(); this.setHighlight(el.dataset.mark); } });
         }
         if (!c?.layout || !this.settings.overlay) { this.overlay.innerHTML = ''; return; }
-        const { origin, u, up } = c.geom;
-        // Wall-face inches (x along the wall, y up) -> screen pixels.
+        const flipped = this.isFlipped(c), lay = this.viewLayout(c), { up } = c.geom;
+        const { L, D } = wallSize(c.geom);
+        const origin = flipped ? wallPoint(c.geom, L, D + 0.02, c.geom.origin.z) : c.geom.origin;
+        const u = flipped ? c.geom.u.clone().negate() : c.geom.u;
+        // Wall-face inches (x along the wall as drawn, y up) -> screen pixels.
         const at = (x, y) => this.viewer.worldToClient(origin.clone().add(u.clone().multiplyScalar(x / 12)).add(up.clone().multiplyScalar(y / 12)));
         const xy = (p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`;
         const parts = [];
         const hiMark = this.highlight, isHi = (m) => m.mark === hiMark;
         const fade = hiMark ? ' opacity="0.4"' : ''; // with a highlight, the other members fade back
-        const rows = new Map(c.layout.cutList.map(r => [r.mark, r]));
-        const ordered = [...c.layout.members].sort((a, b) => isHi(a) - isHi(b)); // highlighted members drawn last (on top)
+        const rows = new Map(lay.cutList.map(r => [r.mark, r]));
+        const ordered = [...lay.members].sort((a, b) => isHi(a) - isHi(b)); // highlighted members drawn last (on top)
         for (const m of ordered) {
             const pts = [at(m.x, m.y), at(m.x + m.w, m.y), at(m.x + m.w, m.y + m.h), at(m.x, m.y + m.h)].map(xy).join(' ');
             parts.push(isHi(m) ? `<polygon points="${pts}" fill="${HI.fill}" fill-opacity="0.95" stroke="${HI.stroke}" stroke-width="2"/>`
@@ -331,11 +365,12 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const room = (r) => (r ? [r.number, r.name].filter(Boolean).join(' ') : 'no room found');
         const eye = this.viewer.navigation.getEyeVector();
         const straightOn = Math.abs(eye.clone().normalize().dot(g.n)) > 0.95;
+        const [near, far] = this.isFlipped(c) ? [['B', ctx.rooms?.B], ['A', ctx.rooms?.A]] : [['A', ctx.rooms?.A], ['B', ctx.rooms?.B]];
         const below = at(0, 0), gap = size * 2.4;
         if (ctx.rooms && !ctx.rooms.note) {
             if (straightOn) {
-                dark({ x: below.x, y: below.y + gap }, `SIDE A (this side): ${room(ctx.rooms.A)}`, { weight: 'bold' });
-                dark({ x: below.x, y: below.y + gap + 15 }, `SIDE B (far side): ${room(ctx.rooms.B)}`);
+                dark({ x: below.x, y: below.y + gap }, `SIDE ${near[0]} (this side): ${room(near[1])}`, { weight: 'bold' });
+                dark({ x: below.x, y: below.y + gap + 15 }, `SIDE ${far[0]} (far side): ${room(far[1])}`);
             } else {
                 const a = this.viewer.worldToClient(wallPoint(g, L / 2, -2, base)), b = this.viewer.worldToClient(wallPoint(g, L / 2, D + 2, base));
                 dark(a, `A · ${room(ctx.rooms.A)}`, { anchor: 'middle', weight: 'bold' });
@@ -394,8 +429,14 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         this.setContextStatus(`Loading context: ${nodes.map(n => n.name()).join(', ') || 'no other 3D views in this model'}…`);
         const offset = main.getData().globalOffset;
         nodes.forEach(markContextNode); // keep them out of onModelReady (demos, views.setModel)
+        // The probes need all of their geometry, not just the model root: wait for GEOMETRY_LOADED_EVENT (up to 30 s).
+        const geometryDone = new Set();
+        const onGeometry = (ev) => geometryDone.add(ev.model);
+        this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, onGeometry);
         const models = await Promise.all(nodes.map(n => this.viewer.loadDocumentNode(node.getDocument(), n, { keepCurrentModels: true, globalOffset: offset })
             .catch(err => { console.warn(`Context view ${n.name()} did not load:`, err); return null; })));
+        for (let i = 0; i < 300 && models.some(m => m && !geometryDone.has(m)); i++) await new Promise(r => setTimeout(r, 100));
+        this.viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, onGeometry);
         this.contextModels = models.filter(Boolean);
         this.contextNames = nodes.filter((n, i) => models[i]).map(n => n.name());
         return this.contextModels;
@@ -474,19 +515,43 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         return `${base.replace(/\/?$/, '/')}panel.html?p=${encodeURIComponent(c.wall.externalId || c.mark)}`;
     }
 
+    // Previous / Next wall in the list below (the level in the header, longest first), so a level's shops can be walked
+    // through without going back to the model.
+    stepperHtml() {
+        const list = (this.framedList || []).slice(0, 150), i = list.findIndex(w => w.dbId === this.current?.dbId);
+        if (i < 0 || list.length < 2) return '';
+        return `<div class="row"><button data-step="-1" ${i === 0 ? 'disabled' : ''}>‹ Previous wall</button>
+            <span class="muted">${i + 1} of ${list.length}</span><button data-step="1" ${i === list.length - 1 ? 'disabled' : ''}>Next wall ›</button>
+            <a href="panels.html" target="_blank" rel="noopener" title="Every saved shop drawing, one click each">All panel shops ↗</a></div>`;
+    }
+
+    step(delta) {
+        const list = (this.framedList || []).slice(0, 150), i = list.findIndex(w => w.dbId === this.current?.dbId);
+        const next = list[i + delta];
+        if (next && !this.busy) this.pick(next.dbId);
+    }
+
     // What the panel page shows: the layout inputs (it re-draws the sheet), the sheet info and the framing context.
+    // The panel gallery's index is updated with it.
     async savePanel(c) {
         if (!c.layout || !c.wall.externalId) return;
         const a = c.wall.asm;
         const info = await this.sheetInfo(c);
         delete info.logoHref;
         delete info.qrUrl;
-        await saveState(`shop-panel-${c.wall.externalId}`, {
+        const record = {
             key: c.wall.externalId, mark: c.mark, dbId: c.dbId, urn: location.hash.slice(1), savedAt: new Date().toISOString(),
             frame: { lengthIn: c.geom.lengthIn, heightIn: c.geom.heightIn, openings: c.geom.openings, studIn: a.studIn, rows: a.rows,
                 spacingIn: a.spacingIn || this.settings.spacingIn, mils: this.settings.mils, member: a.member, notes: c.geom.notes || [] },
-            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [],
-        });
+            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], view: { flip: this.isFlipped(c) },
+        };
+        await saveState(`shop-panel-${c.wall.externalId}`, record);
+        // One index write at a time, so walking through walls quickly doesn't drop entries.
+        this.indexQueue = (this.indexQueue || Promise.resolve()).then(async () => {
+            const index = await loadState(INDEX_STATE).catch(() => ({}));
+            await saveState(INDEX_STATE, { panels: { ...(index.panels || {}), [record.key]: indexEntry(record) } });
+        }).catch(err => console.warn('Panel index not saved:', err.message));
+        await this.indexQueue;
     }
 
     // Three-quarter view from side A, above and to the left, so the depth of the box reads.
@@ -516,7 +581,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     async sheetSvg(extra = {}) {
-        return renderSheet(this.current.layout, { ...(await this.sheetInfo()), ...extra });
+        return renderSheet(this.viewLayout(), { ...(await this.sheetInfo()), ...extra });
     }
 
     // The logo as JPEG bytes for the PDF (PDF embeds JPEG as is): drawn on white, since JPEG has no transparency.
@@ -542,7 +607,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     // Vector PDF, 17 x 11 in (./pdf.mjs): the same drawing as the SVG, no print dialog needed.
     async downloadPdf() {
-        const bytes = renderSheetPdf(this.current.layout, await this.sheetInfo(), await this.logoJpeg());
+        const bytes = renderSheetPdf(this.viewLayout(), await this.sheetInfo(), await this.logoJpeg());
         const url = URL.createObjectURL(new Blob([bytes], { type: 'application/pdf' }));
         Object.assign(document.createElement('a'), { href: url, download: `shop-drawing-${this.current.mark}.pdf` }).click();
         setTimeout(() => URL.revokeObjectURL(url), 1000);

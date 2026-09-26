@@ -1,0 +1,109 @@
+{
+  "key": "817801dd-655e-443c-9f69-d5f14efae8a3-0019f05a",
+  "mark": "X04-18694",
+  "dbId": 18694,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-26T21:36:58.783Z",
+  "frame": {
+    "lengthIn": 718.9376737164815,
+    "heightIn": 58.59680099256589,
+    "openings": [],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X04-18694",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L3",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-26",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L3"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "-"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "-"
+      ],
+      [
+        "ROOMS",
+        "The wall is not on SD103 - Third Floor Plan; open its level plan to read the rooms."
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side A); 4'-10\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "19'-2 7/8\" ABOVE SLAB. Base of wall 19'-2 7/8\" above floor \"Hardscape - Brick Walk\" (beside side A) (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+      ],
+      [
+        "RIGHT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (9): Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Living Wall"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L3"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "-"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "-"
+    ],
+    [
+      "ROOMS",
+      "The wall is not on SD103 - Third Floor Plan; open its level plan to read the rooms."
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Grey)\" (beside side A); 4'-10\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "19'-2 7/8\" ABOVE SLAB. Base of wall 19'-2 7/8\" above floor \"Hardscape - Brick Walk\" (beside side A) (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+    ],
+    [
+      "RIGHT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (9): Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Living Wall"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}
