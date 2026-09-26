@@ -121,9 +121,16 @@ body {
 #overlay > .notification {
     margin: auto;
     padding: 1em;
-    max-width: 50%;
+    max-width: min(90%, 36em);
     background: white;
+    border-radius: 8px;
+    line-height: 1.5;
 }
+
+/* Buttons to the pages that work without the viewer (review site before its token service is connected). */
+#overlay .offline-links { display: flex; flex-wrap: wrap; gap: 0.5em; margin-top: 0.8em; }
+#overlay .offline-links a { padding: 0.5em 1em; border-radius: 6px; background: #1f3b57; color: #fff; text-decoration: none; font-weight: 600; }
+#overlay .offline-links a.secondary { background: #fff; color: #1f3b57; border: 1px solid #1f3b57; }
 
 /* Custom viewer toolbar buttons (core/client/tools.js): a text glyph as the icon */
 .adsk-button-icon[class*="dw-icon-"]::before {

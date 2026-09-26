@@ -26,8 +26,9 @@ demoSelect.onchange = () => {
 const offline = CONFIG.mode === 'static' && !CONFIG.tokenUrl;
 const viewer = offline ? null : await initViewer(document.getElementById('preview'));
 if (offline) {
-    showNotification('This review site is not connected to its viewer token service yet, so the 3D models can\'t load here. '
-        + 'The framing shop drawings are all here: <a href="panels.html"><b>open the panel shops</b></a>.');
+    showNotification('<b>The 3D viewer is being connected on this review site.</b><br>'
+        + 'Its viewer service isn\'t set up yet, so the model can\'t load here. The shop drawings and the takeoff are ready:'
+        + '<div class="offline-links"><a href="panels.html">Panel shops</a><a href="takeoff.html">Takeoff</a><a href="home.html" class="secondary">Home</a></div>');
 } else {
     const views = new Views(viewer);
     viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true });
