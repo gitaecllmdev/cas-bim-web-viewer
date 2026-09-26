@@ -27,7 +27,9 @@ ul.links a { flex: 1; }
 .sheet svg { display: block; width: 100%; height: auto; min-width: 640px; }
 table { border-collapse: collapse; width: 100%; }
 td { border-top: 1px solid var(--line); padding: 0.35em 0.4em; vertical-align: top; }
-td:first-child { white-space: nowrap; color: var(--muted); font-size: 0.9em; }
+table.conditions td:first-child { white-space: nowrap; color: var(--muted); font-size: 0.9em; }
+th { text-align: left; font-size: 0.85em; color: var(--muted); padding: 0.35em 0.4em; font-weight: 600; }
+.num, th.num { text-align: right; white-space: nowrap; }
 .comment { border-top: 1px solid var(--line); padding: 0.5em 0; white-space: pre-wrap; overflow-wrap: anywhere; }
 .comment .who { font-size: 0.85em; color: var(--muted); }
 /* Header links, pager (panel.html) and the panel gallery (panels.html). */
@@ -44,3 +46,18 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .thumb svg { width: 100%; height: 100%; display: block; }
 .panel-mark { font-weight: 700; font-size: 1.1em; }
 .open { color: var(--accent); font-weight: 600; margin-top: 0.3em; }
+/* Home page (home.html) and the header links shared by the report pages. */
+.bar .links { margin-left: auto; display: flex; gap: 1em; }
+.bar .links a { color: #fff; }
+.hero { display: flex; gap: 16px; align-items: center; padding: 8px 0; }
+.hero h1 { margin: 0; font-size: 1.6em; }
+.hero p { margin: 0.2em 0 0; }
+.home-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
+.home-card { display: grid; align-content: start; gap: 0.3em; color: inherit; text-decoration: none; padding: 18px; }
+.home-card:hover, .home-card:focus-visible { border-color: var(--accent); box-shadow: 0 2px 10px rgba(31, 59, 87, 0.18); }
+.home-card h2 { margin: 0; font-size: 1.25em; }
+.home-card p { margin: 0; color: var(--muted); }
+.home-icon { font-size: 1.8em; color: var(--accent); }
+.home-card.soon { opacity: 0.75; }
+.home-card.soon .open { color: var(--muted); font-weight: 400; }
+.tabs { display: inline-flex; gap: 0.3em; }

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CAS BIM Web Viewer</title>
+    <link rel="stylesheet" href="panel.css">
+</head>
+
+<body>
+    <!-- Home: the three ways in, for people who were just sent the link. -->
+    <header class="bar"><a class="brand" href="home.html">CAS BIM Web Viewer</a><span id="project"></span></header>
+    <main id="home-main">
+        <section class="hero">
+            <img src="demos/06-shop-drawings/cas-logo.png" alt="" width="64" height="64">
+            <div><h1>CAS BIM Web Viewer</h1>
+                <p class="muted">Framing shop drawings, takeoff and the 3D model for the project, in the browser. No login or install.</p></div>
+        </section>
+        <div class="home-cards">
+            <a class="card home-card" href="panels.html">
+                <span class="home-icon" aria-hidden="true">▦</span>
+                <h2>Panel shops</h2>
+                <p>Every framing shop drawing: cut list, member tags, ordinates to studs, tracks and openings. Search by panel, level or room; one click opens the sheet (PDF download and print there).</p>
+                <span class="open">Open panel shops ›</span></a>
+            <a class="card home-card" href="takeoff.html">
+                <span class="home-icon" aria-hidden="true">∑</span>
+                <h2>Takeoff</h2>
+                <p>Framing and finish quantities by level: studs, track, headers, sills and cripples by mark and cut length, board and finish. Download as CSV.</p>
+                <span class="open">Open the takeoff ›</span></a>
+            <a class="card home-card" href="index.html?demo=06-shop-drawings" id="viewer-card">
+                <span class="home-icon" aria-hidden="true">◈</span>
+                <h2>3D model viewer</h2>
+                <p>The model in 3D beside its plans: pick a wall to see it framed, its context and its shop drawing. Six demos, from wall types to field layout.</p>
+                <span class="open" id="viewer-open">Open the 3D viewer ›</span></a>
+        </div>
+    </main>
+    <script type="module">
+        // On a review site that isn't connected to its token service yet, say so on the 3D card (the other two work).
+        import { CONFIG } from './config.js';
+        import { loadState } from './helpers.js';
+        if (CONFIG.mode === 'static' && !CONFIG.tokenUrl) {
+            document.getElementById('viewer-card').classList.add('soon');
+            document.getElementById('viewer-open').textContent = 'Coming soon (the viewer service is being connected)';
+        }
+        loadState('takeoff-snapshot').then(s => { if (s?.project) document.getElementById('project').textContent = s.project; }).catch(() => {});
+    </script>
+</body>
+
+</html>

@@ -8,9 +8,13 @@ import { loadPropertyMap, getWallData, getBulkProperties, propValue, onModelRead
 import { takeoff, assemblyFor, fmtInches, ROLES } from './calc.mjs';
 import { fmtFtIn } from '../common/framing.mjs';
 import { loadScans, scanWalls } from '../common/wallscan.js';
+import { CONFIG } from '../../config.js';
 
 const EXTENSION_ID = 'Drywall.Takeoff';
 const STATE_NAME = 'takeoff';
+// The walls as read from the model, for the takeoff report page (core/client/takeoff.html), which runs the same
+// math without the viewer. Written on the local server only; the review site is built with it.
+const SNAPSHOT_STATE = 'takeoff-snapshot';
 const NOT_SET = 'Not set';
 const DISCLAIMER = 'Estimate from model geometry and the assemblies below, framed with the same layout as the shop drawings (studs cut 1/16" short, lengths rounded down to 1/8"). Jambs, head and sill track and cripples are counted for walls whose openings have been scanned; stud gauge per the framing engineer. Check before ordering.';
 const ORDER_MODES = [['exact', 'Exact cut (1/8")'], ['half', 'Round up to 1/2"'], ['inch', 'Round up to 1"'], ['stock', 'Stock lengths (8\'-20\')']];
@@ -93,6 +97,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 heightFt: Number(propValue(extra.get(w.dbId), 'Unconnected Height')) * lf || undefined,
                 baseOffsetFt: Number(propValue(extra.get(w.dbId), 'Base Offset')) * lf || 0, scan: scans[w.externalId] }));
             this.render();
+            this.saveSnapshot(model);
         } catch (err) {
             this.panel.querySelector('[data-status]').textContent = `Could not build the takeoff: ${err.message || err}`;
         }
@@ -352,6 +357,16 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         }
         body.querySelector('[data-levels]').onchange = (e) => { this.showLevels = e.target.checked; this.render(); };
         body.querySelector('[data-reset]').onclick = () => { this.views.showAll(); this.views.isolate(null); };
+    }
+
+    // Walls only (the report page adds the saved opening scans and the takeoff settings itself).
+    saveSnapshot(model) {
+        if (CONFIG.mode === 'static') return;
+        const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt }) =>
+            ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt }));
+        const project = document.getElementById('models')?.selectedOptions[0]?.text || model.getDocumentNode()?.getDocument()?.getRoot()?.name?.() || 'Project';
+        saveState(SNAPSHOT_STATE, { project, urn: location.hash.slice(1), savedAt: new Date().toISOString(), walls })
+            .catch(err => console.warn('Takeoff snapshot not saved:', err.message));
     }
 
     async save() {

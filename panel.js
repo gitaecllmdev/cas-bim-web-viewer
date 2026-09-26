@@ -87,7 +87,7 @@ function render() {
             <div class="sheet" style="margin-top:0.6em">${renderSheet(layout, info).replace('width="17in" height="11in"', 'width="100%"')}</div>
         </section>
         ${info.conditions.length ? `<section class="card"><h2>Conditions <span class="muted">(from the model; verify in the field)</span></h2>
-            <table>${info.conditions.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table></section>` : ''}
+            <table class="conditions">${info.conditions.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table></section>` : ''}
         <section class="card">
             <h2>Comments</h2>
             <div data-comments>${notes.comments.map(c => `<div class="comment"><div class="who">${escapeHtml(c.by || 'Anonymous')} · ${escapeHtml(when(c.at))}</div>${escapeHtml(c.text)}</div>`).join('') || '<p class="muted">No comments yet.</p>'}</div>

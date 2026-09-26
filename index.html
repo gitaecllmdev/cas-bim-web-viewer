@@ -6,6 +6,8 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CAS BIM Web Viewer</title>
+    <!-- The site root opens the home page; the viewer is index.html?demo=... (or a model link with #urn). -->
+    <script>if (!new URLSearchParams(location.search).has('demo') && !location.hash) location.replace('home.html');</script>
     <!-- The Viewer SDK must be loaded from the Autodesk-hosted URL (do not bundle it). -->
     <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.css">
     <link rel="stylesheet" href="main.css">
@@ -13,7 +15,7 @@
 
 <body>
     <header id="header">
-        <span class="title">CAS BIM Web Viewer</span>
+        <a class="title" href="home.html" title="Home">CAS BIM Web Viewer</a>
         <label>Demo <select id="demos"></select></label>
         <label>Model <select id="models"></select></label>
         <label>Level <select id="levels"><option value="">All levels</option></select></label>
