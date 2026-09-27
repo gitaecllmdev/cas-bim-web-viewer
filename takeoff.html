@@ -6,17 +6,24 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Takeoff · CAS BIM Web Viewer</title>
-    <link rel="stylesheet" href="panel.css">
+    <!-- The takeoff link: the 3D takeoff with the model and plan on top and the tables underneath (?level=... kept).
+         Without the viewer service (or with ?report=1) it opens the takeoff report instead. -->
+    <script type="module">
+        import { CONFIG } from './config.js';
+        const params = new URLSearchParams(location.search);
+        if ((CONFIG.mode === 'static' && !CONFIG.tokenUrl) || params.get('report') === '1') {
+            params.delete('report');
+            location.replace(`takeoff-report.html${params.toString() ? `?${params}` : ''}`);
+        } else {
+            const to = new URLSearchParams({ demo: '02-takeoff', layout: 'split', dock: 'bottom' });
+            if (params.get('level')) to.set('level', params.get('level'));
+            location.replace(`index.html?${to}`);
+        }
+    </script>
 </head>
 
 <body>
-    <!-- Framing and finish takeoff report: the same math as Demo 2, from a snapshot of the model's walls (no viewer). -->
-    <header class="bar">
-        <a class="brand" href="home.html">CAS BIM Web Viewer</a><span>Takeoff</span>
-        <nav class="links"><a href="panels.html">Panel shops</a><a href="index.html?demo=02-takeoff">3D takeoff ↗</a></nav>
-    </header>
-    <main id="takeoff-main"><p class="muted">Loading the takeoff…</p></main>
-    <script src="takeoff.js" type="module"></script>
+    <p>Opening the takeoff… <a href="takeoff-report.html">Report without the 3D model</a></p>
 </body>
 
 </html>

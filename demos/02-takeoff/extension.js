@@ -113,6 +113,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     render() {
         this.result = takeoff(this.scope, this.rules, this.overrides, this.settings);
+        this.refreshSelection();
         const warn = this.missing.length
             ? `<p class="warn">No wall has ${this.missing.map(k => `"${escapeHtml(this.map[k])}"`).join(', ')}. Fix the name in samples/property-map.json.</p>` : '';
         this.panel.innerHTML = `<div class="demo-panel"><h2>Takeoff: framing, board &amp; finish</h2>
@@ -175,6 +176,46 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         }
     }
 
+    // --- Member selection: a material line, a member mark or a board type shows its walls in 3D and on the plan ---------
+
+    // What a selection key points at in the current result: { ids, label } or null.
+    findSelection(key) {
+        const r = this.result;
+        const [kind, value] = [key.slice(0, key.indexOf(':')), key.slice(key.indexOf(':') + 1)];
+        if (kind === 'item') {
+            const m = r.materials.find(x => x.item === value);
+            return m?.ids?.length ? { ids: m.ids, label: `${m.item}: ${fmt(m.qty)} ${m.unit}` } : null;
+        }
+        if (kind === 'mark') {
+            const e = r.schedule.find(x => x.mark === value);
+            return e ? { ids: e.ids, label: `${e.mark} (${e.role}, ${e.type} @ ${fmtFtIn(e.cutIn)}): ${fmt(e.qty)} pcs` } : null;
+        }
+        return null;
+    }
+
+    select(key) {
+        const found = key && this.findSelection(key);
+        this.selection = found ? { key, ...found } : null;
+        this.views.isolate(this.selection ? this.selection.ids : null);
+    }
+
+    // After a new result (level, settings): the same selection, with its walls on this level; gone if it isn't here.
+    refreshSelection() {
+        if (!this.selection) return;
+        const found = this.findSelection(this.selection.key);
+        if (!found) { this.selection = null; this.views.isolate(null, { fit: false }); return; }
+        const changed = found.ids.length !== this.selection.ids.length || found.ids.some((id, i) => id !== this.selection.ids[i]);
+        this.selection = { key: this.selection.key, ...found };
+        if (changed) this.views.isolate(found.ids);
+    }
+
+    selectionHtml() {
+        const sel = this.selection;
+        if (!sel) return '<p class="muted">Click a stud, track or board line to show its walls in 3D and on the plan (and open its member schedule); click a mark to show just the walls with that member.</p>';
+        return `<div class="row sel-status"><span>Showing <b>${fmt(sel.ids.length)}</b> wall${sel.ids.length === 1 ? '' : 's'} with <b>${escapeHtml(sel.label)}</b> in 3D and on the plan.</span>
+            <button data-clear-selection>Show all</button></div>`;
+    }
+
     assignDepthColors() {
         const depths = [...new Set(this.result.rows.filter(r => r.asm.scope === 'framed').map(r => r.asm.studIn))].sort((a, b) => a - b);
         this.depthColors = new Map(depths.map((d, i) => [d, paletteColor(i)]));
@@ -217,7 +258,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 <label>Waste framing <input data-set="framingWastePct" type="number" min="0" max="50" value="${s.framingWastePct}" style="width:3.5em">%</label>
                 <label>board <input data-set="boardWastePct" type="number" min="0" max="50" value="${s.boardWastePct}" style="width:3.5em">%</label>
             </div>
-            <div class="row"><span class="muted">Click a stud or track line for its member schedule: every member with its mark and cut length (1/8").
+            ${this.selectionHtml()}
+            <div class="row"><span class="muted">Member schedules: every member with its mark and cut length (1/8").
                 Marks: ${Object.entries(ROLES).map(([k, v]) => `<b>${k}</b> ${v}`).join(' · ')}; then the stud depth and a number, longest first (ST362-1).</span>
                 <button data-expand-all>Expand all</button><button data-collapse-all>Collapse all</button></div>
             <table><thead><tr><th>Item</th><th class="num">Qty</th><th>Unit</th><th class="num"></th></tr></thead><tbody>
@@ -237,28 +279,45 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             this.settings[el.dataset.setText] = el.value === 'true' ? true : el.value === 'false' ? false : el.value;
             this.save();
         });
+        // A line: show its walls and open its schedule; the selected line again: close it and show everything.
         body.querySelectorAll('[data-toggle-item]').forEach(tr => tr.onclick = () => {
-            const key = tr.dataset.toggleItem;
-            if (this.expanded.has(key)) this.expanded.delete(key); else this.expanded.add(key);
+            const key = tr.dataset.toggleItem, sel = `item:${key}`;
+            if (this.selection?.key === sel) { this.expanded.delete(key); this.select(null); } else { this.expanded.add(key); this.select(sel); }
             this.render();
         });
+        body.querySelectorAll('[data-select-item]').forEach(tr => tr.onclick = () => {
+            const sel = `item:${tr.dataset.selectItem}`;
+            this.select(this.selection?.key === sel ? null : sel);
+            this.render();
+        });
+        body.querySelectorAll('[data-select-mark]').forEach(tr => tr.onclick = (e) => {
+            e.stopPropagation();
+            const sel = `mark:${tr.dataset.selectMark}`;
+            this.select(this.selection?.key === sel ? null : sel);
+            this.render();
+        });
+        body.querySelector('[data-clear-selection]')?.addEventListener('click', () => { this.select(null); this.render(); });
         body.querySelector('[data-expand-all]').onclick = () => { this.result.materials.filter(m => m.marks).forEach(m => this.expanded.add(m.item)); this.render(); };
         body.querySelector('[data-collapse-all]').onclick = () => { this.expanded.clear(); this.render(); };
     }
 
     // A material line; stud and track lines expand to their cut-length schedule (the lengths to order).
     materialRow(m) {
-        if (!m.marks) return `<tr><td style="padding-left:1em">${escapeHtml(m.item)}</td><td class="num">${fmt(m.qty)}</td><td>${m.unit}</td><td class="num muted">${m.extra || ''}</td></tr>`;
+        const isSel = (key) => (this.selection?.key === key ? 'selected' : '');
+        if (!m.marks) {
+            const pick = m.ids?.length ? ` class="clickable ${isSel(`item:${m.item}`)}" data-select-item="${escapeHtml(m.item)}" title="Show these walls"` : '';
+            return `<tr${pick}><td style="padding-left:1em">${escapeHtml(m.item)}</td><td class="num">${fmt(m.qty)}</td><td>${m.unit}</td><td class="num muted">${m.extra || ''}</td></tr>`;
+        }
         const open = this.expanded.has(m.item);
         const s = this.result.settings;
         const long = m.longCount ? ` <span class="warn" title="longer than the longest stock stud">${fmt(m.longCount)} over ${Math.max(...s.studStockFt)}'</span>` : '';
-        const head = `<tr class="clickable" data-toggle-item="${escapeHtml(m.item)}"><td style="padding-left:0.3em">${open ? '▾' : '▸'} ${escapeHtml(m.item)}${long}</td>
+        const head = `<tr class="clickable ${isSel(`item:${m.item}`)}" data-toggle-item="${escapeHtml(m.item)}" title="Show these walls and the member schedule"><td style="padding-left:0.3em">${open ? '▾' : '▸'} ${escapeHtml(m.item)}${long}</td>
             <td class="num">${fmt(m.qty)}</td><td>${m.unit}</td><td class="num muted">${m.extra || ''}</td></tr>`;
         if (!open) return head;
         const isStud = m.kind === 'stud';
         const order = (e) => !isStud ? `cut from ${s.trackStockFt}' stock` : e.perPiece > 1 ? `${fmtFtIn(e.orderIn)} stock, ${e.perPiece} per piece → ${fmt(e.pieces)}`
             : e.orderIn === e.cutIn ? 'cut to length' : `order ${fmtFtIn(e.orderIn)}`;
-        const rows = m.marks.map(e => `<tr><td style="padding-left:1.6em"><b>${e.mark}</b></td><td>${escapeHtml(e.role)}</td>
+        const rows = m.marks.map(e => `<tr class="clickable ${isSel(`mark:${e.mark}`)}" data-select-mark="${escapeHtml(e.mark)}" title="Show the walls with ${escapeHtml(e.mark)}"><td style="padding-left:1.6em"><b>${e.mark}</b></td><td>${escapeHtml(e.role)}</td>
             <td class="num">${fmtFtIn(e.cutIn)}${e.long ? ' <span class="warn">long</span>' : ''}</td><td class="num">${fmt(e.qty)}</td>
             <td>${order(e)}</td><td class="num muted">${fmt(e.lf)}</td></tr>`).join('');
         const summary = isStud && s.orderLengths !== 'exact' && m.order?.length

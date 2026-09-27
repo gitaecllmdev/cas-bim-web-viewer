@@ -172,6 +172,11 @@ body {
 .demo-panel .note { font-size: 0.8em; color: #666; margin-top: 1em; }
 .demo-panel.touch button, .demo-panel.touch select { min-height: 48px; min-width: 48px; font-size: 1.05em; }
 
+/* ?dock=bottom (the takeoff link): 3D and plan on top, the panel full width underneath */
+body.dock-bottom #main { flex-direction: column; }
+body.dock-bottom #views { flex: 0 0 56%; min-height: 0; }
+body.dock-bottom #panel, body.dock-bottom #panel.wide { flex: 1 1 auto; border-left: none; border-top: 2px solid #1f3b57; }
+
 /* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
 @media (max-width: 900px) {
     #main { flex-direction: column; }

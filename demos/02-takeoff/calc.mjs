@@ -107,8 +107,8 @@ export function wallQuantities(wall, asm, settings) {
 export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
     const settings = { ...rules.settings, ...settingsOverride };
     const types = new Map();
-    const framing = new Map(); // member type (e.g. 362S162-33) -> { kind, depth, member, entries: Map(code|length -> qty) }
-    const board = new Map(); // board type -> sf
+    const framing = new Map(); // member type (e.g. 362S162-33) -> { kind, depth, member, entries: Map(code|length -> { qty, ids }) }
+    const board = new Map(); // board type -> { sf, ids }
     let finishSf = 0, sheathingSf = 0, screwSf = 0, missing = 0, framedWalls = 0, scannedWalls = 0;
 
     for (const wall of walls) {
@@ -131,10 +131,16 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
             const kind = m.vertical ? 'stud' : 'track';
             if (!framing.has(m.type)) framing.set(m.type, { kind, depth: asm.studIn, member: asm.member, entries: new Map() });
             const entries = framing.get(m.type).entries, key = `${m.code}|${m.lengthIn}`;
-            entries.set(key, (entries.get(key) || 0) + m.qty);
+            if (!entries.has(key)) entries.set(key, { qty: 0, ids: new Set() });
+            entries.get(key).qty += m.qty;
+            entries.get(key).ids.add(wall.dbId);
         }
         const boardType = boardFor(wall, asm);
-        if (q.boardSf) board.set(boardType, (board.get(boardType) || 0) + q.boardSf);
+        if (q.boardSf) {
+            if (!board.has(boardType)) board.set(boardType, { sf: 0, ids: new Set() });
+            board.get(boardType).sf += q.boardSf;
+            board.get(boardType).ids.add(wall.dbId);
+        }
         finishSf += q.finishSf;
         sheathingSf += q.sheathingSf;
         screwSf += q.boardSf + q.sheathingSf;
@@ -150,7 +156,7 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
     const materials = [];
     const schedule = [];
     for (const [type, g] of sorted) {
-        const entries = [...g.entries].map(([key, qty]) => { const [code, len] = key.split('|'); return { code, cutIn: Number(len), qty }; })
+        const entries = [...g.entries].map(([key, v]) => { const [code, len] = key.split('|'); return { code, cutIn: Number(len), qty: v.qty, ids: [...v.ids] }; })
             .sort((a, b) => CODE_ORDER.indexOf(a.code) - CODE_ORDER.indexOf(b.code) || b.cutIn - a.cutIn);
         const marks = entries.map(e => {
             const k = `${e.code}${depthCode(g.depth)}`;
@@ -158,11 +164,12 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
             const qty = g.kind === 'stud' ? Math.ceil(e.qty * fw) : e.qty; // stud waste in pieces; track waste on the LF below
             const o = g.kind === 'stud' ? orderLength(e.cutIn, mode, settings.studStockFt) : { orderIn: e.cutIn, perPiece: 1 };
             return { mark: `${k}-${seq.get(k)}`, code: e.code, role: ROLES[e.code], type, cutIn: e.cutIn, qty, lf: (e.cutIn * qty) / 12,
-                orderIn: o.orderIn, perPiece: o.perPiece, pieces: Math.ceil(qty / o.perPiece), long: g.kind === 'stud' && e.cutIn > longestIn };
+                orderIn: o.orderIn, perPiece: o.perPiece, pieces: Math.ceil(qty / o.perPiece), long: g.kind === 'stud' && e.cutIn > longestIn, ids: e.ids };
         });
         schedule.push(...marks);
         const lf = marks.reduce((n, m) => n + m.lf, 0);
         const roles = [...new Set(marks.map(m => m.code))];
+        const ids = [...new Set(marks.flatMap(m => m.ids))]; // every wall with this member type
         if (g.kind === 'stud') {
             // Order summary: pieces per order length (for stock or rounded ordering).
             const order = new Map();
@@ -174,15 +181,15 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
             }
             materials.push({ group: 'Framing', kind: 'stud', type, item: `${fmtInches(g.depth)} ${g.member === 'furring channel' ? 'furring channels' : 'studs'} · ${type}`,
                 qty: marks.reduce((n, m) => n + m.qty, 0), unit: 'pcs', extra: `${Math.round(lf).toLocaleString()} LF`, roles, marks,
-                order: [...order.values()].sort((a, b) => b.orderIn - a.orderIn), longCount: marks.filter(m => m.long).reduce((n, m) => n + m.qty, 0) });
+                order: [...order.values()].sort((a, b) => b.orderIn - a.orderIn), longCount: marks.filter(m => m.long).reduce((n, m) => n + m.qty, 0), ids });
         } else {
             materials.push({ group: 'Framing', kind: 'track', type, item: `${fmtInches(g.depth)} track · ${type}, ${settings.trackStockFt}' stock`,
-                qty: Math.ceil((lf * fw) / settings.trackStockFt), unit: 'pcs', extra: `${Math.round(lf * fw).toLocaleString()} LF`, roles, marks });
+                qty: Math.ceil((lf * fw) / settings.trackStockFt), unit: 'pcs', extra: `${Math.round(lf * fw).toLocaleString()} LF`, roles, marks, ids });
         }
     }
     for (const type of [...board.keys()].sort()) {
-        const sf = board.get(type) * bw;
-        materials.push({ group: 'Board', item: `${type} gypsum board, ${settings.sheet.label}`, qty: Math.ceil(sf / settings.sheet.sf), unit: 'sheets', extra: `${Math.round(sf).toLocaleString()} SF` });
+        const sf = board.get(type).sf * bw;
+        materials.push({ group: 'Board', item: `${type} gypsum board, ${settings.sheet.label}`, qty: Math.ceil(sf / settings.sheet.sf), unit: 'sheets', extra: `${Math.round(sf).toLocaleString()} SF`, ids: [...board.get(type).ids] });
     }
     if (sheathingSf) {
         const sf = sheathingSf * bw;

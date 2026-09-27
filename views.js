@@ -127,6 +127,9 @@ export class Views {
     async setLevel(name) {
         const level = this.levels.find(l => l.name === name) || null;
         this.level = level;
+        const params = new URLSearchParams(location.search); // keep the level in the link, so it can be sent
+        if (level) params.set('level', level.name); else params.delete('level');
+        history.replaceState(null, '', `?${params}${location.hash}`);
         this.el.levels.value = level?.name || '';
         const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
         if (level && this.viewer3d.model) {
@@ -285,7 +288,9 @@ export class Views {
         this.el.sheets.disabled = !this.sheets.length;
         this.level = null;
         this.emit('ready', this);
-        if (this.showing2d) await this.openSheet(this.planFor(null));
+        const wanted = new URLSearchParams(location.search).get('level');
+        if (wanted && this.levelOf(wanted)) await this.setLevel(wanted); // a shared link opens at its level
+        else if (this.showing2d) await this.openSheet(this.planFor(null));
     }
 
     levelOf(name) {

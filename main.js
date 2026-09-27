@@ -6,6 +6,9 @@ import { CONFIG } from './config.js';
 import { Views } from './views.js';
 import { TOOLS_EXTENSION_ID } from './tools.js';
 
+// ?dock=bottom: the panel goes under the viewers (the takeoff link uses it for its tables).
+if (new URLSearchParams(location.search).get('dock') === 'bottom') document.body.classList.add('dock-bottom');
+
 const demoSelect = document.getElementById('demos');
 const modelSelect = document.getElementById('models');
 const panel = document.getElementById('panel');
