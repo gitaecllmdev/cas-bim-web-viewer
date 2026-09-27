@@ -30,7 +30,7 @@ async function start() {
     if (!record?.frame) return notFound('This panel has not been published yet. Pick the wall in the viewer (Demo 6) so its panel page is saved.');
     notes = { links: [], comments: [], ...(await loadState(notesName).catch(() => ({}))) };
     layout = entryLayout(record); // drawn from side B when it was flipped in the viewer
-    info = { ...record.info, conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null) };
+    info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null) };
     document.title = `${record.mark} · CAS BIM Web Viewer`;
     document.getElementById('panel-title').textContent = `${record.mark} · ${record.info?.wallType || ''} · ${record.info?.level || ''}`;
     render();
@@ -88,7 +88,7 @@ function render() {
             ${layout.issues?.length ? `<div class="check-failed" style="margin-top:0.6em">Framing check failed (${layout.issues.length}): do not release.
                 ${layout.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</div>`
                 : '<div class="check-passed" style="margin-top:0.4em">✓ Framing check passed: no member through an opening, no crossing members, every opening framed.</div>'}
-            <div class="sheet" style="margin-top:0.6em">${renderSheet(layout, info).replace('width="17in" height="11in"', 'width="100%"')}</div>
+            <div class="sheet" style="margin-top:0.6em">${renderSheet(layout, info).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"')}</div>
         </section>
         ${info.conditions.length ? `<section class="card"><h2>Conditions <span class="muted">(from the model; verify in the field)</span></h2>
             <table class="conditions">${info.conditions.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table></section>` : ''}

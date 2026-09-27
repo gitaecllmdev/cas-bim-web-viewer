@@ -16,7 +16,7 @@
 import { loadPropertyMap, getWallData, onModelReady, getBulkProperties, propValue, escapeHtml, fetchJson, downloadCsv, loadState, saveState, markContextNode } from '../../helpers.js';
 import { assemblyFor, boardFor } from '../02-takeoff/calc.mjs';
 import { frameWall, fmtFtIn, flipLayout } from '../common/framing.mjs';
-import { renderSheet, renderSheetPdf } from './sheet.mjs';
+import { renderSheet, renderSheetPdf, sheetSize, SHEETS } from './sheet.mjs';
 import { scanWall, lookAtWall, saveScan, ensure3dShown } from '../common/wallscan.js';
 import { roomsBeside, probeSlabs, probeNearby, contextBox, wallPoint, wallSize } from './context.js';
 import { headOfWall, baseOfWall, summarizeNearby, conditionLines } from './conditions.mjs';
@@ -78,6 +78,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             this.overrides = takeoff.overrides || {}; // same assemblies as the takeoff demo
             this.settings = { ...this.settings, spacingIn: rules.settings.studSpacingIn, ...saved.settings };
             this.flips = saved.flips || {}; // wall externalId -> true: the panel is drawn as seen from side B
+            this.sheets = saved.sheets || {}; // wall externalId -> SHEETS key; 'auto' (the default) sizes the sheet to the panel
             const { walls } = await getWallData(model, map);
             const extra = await getBulkProperties(model, walls.map(w => w.dbId), ['Type Mark', 'Unconnected Height', 'Base Offset', 'Width', 'Top Constraint', 'Top Offset', 'Top is Attached']);
             const byId = new Map(extra.map(r => [r.dbId, r]));
@@ -147,6 +148,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             $('[data-csv]').onclick = () => this.exportCutList();
             $('[data-elev]').onclick = () => this.elevationCamera();
             $('[data-flip]').onchange = (e) => this.setFlip(e.target.checked);
+            $('[data-sheet-size]').onchange = (e) => this.setSheetPref(e.target.value);
             $('[data-exit]').onclick = () => this.exit();
             this.panel.querySelectorAll('tr[data-mark]').forEach(tr => tr.onclick = () => this.setHighlight(tr.dataset.mark));
             this.bindHighlightClear();
@@ -160,7 +162,10 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             ${this.stepperHtml()}
             <div class="row"><button data-sheet class="active">Open shop drawing</button><button data-pdf>Download PDF</button><button data-print>Print</button>
                 <label title="Draw the panel as seen from its other face (side B): mirrored, ordinates from the other end, labels unchanged">
-                    <input type="checkbox" data-flip ${this.isFlipped(c) ? 'checked' : ''}> Flip panel</label></div>
+                    <input type="checkbox" data-flip ${this.isFlipped(c) ? 'checked' : ''}> Flip panel</label>
+                <label title="Sheet size. Auto: 11 x 17, or a larger sheet when the panel would be drawn smaller than 1/4&quot; = 1'-0&quot;">Sheet
+                    <select data-sheet-size>${[['auto', `Auto (${sheetSize(lay).label})`], ...Object.entries(SHEETS).map(([k, v]) => [k, v.label])]
+                        .map(([k, l]) => `<option value="${k}" ${k === this.sheetPref(c) ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select></label></div>
             <p class="muted">${escapeHtml(c.wall.asm.label || '')} · ${fmtFtIn(lay.lengthIn)} long × ${fmtFtIn(lay.heightIn)} high ·
                 ${lay.openings.length} opening(s) · ${lay.cutList.reduce((a, r) => a + r.qty, 0)} members</p>
             ${lay.notes.map(t => `<p class="warn">${escapeHtml(t)}</p>`).join('')}
@@ -186,13 +191,26 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     async saveSettings() {
-        await saveState(STATE_NAME, { settings: this.settings, flips: this.flips }).catch(err => console.warn('Settings not saved:', err.message));
+        await saveState(STATE_NAME, { settings: this.settings, flips: this.flips, sheets: this.sheets }).catch(err => console.warn('Settings not saved:', err.message));
     }
 
     // --- Flip: the panel drawn from side B (sheet, 3D drawing and camera); the members and labels don't change -------
 
     isFlipped(c = this.current) {
         return !!(c?.wall?.externalId && this.flips?.[c.wall.externalId]);
+    }
+
+    sheetPref(c = this.current) {
+        return (c?.wall?.externalId && this.sheets?.[c.wall.externalId]) || 'auto';
+    }
+
+    setSheetPref(pref) {
+        const c = this.current;
+        if (!c?.wall?.externalId) return;
+        if (pref === 'auto') delete this.sheets[c.wall.externalId]; else this.sheets[c.wall.externalId] = pref;
+        this.saveSettings();
+        this.savePanel(c).catch(err => console.warn('Panel page not saved:', err.message));
+        if (this.modal) this.showSheet();
     }
 
     // The layout as drawn: flipped when the panel is viewed from side B.
@@ -545,7 +563,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             key: c.wall.externalId, mark: c.mark, dbId: c.dbId, urn: location.hash.slice(1), savedAt: new Date().toISOString(),
             frame: { lengthIn: c.geom.lengthIn, heightIn: c.geom.heightIn, openings: c.geom.openings, studIn: a.studIn, rows: a.rows,
                 spacingIn: a.spacingIn || this.settings.spacingIn, mils: this.settings.mils, member: a.member, notes: c.geom.notes || [] },
-            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], view: { flip: this.isFlipped(c) },
+            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], view: { flip: this.isFlipped(c), sheet: this.sheetPref(c) },
         };
         await saveState(`shop-panel-${c.wall.externalId}`, record);
         // One index write at a time, so walking through walls quickly doesn't drop entries.
@@ -578,7 +596,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             board: a.layers ? `${a.layers[0]} + ${a.layers[1]} layers, ${boardFor(c.wall, a)}` : '-', fireRating: c.wall.fireRating,
             date: new Date().toISOString().slice(0, 10), drawnBy: 'CAS BIM Web Viewer', logoHref: this.logo,
             sourceNote: 'Revit model via APS Viewer; framing laid out from the wall geometry',
-            conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c),
+            conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c), sheet: this.sheetPref(c),
         };
     }
 
@@ -621,11 +639,11 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         this.modal = document.createElement('div');
         this.modal.style.cssText = 'position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:1em;box-sizing:border-box';
         this.modal.innerHTML = `<div class="demo-panel" style="background:white;padding:0.5em 1em;display:flex;gap:0.5em;align-items:center;flex-wrap:wrap">
-                <b style="flex:1">${escapeHtml(this.current.mark)}: framing shop drawing (11x17)</b>
+                <b style="flex:1">${escapeHtml(this.current.mark)}: framing shop drawing (${escapeHtml(sheetSize(this.viewLayout(), this.sheetPref()).label)})</b>
                 <button data-pdf>Download PDF</button><button data-svg>Download SVG</button><button data-print>Print</button><button data-csv>Cut list CSV</button><button data-close>Close</button>
                 <div style="flex-basis:100%;display:flex;gap:0.3em;flex-wrap:wrap;align-items:center"><span class="muted">Highlight a mark (preview only, not in the exports):</span><span data-chips style="display:contents">${this.markChips()}</span></div></div>
             <div style="flex:1;overflow:auto;background:#777;display:flex;justify-content:center;align-items:flex-start;padding:1em">
-                <div data-preview style="background:white;width:min(100%, calc((100vh - 9em) * 17 / 11));box-shadow:0 2px 12px rgba(0,0,0,0.4)">${this.previewSvg(svg)}</div></div>`;
+                <div data-preview style="background:white;width:min(100%, calc((100vh - 9em) * ${sheetSize(this.viewLayout(), this.sheetPref()).W} / ${sheetSize(this.viewLayout(), this.sheetPref()).H}));box-shadow:0 2px 12px rgba(0,0,0,0.4)">${this.previewSvg(svg)}</div></div>`;
         document.body.appendChild(this.modal);
         this.bindChips();
         const $ = (s) => this.modal.querySelector(s);
@@ -637,7 +655,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     previewSvg(svg) {
-        return svg.replace('width="17in" height="11in"', 'width="100%" style="display:block"');
+        return svg.replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%" style="display:block"');
     }
 
     markChips() {
@@ -664,7 +682,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         setTimeout(() => URL.revokeObjectURL(url), 1000);
     }
 
-    // Print dialog with the sheet at 17 x 11 in, from a hidden frame on this page (no pop-up to block).
+    // Print dialog at the sheet's size (11 x 17, or larger for a large panel), from a hidden frame (no pop-up to block).
     async printSheet() {
         const svg = await this.sheetSvg();
         this.printFrame?.remove();
@@ -675,7 +693,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const doc = frame.contentDocument;
         doc.open();
         doc.write(`<!DOCTYPE html><html><head><title>${escapeHtml(this.current.mark)} shop drawing</title>
-            <style>@page { size: 17in 11in; margin: 0; } html, body { margin: 0; } svg { display: block; width: 17in; height: 11in; }</style></head><body>${svg}</body></html>`);
+            <style>@page { size: ${sheetSize(this.viewLayout(), this.sheetPref()).W}in ${sheetSize(this.viewLayout(), this.sheetPref()).H}in; margin: 0; } html, body { margin: 0; } svg { display: block; }</style></head><body>${svg}</body></html>`);
         doc.close();
         await Promise.all([...doc.images].map(img => img.decode?.().catch(() => {}))); // the logo (a data URL)
         await new Promise(r => setTimeout(r, 50));

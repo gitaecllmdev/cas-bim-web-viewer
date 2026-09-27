@@ -1,4 +1,5 @@
-// 11 x 17 landscape framing shop drawing (pure; tested in tests/shop-drawings.test.js). The sheet is built once as a
+// Landscape framing shop drawing (pure; tested in tests/shop-drawings.test.js): 11 x 17 for most panels, a larger sheet
+// for large panels (sheetSize: 24 x 36, 36 x 48, or a custom-width 36" roll). The sheet is built once as a
 // list of drawing primitives (sheetOps), then written as SVG (renderSheet) or as a vector PDF (renderSheetPdf, ./pdf.mjs).
 // Layout follows the CAS panel shops (e.g. P2001): kept to the minimum. FRAMING CUT LIST (label, qty, function, member
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
@@ -7,7 +8,25 @@ import { fmtFtIn, FUNCTIONS, isDoor } from '../common/framing.mjs';
 import { toPdf, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 
-const W = 17, H = 11; // sheet, inches
+// Sheet sizes (landscape, inches). 'auto' takes the smallest one that draws the panel at 1/4" = 1'-0" or larger, so
+// long exterior walls stay readable; past 36 x 48 the sheet is 36" tall and as wide as the panel needs (a roll plot).
+export const SHEETS = {
+    tabloid: { W: 17, H: 11, label: '11 x 17' },
+    'arch-d': { W: 36, H: 24, label: '24 x 36 (ARCH D)' },
+    'arch-e': { W: 48, H: 36, label: '36 x 48 (ARCH E)' },
+};
+const MIN_AUTO_SCALE = 1 / 48; // 1/4" = 1'-0"
+// Drawing area right of the cut list, and the room the elevation gets (the rest: plans, ordinates, view title, title block).
+const areaOf = (W, H) => ({ areaX: 4.6, areaW: W - 5.05, maxH: H - 5.8 });
+export function sheetSize(layout, pref = 'auto') {
+    if (SHEETS[pref]) return { key: pref, ...SHEETS[pref] };
+    for (const [key, sheet] of Object.entries(SHEETS)) {
+        const a = areaOf(sheet.W, sheet.H);
+        if (pickScale(layout.lengthIn, layout.heightIn, a.areaW - 1.65, a.maxH)[0] >= MIN_AUTO_SCALE) return { key, ...sheet };
+    }
+    const H = 36, W = Math.ceil((layout.lengthIn * MIN_AUTO_SCALE + 5.05 + 1.65 + 0.2) / 6) * 6;
+    return { key: 'custom', W, H, label: `${H} x ${W} (custom)` };
+}
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
 const n = (v) => Number(v.toFixed(4));
 const COLORS = { track: '#f2d64b', trackStroke: '#6b5a00', stud: '#ffffff', studStroke: '#1c1c1c', dim: '#1b6aa5', opening: '#9aa0a6', text: '#111',
@@ -63,8 +82,9 @@ function wrap(str, size, maxW) {
     return lines;
 }
 
-// SVG for a list of primitives.
+// SVG for a list of primitives (ops.size: the sheet).
 function toSvg(ops) {
+    const { W, H } = ops.size;
     const body = ops.map(o => {
         if (o.t === 'text') return `<text x="${n(o.x)}" y="${n(o.y)}" font-size="${o.size}" text-anchor="${o.anchor}" font-weight="${o.weight}" fill="${o.fill}"${o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : ''}>${esc(o.s)}</text>`;
         if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
@@ -73,7 +93,7 @@ function toSvg(ops) {
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
     }).join('\n');
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="17in" height="11in" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}in" height="${H}in" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">
 <rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
 ${body}
 </svg>`;
@@ -81,21 +101,24 @@ ${body}
 
 // info: { mark, project, level, wallType, date, drawnBy, logoHref, sourceNote, qrUrl (the panel page: QR code in the
 //   title block), highlight (optional member mark, e.g. 'C0': its members and cut list row are colored; leave it out
-//   for exports) }. The framing conditions go on the panel page, not the sheet. A flipped layout (flipLayout) is drawn
-//   as seen from side B.
+//   for exports), sheet ('auto' default, or a SHEETS key) }. The framing conditions go on the panel page, not the sheet.
+//   A flipped layout (flipLayout) is drawn as seen from side B.
 export function renderSheet(layout, info) {
     return toSvg(sheetOps(layout, info));
 }
 
 // Vector PDF (bytes). logo: { jpeg: Uint8Array, width, height } in pixels, or null.
 export function renderSheetPdf(layout, info, logo = null) {
-    return toPdf(sheetOps(layout, info), { widthIn: W, heightIn: H, logo, title: `${info.mark} framing shop drawing` });
+    const ops = sheetOps(layout, info);
+    return toPdf(ops, { widthIn: ops.size.W, heightIn: ops.size.H, logo, title: `${info.mark} framing shop drawing` });
 }
 
 export function sheetOps(layout, info) {
     const { lengthIn: L, heightIn: HT, members, cutList, openings } = layout;
-    const areaX = 4.6, areaW = 11.95; // drawing area right of the cut list
-    const [s, scaleLabel] = pickScale(L, HT, areaW - 1.65, 5.2); // leaves 0.8" each side for the elevation ordinates
+    const size = sheetSize(layout, info.sheet), { W, H } = size;
+    const { areaX, areaW, maxH } = areaOf(W, H);
+    const [s, scaleLabel] = pickScale(L, HT, areaW - 1.65, maxH); // leaves 0.8" each side for the elevation ordinates
+    const tbY = H - 1.45, tbH = 1.2; // title block
     const out = [];
     const hi = (m) => info.highlight != null && m.mark === info.highlight;
 
@@ -262,7 +285,7 @@ export function sheetOps(layout, info) {
     plan(botStrip, false);
 
     // View title under the drawing
-    const titleY = Math.min(botStrip + stripH + 0.85, 9.25);
+    const titleY = Math.min(botStrip + stripH + 0.85, tbY - 0.3);
     out.push({ t: 'circle', cx: X(0) + 0.14, cy: titleY - 0.04, r: 0.13, stroke: '#000', width: 0.012 });
     out.push(text(X(0) + 0.14, titleY, '1', { size: 0.11, anchor: 'middle', weight: 'bold' }));
     out.push(text(X(0) + 0.36, titleY, `FRAMING ELEVATION - ${info.mark}${layout.flipped ? ' (FLIPPED: VIEWED FROM SIDE B)' : ''}`, { size: 0.12, weight: 'bold' }));
@@ -270,7 +293,8 @@ export function sheetOps(layout, info) {
     out.push(text(X(0) + 0.36, titleY + 0.2, `SCALE: ${scaleLabel}`, { size: 0.085 }));
 
     // --- Title block
-    const tbY = 9.55, tbH = 1.2, cells = [[0.25, 1.35], [1.35, 5.2], [5.2, 9.9], [9.9, 12.6], [12.6, 14.15], [14.15, 15.35], [15.35, 16.75]];
+    // Cells from the left: logo, project, drawing (takes the extra width on a larger sheet), studs, review, QR, sheet.
+    const cells = [[0.25, 1.35], [1.35, 5.2], [5.2, W - 7.1], [W - 7.1, W - 4.4], [W - 4.4, W - 2.85], [W - 2.85, W - 1.65], [W - 1.65, W - 0.25]];
     out.push(rect(0.25, tbY, W - 0.5, tbH, { width: 0.02 }));
     for (const [a] of cells.slice(1)) out.push(line(a, tbY, a, tbY + tbH, { width: 0.01 }));
     out.push({ t: 'image', id: 'logo', href: info.logoHref, x: 0.33, y: tbY + 0.1, w: 0.95, h: 0.95 });
@@ -279,25 +303,27 @@ export function sheetOps(layout, info) {
     field(1.45, tbY + 0.6, 'SOURCE', info.sourceNote || 'Model-based framing layout', 0.08);
     field(5.3, tbY + 0.2, 'DRAWING', `FRAMING ELEVATION - ${info.mark}`, 0.12);
     field(5.3, tbY + 0.6, 'LEVEL / WALL TYPE', `${info.level} / ${info.wallType}`, 0.08);
-    field(10.0, tbY + 0.2, 'STUDS', `${layout.studType} @ ${layout.spacingIn}" O.C.`);
-    field(10.0, tbY + 0.6, 'TRACK', layout.trackType);
-    out.push(text(13.375, tbY + 0.3, 'FOR REVIEW', { size: 0.1, anchor: 'middle', weight: 'bold', fill: '#b00020' }));
-    out.push(text(13.375, tbY + 0.45, 'NOT FOR CONSTRUCTION', { size: 0.08, anchor: 'middle', weight: 'bold', fill: '#b00020' }));
-    out.push(text(12.7, tbY + 0.8, `DATE: ${info.date}`, { size: 0.075 }));
-    out.push(text(12.7, tbY + 0.97, `DRAWN: ${info.drawnBy}`, { size: 0.075 }));
+    field(W - 7.0, tbY + 0.2, 'STUDS', `${layout.studType} @ ${layout.spacingIn}" O.C.`);
+    field(W - 7.0, tbY + 0.6, 'TRACK', layout.trackType);
+    out.push(text(W - 3.625, tbY + 0.3, 'FOR REVIEW', { size: 0.1, anchor: 'middle', weight: 'bold', fill: '#b00020' }));
+    out.push(text(W - 3.625, tbY + 0.45, 'NOT FOR CONSTRUCTION', { size: 0.08, anchor: 'middle', weight: 'bold', fill: '#b00020' }));
+    out.push(text(W - 4.3, tbY + 0.8, `DATE: ${info.date}`, { size: 0.075 }));
+    out.push(text(W - 4.3, tbY + 0.97, `DRAWN: ${info.drawnBy}`, { size: 0.075 }));
     if (layout.issues) {
-        out.push(text(12.7, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : 'CHECK: PASSED',
+        out.push(text(W - 4.3, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : 'CHECK: PASSED',
             { size: 0.075, weight: 'bold', fill: layout.issues.length ? '#b00020' : '#1e7b34' }));
     }
     if (info.qrUrl) {
         // QR code to the panel page (drawing, conditions, links, comments): black modules on white.
-        const qr = qrEncode(info.qrUrl), qs = 0.92, qx = 14.15 + (1.2 - qs) / 2, qy = tbY + 0.07, m = qs / qr.size;
+        const qr = qrEncode(info.qrUrl), qs = 0.92, qx = W - 2.85 + (1.2 - qs) / 2, qy = tbY + 0.07, m = qs / qr.size;
         for (const r of qrRects(qr)) out.push(rect(qx + r.x * m, qy + r.y * m, r.w * m, r.h * m, { fill: '#000000', stroke: 'none', width: 0 }));
-        out.push(text(14.75, tbY + 1.12, 'SCAN: PANEL PAGE', { size: 0.055, anchor: 'middle', weight: 'bold' }));
+        out.push(text(W - 2.25, tbY + 1.12, 'SCAN: PANEL PAGE', { size: 0.055, anchor: 'middle', weight: 'bold' }));
     }
-    out.push(text(15.45, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
-    out.push(text(16.05, tbY + 0.7, info.mark, { size: 0.2, anchor: 'middle', weight: 'bold' }));
-    out.push(text(16.05, tbY + 1.0, `SCALE ${scaleLabel}`, { size: 0.065, anchor: 'middle' }));
+    out.push(text(W - 1.55, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
+    out.push(text(W - 0.95, tbY + 0.7, info.mark, { size: 0.2, anchor: 'middle', weight: 'bold' }));
+    out.push(text(W - 0.95, tbY + 0.95, `SCALE ${scaleLabel}`, { size: 0.065, anchor: 'middle' }));
+    out.push(text(W - 0.95, tbY + 1.1, size.label, { size: 0.065, anchor: 'middle' }));
 
+    out.size = size; // the sheet these ops are drawn on
     return out;
 }
