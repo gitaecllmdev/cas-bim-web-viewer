@@ -3,7 +3,7 @@
 // panels published with the review site).
 import { loadState, escapeHtml } from './helpers.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
-import { INDEX_STATE, sortPanels, entryLayout, thumbnailSvg, openingsOf, openingsText } from './demos/06-shop-drawings/panels.mjs';
+import { INDEX_STATE, sortPanels, entryLayout, thumbnailSvg, openingsOf, openingsText, PANEL_TYPES } from './demos/06-shop-drawings/panels.mjs';
 
 const gallery = document.getElementById('gallery');
 const search = document.getElementById('search');
@@ -11,6 +11,7 @@ const levelSelect = document.getElementById('level');
 const count = document.getElementById('count');
 const orderSelect = document.getElementById('order');
 const openingsOnly = document.getElementById('openings-only');
+const typeSelect = document.getElementById('type');
 const params = new URLSearchParams(location.search);
 
 let panels = [];
@@ -27,6 +28,11 @@ async function start() {
     }
     const levels = [...new Set(panels.map(p => p.level).filter(Boolean))];
     levelSelect.innerHTML = '<option value="">All levels</option>' + levels.map(l => `<option ${l === params.get('level') ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('');
+    const counts = new Map();
+    for (const p of panels) for (const t of p.types || []) counts.set(t, (counts.get(t) || 0) + 1);
+    typeSelect.innerHTML = `<option value="">All panel types (${counts.size})</option>`
+        + PANEL_TYPES.filter(t => counts.has(t)).map(t => `<option ${t === params.get('type') ? 'selected' : ''}>${escapeHtml(t)}</option>`).join('');
+    typeSelect.onchange = () => { if (typeSelect.value === 'Plain wall') openingsOnly.checked = false; remember(); render(); };
     search.value = params.get('q') || '';
     orderSelect.value = params.get('order') === 'level' ? 'level' : 'complex';
     openingsOnly.checked = params.get('all') !== '1'; // the panels with openings are the ones worth showing
@@ -41,12 +47,14 @@ function remember() {
     if (levelSelect.value) p.set('level', levelSelect.value);
     if (orderSelect.value === 'level') p.set('order', 'level');
     if (!openingsOnly.checked) p.set('all', '1');
+    if (typeSelect.value) p.set('type', typeSelect.value);
     history.replaceState(null, '', `${location.pathname}${p.toString() ? `?${p}` : ''}`);
 }
 
 function render() {
     const q = search.value.trim().toLowerCase(), level = levelSelect.value;
     const shown = sortPanels(panels, orderSelect.value).filter(p => (!level || p.level === level) && (!openingsOnly.checked || openingsOf(p) > 0)
+        && (!typeSelect.value || (p.types || []).includes(typeSelect.value))
         && (!q || [p.mark, p.wallType, p.level, p.sideA, p.sideB].join(' ').toLowerCase().includes(q)));
     count.textContent = `${shown.length} of ${panels.length} panel${panels.length === 1 ? '' : 's'}`;
     gallery.innerHTML = shown.map(p => {
@@ -58,6 +66,8 @@ function render() {
             <div class="panel-mark">${escapeHtml(p.mark)}${p.flip ? ' <span class="muted">(side B)</span>' : ''}</div>
             <div class="muted">${escapeHtml(p.level)} · ${fmtFtIn(p.lengthIn)} × ${fmtFtIn(p.heightIn)}</div>
             <div class="openings ${openingsOf(p) ? '' : 'none'}">${escapeHtml(openingsText(p))}</div>
+            ${p.issues ? `<div class="check-failed">Framing check failed (${p.issues}): do not release</div>` : ''}
+            ${(p.types || []).length ? `<div class="chips">${p.types.map(t => `<span class="chip">${escapeHtml(t)}</span>`).join('')}</div>` : ''}
             <div>${escapeHtml(p.wallType)}</div>
             ${rooms ? `<div class="muted">${escapeHtml(rooms)}</div>` : ''}
             <span class="open">Open shop drawing ›</span></a>`;

@@ -77,77 +77,180 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
         first ??= p;
         for (const m of p.members) members.push({ ...m, y: m.y + y0, lift: i + 1 });
     }
-    const ops = openings.map(o => ({ left: round16(Math.max(0, o.left)), right: round16(Math.min(L, o.right)), bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(H, o.top)) }))
-        .filter(o => o.right - o.left >= 6 && o.top - o.bottom >= 6).sort((a, b) => a.left - b.left);
+    const ops = clipOpenings(openings, L, H, panel.trackLegIn ?? 1.25);
     const { cutList } = labelMembers(members, rows);
     // Stud layout ticks (left face of each vertical) for the ordinate dimensions and track layout strips.
     const ticks = [...new Set(members.filter(m => m.orient === 'v').map(m => round16(m.x)))].sort((a, b) => a - b);
     const notes = [];
     if (rows > 1) notes.push(`${rows} stud rows: elevation shows one row; quantities are for all rows.`);
     if (lifts > 1) notes.push(`${lifts} lifts of ${fmtFtIn(liftH)}: each lift has its own top and bottom track.`);
-    return { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
+    const layout = { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
         studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn };
+    layout.issues = checkLayout(layout, { flangeIn: panel.flangeIn ?? 1.625 }); // fail-safe: see checkLayout
+    return layout;
+}
+
+// Openings clipped to the panel: at least 6" each way, and never into the top track (a scanned gap that runs to the
+// top of the wall is an opening up to the underside of the top track).
+function clipOpenings(openings, L, H, trackLegIn) {
+    return openings.map(o => ({ left: round16(Math.max(0, o.left)), right: round16(Math.min(L, o.right)), bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(H - trackLegIn, o.top)) }))
+        .filter(o => o.right - o.left >= 6 && o.top - o.bottom >= 6)
+        .sort((a, b) => a.left - b.left);
 }
 
 // One panel (a whole wall, or one lift of a tall wall): members without labels.
+// Every vertical (end stud, jamb stud, layout stud) is cut around ALL the openings in its bay, with their head and sill
+// tracks: it only runs where the wall is solid. Openings stacked in one bay (a door under a high window or a soffit gap)
+// get a piece between them, never a stud through either one. checkLayout() verifies the result.
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
     member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN }) {
-    const L = round16(lengthIn), H = heightIn;
-    const ops = openings.map(o => ({ left: round16(Math.max(0, o.left)), right: round16(Math.min(L, o.right)), bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(H, o.top)) }))
-        .filter(o => o.right - o.left >= 6 && o.top - o.bottom >= 6)
-        .sort((a, b) => a.left - b.left);
+    const L = round16(lengthIn), H = heightIn, LEG = trackLegIn;
+    const ops = clipOpenings(openings, L, H, LEG);
     const studType = memberType(studIn, 'stud', mils, member), trackType = memberType(studIn, 'track', mils, member);
     const members = [];
     const add = (m) => members.push({ func: FUNC_OF_ROLE[m.role], ...m, lengthIn: floor8(m.lengthIn) });
-    const studLen = (bottom, top) => top - bottom - cutbackIn; // studs are cut short of the track-to-track height
+    const reachesTop = (o) => o.top >= H - LEG - 1;
 
     // Tracks: top full length; bottom broken at door openings.
-    add({ role: 'top track', orient: 'h', type: trackType, x: 0, y: H - trackLegIn, w: L, h: trackLegIn, lengthIn: L });
+    add({ role: 'top track', orient: 'h', type: trackType, x: 0, y: H - LEG, w: L, h: LEG, lengthIn: L });
     let start = 0;
     for (const door of ops.filter(isDoor)) {
-        if (door.left - start > 1) add({ role: 'bottom track', orient: 'h', type: trackType, x: start, y: 0, w: door.left - start, h: trackLegIn, lengthIn: door.left - start });
-        start = door.right;
+        if (door.left - start > 1) add({ role: 'bottom track', orient: 'h', type: trackType, x: start, y: 0, w: door.left - start, h: LEG, lengthIn: door.left - start });
+        start = Math.max(start, door.right);
     }
-    if (L - start > 1) add({ role: 'bottom track', orient: 'h', type: trackType, x: start, y: 0, w: L - start, h: trackLegIn, lengthIn: L - start });
+    if (L - start > 1) add({ role: 'bottom track', orient: 'h', type: trackType, x: start, y: 0, w: L - start, h: LEG, lengthIn: L - start });
 
-    // Full-height verticals: end studs and a jamb stud on each side of every opening.
-    const full = (x, role) => add({ role, orient: 'v', type: studType, x, y: trackLegIn, w: flangeIn, h: H - 2 * trackLegIn, lengthIn: studLen(0, H) });
-    const taken = []; // x ranges already holding a vertical
-    const place = (x, role) => {
-        x = Math.min(Math.max(0, x), L - flangeIn);
-        if (taken.some(([a, b]) => x < b + 0.5 && x + flangeIn > a - 0.5)) return;
-        taken.push([x, x + flangeIn]);
-        full(x, role);
+    // Head track over each opening (none when it runs up to the top track), sill track under each window. They reach
+    // one flange past the opening each side (the tabs fastened to the jambs). A sill that would sit on the head track
+    // of an opening right below it is left out: that head track carries it.
+    const heads = [];
+    for (const o of ops) {
+        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
+        if (!reachesTop(o)) {
+            const head = { role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0 };
+            heads.push(head);
+            add(head);
+        }
+    }
+    for (const o of ops.filter(o => !isDoor(o))) {
+        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), y = o.bottom - LEG;
+        const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + LEG > h.y);
+        if (!onHead && y >= LEG) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0 });
+    }
+
+    // Where a vertical at x can run: between the tracks, minus every opening in its bay with its head and sill track.
+    const solidAt = (x) => {
+        const blocked = ops.filter(o => x + flangeIn > o.left + 0.01 && x < o.right - 0.01)
+            .map(o => [isDoor(o) ? 0 : o.bottom - LEG, reachesTop(o) ? H : o.top + LEG])
+            .sort((a, b) => a[0] - b[0]);
+        const free = [];
+        let cur = LEG;
+        for (const [a, b] of blocked) {
+            if (a > cur) free.push([cur, Math.min(a, H - LEG)]);
+            cur = Math.max(cur, b);
+        }
+        if (cur < H - LEG) free.push([cur, H - LEG]);
+        return free.filter(([a, b]) => b - a > 3);
     };
+    // Verticals already placed, with their height ranges: a second vertical on (nearly) the same line only fills the
+    // heights the first leaves open. (A door's jamb can share its line with the jamb of a window above and beside it.)
+    const placed = [];
+    const cut = ([a, b], [c, d]) => (d <= a || c >= b ? [[a, b]] : [[a, c], [d, b]].filter(([p, q]) => q - p > 1e-6));
+    // A vertical in pieces where it has to be: a full-height piece keeps its role; a piece of a layout stud, or any
+    // piece that doesn't stand on the bottom track, is a cripple. Returns true for a full-height vertical, false for
+    // pieces, null when there was no room for any.
+    const vertical = (x, role) => {
+        let pieces = solidAt(x);
+        for (const p of placed.filter(p => x < p.x1 + 0.5 && x + flangeIn > p.x0 - 0.5)) pieces = pieces.flatMap(r => cut(r, [p.y0, p.y1]));
+        pieces = pieces.filter(([a, b]) => b - a > 3);
+        if (!pieces.length) return null;
+        const full = pieces.length === 1 && pieces[0][0] <= LEG + 1e-6 && pieces[0][1] >= H - LEG - 1e-6;
+        for (const [a, b] of pieces) {
+            placed.push({ x0: x, x1: x + flangeIn, y0: a, y1: b });
+            const r = full ? role : role !== 'stud' && a <= LEG + 1e-6 ? role : 'cripple';
+            // Cut lengths as before: a full-height stud is the panel height less the seat allowance (it sits in the tracks);
+            // a piece is its track-to-track length less the seat allowance.
+            add({ role: r, orient: 'v', type: studType, x, y: a, w: flangeIn, h: b - a, lengthIn: (full ? H : b - a) - cutbackIn });
+        }
+        return full;
+    };
+
+    // End studs and a jamb stud each side of every opening (only where no vertical within 1/2" already runs).
+    const place = (x, role) => vertical(Math.min(Math.max(0, x), L - flangeIn), role);
     place(0, 'end stud');
     place(L - flangeIn, 'end stud');
     for (const o of ops) {
         place(o.left - flangeIn, 'jamb stud');
         place(o.right, 'jamb stud');
-        // Head track over the opening; sill track under a window. Kept within the wall ends; no head track when the
-        // opening runs up to the top track.
-        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
-        if (o.top < H - trackLegIn - 1) add({ role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: trackLegIn, lengthIn: x1 - x0 });
-        if (!isDoor(o)) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y: o.bottom - trackLegIn, w: x1 - x0, h: trackLegIn, lengthIn: x1 - x0 });
     }
 
-    // Studs on layout (centers at k × spacing from the left end); inside an opening they become cripples.
+    // Studs on layout (centers at k × spacing from the left end); in an opening's bay they become cripples.
     for (let k = 1; k * spacingIn < L; k++) {
         const x = k * spacingIn - flangeIn / 2;
         if (x + flangeIn > L - flangeIn - 3) break;
         // Skip a layout stud that would land within 3" (clear) of an end or jamb stud.
-        if (taken.some(([a, b]) => x < b + 3 && x + flangeIn > a - 3)) continue;
-        const opening = ops.find(o => x + flangeIn > o.left - flangeIn && x < o.right + flangeIn);
-        if (!opening) { taken.push([x, x + flangeIn]); full(x, 'stud'); continue; }
-        const above = [opening.top + trackLegIn, H - trackLegIn];
-        if (above[1] - above[0] > 3) add({ role: 'cripple', orient: 'v', type: studType, x, y: above[0], w: flangeIn, h: above[1] - above[0], lengthIn: above[1] - above[0] - cutbackIn });
-        if (!isDoor(opening)) {
-            const below = [trackLegIn, opening.bottom - trackLegIn];
-            if (below[1] - below[0] > 3) add({ role: 'cripple', orient: 'v', type: studType, x, y: below[0], w: flangeIn, h: below[1] - below[0], lengthIn: below[1] - below[0] - cutbackIn });
-        }
+        if (placed.some(p => x < p.x1 + 3 && x + flangeIn > p.x0 - 3)) continue;
+        vertical(x, 'stud');
     }
 
     return { members, studType, trackType, spacingIn };
+}
+
+// Fail-safe check of a layout (pure). Returns [{ code, message }]; an empty list means it passed:
+//   no member inside an opening; no stud across a track or another stud (a head or sill track's end tabs over its
+//   jambs are fine); every member inside the wall and with a length; every opening with a jamb each side (unless it
+//   is at a wall end), a head track (unless it reaches the top track) and, for a window, a sill track.
+export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
+    const { lengthIn: L, heightIn: H, members, openings } = layout;
+    const eps = 1 / 32, issues = [];
+    const overlap = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > eps && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > eps;
+    const name = (m) => `${m.mark || '?'} (${m.role})`;
+    const what = (o) => `${isDoor(o) ? 'door' : 'opening'} at ${fmtFtIn(o.left)} to ${fmtFtIn(o.right)}`;
+    const vs = members.filter(m => m.orient === 'v'), hs = members.filter(m => m.orient === 'h');
+    for (const m of members) {
+        if (!(m.lengthIn > 0) || !(m.w > 0) || !(m.h > 0)) issues.push({ code: 'size', message: `${name(m)} has no length` });
+        if (m.x < -eps || m.y < -eps || m.x + m.w > L + eps || m.y + m.h > H + eps) issues.push({ code: 'bounds', message: `${name(m)} is outside the wall` });
+        for (const o of openings) {
+            if (overlap(m, { x: o.left, y: o.bottom, w: o.right - o.left, h: o.top - o.bottom })) issues.push({ code: 'through-opening', message: `${name(m)} runs through the ${what(o)}` });
+        }
+    }
+    for (const v of vs) {
+        for (const h of hs) {
+            if (!overlap(v, h)) continue;
+            const tab = (h.role === 'head track' || h.role === 'sill track') && (v.x + v.w <= h.x + flangeIn + eps || v.x >= h.x + h.w - flangeIn - eps);
+            if (!tab) issues.push({ code: 'crossing', message: `${name(v)} crosses ${name(h)} at ${fmtFtIn(v.x)}` });
+        }
+    }
+    for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
+        if (overlap(vs[i], vs[j])) issues.push({ code: 'overlap', message: `${name(vs[i])} and ${name(vs[j])} overlap at ${fmtFtIn(vs[i].x)}` });
+    }
+    for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
+        if (overlap(hs[i], hs[j])) issues.push({ code: 'overlap', message: `${name(hs[i])} and ${name(hs[j])} overlap` });
+    }
+    const near = (a, b) => Math.abs(a - b) <= 1 / 8;
+    const nearJamb = (a, b) => Math.abs(a - b) <= 0.5 + 1 / 16; // an end stud within 1/2" of the opening serves as its jamb (shimmed)
+    for (const o of openings) {
+        const beside = (v, x) => nearJamb(x, v.x) && v.y < o.top && v.y + v.h > o.bottom;
+        // Say how much wall there is between the opening and the nearest stud on that side: usually less than a stud.
+        const gapTo = (side) => {
+            const along = vs.filter(v => v.y < o.top && v.y + v.h > o.bottom);
+            const gaps = side === 'left' ? along.filter(v => v.x + v.w <= o.left + eps).map(v => o.left - (v.x + v.w)) : along.filter(v => v.x >= o.right - eps).map(v => v.x - o.right);
+            return gaps.length ? Math.min(...gaps) : null;
+        };
+        const noJamb = (side) => {
+            const gap = gapTo(side);
+            return { code: 'no-jamb', message: `No jamb stud on the ${side} of the ${what(o)}`
+                + (gap != null && gap < flangeIn ? `: only ${fmtFtIn(gap)} to the next stud, less than a stud; shift or shim the rough opening` : '') };
+        };
+        if (o.left >= flangeIn && !vs.some(v => beside(v, o.left - v.w))) issues.push(noJamb('left'));
+        if (o.right <= L - flangeIn && !vs.some(v => beside(v, o.right))) issues.push(noJamb('right'));
+        const spans = (h) => h.x <= o.left + eps && h.x + h.w >= o.right - eps;
+        const topTrack = hs.find(h => h.role === 'top track');
+        const atTop = topTrack && o.top >= topTrack.y - 1;
+        if (!atTop && !hs.some(h => near(h.y, o.top) && spans(h))) issues.push({ code: 'no-head', message: `No head track over the ${what(o)}` });
+        if (!isDoor(o) && !hs.some(h => near(h.y + h.h, o.bottom) && spans(h))) issues.push({ code: 'no-sill', message: `No sill track under the ${what(o)}` });
+    }
+    return issues;
 }
 
 // CAS labels: C for vertical, T for horizontal; one label per type + rounded length; numbered by length.

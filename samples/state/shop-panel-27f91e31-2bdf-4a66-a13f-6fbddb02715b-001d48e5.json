@@ -1,0 +1,296 @@
+{
+  "key": "27f91e31-2bdf-4a66-a13f-6fbddb02715b-001d48e5",
+  "mark": "X04-19423",
+  "dbId": 19423,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:49:43.189Z",
+  "frame": {
+    "lengthIn": 1212.9416150997172,
+    "heightIn": 697.4414286823373,
+    "openings": [
+      {
+        "left": 1133.342321608798,
+        "right": 1190.1989598165974,
+        "bottom": 0,
+        "top": 15.161770188746464
+      },
+      {
+        "left": 579.9377097195522,
+        "right": 621.632577738605,
+        "bottom": 30.32354037749293,
+        "top": 121.29416150997172
+      },
+      {
+        "left": 26.533097830306314,
+        "right": 75.80885094373232,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 125.08460405715833,
+        "right": 174.36035717058434,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 325.978059058049,
+        "right": 375.253812171475,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 424.529565284901,
+        "right": 473.805318398327,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 773.2502796260698,
+        "right": 826.3164752866824,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 875.5922284001083,
+        "right": 924.8679815135343,
+        "bottom": 72.01840839654571,
+        "top": 132.66548915153157
+      },
+      {
+        "left": 579.9377097195522,
+        "right": 621.632577738605,
+        "bottom": 159.19858698183788,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 125.08460405715833,
+        "right": 174.36035717058434,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 276.70230594462294,
+        "right": 325.978059058049,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 375.253812171475,
+        "right": 424.529565284901,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 773.2502796260698,
+        "right": 826.3164752866824,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 875.5922284001083,
+        "right": 924.8679815135343,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 974.1437346269604,
+        "right": 1023.4194877403863,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 1125.761436514425,
+        "right": 1175.037189627851,
+        "bottom": 193.31256990651744,
+        "top": 250.16920811431666
+      },
+      {
+        "left": 379.0442547186616,
+        "right": 420.7391227377144,
+        "bottom": 318.39717396367575,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 1031.0003728347597,
+        "right": 1068.9047983066257,
+        "bottom": 318.39717396367575,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 75.80885094373232,
+        "right": 125.08460405715833,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 276.70230594462294,
+        "right": 325.978059058049,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 526.8715140589396,
+        "right": 576.1472671723657,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 625.4230202857917,
+        "right": 674.6987733992177,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 773.2502796260698,
+        "right": 826.3164752866824,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 875.5922284001083,
+        "right": 924.8679815135343,
+        "bottom": 356.3015994355419,
+        "top": 413.1582376433412
+      },
+      {
+        "left": 79.59929349091894,
+        "right": 121.29416150997172,
+        "bottom": 477.59576094551363,
+        "top": 572.356824625179
+      },
+      {
+        "left": 780.831164720443,
+        "right": 818.7355901923091,
+        "bottom": 477.59576094551363,
+        "top": 572.356824625179
+      },
+      {
+        "left": 276.70230594462294,
+        "right": 325.978059058049,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      },
+      {
+        "left": 375.253812171475,
+        "right": 424.529565284901,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      },
+      {
+        "left": 526.8715140589396,
+        "right": 576.1472671723657,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      },
+      {
+        "left": 625.4230202857917,
+        "right": 674.6987733992177,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      },
+      {
+        "left": 1023.4194877403863,
+        "right": 1076.4856834009988,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      },
+      {
+        "left": 1125.761436514425,
+        "right": 1175.037189627851,
+        "bottom": 515.5001864173798,
+        "top": 576.1472671723657
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": [
+      "Gap across the wall from 57'-9 5/8\" to 58'-1 1/2\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ]
+  },
+  "info": {
+    "mark": "X04-19423",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "203 Studio Unit"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "NO SLAB ABOVE IN MODEL. Nothing found above the wall in the model (roof, soffit or open to above?). Verify the head condition. Revit: Up to level: Parapet."
+      ],
+      [
+        "BASE OF WALL",
+        "5'-7\" ABOVE SLAB. Base of wall 5'-7\" above floor \"Finish Floor - Polished Concrete (Grey)\" (beside side A) (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "RIGHT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (24): Soffit - Beam Wrap 9 1/4\" (One Side), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Party - 6 1/8\" (2-hr); Floors (8): Finish Floor - Laminate, Concrete Slab 4\""
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "203 Studio Unit"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "NO SLAB ABOVE IN MODEL. Nothing found above the wall in the model (roof, soffit or open to above?). Verify the head condition. Revit: Up to level: Parapet."
+    ],
+    [
+      "BASE OF WALL",
+      "5'-7\" ABOVE SLAB. Base of wall 5'-7\" above floor \"Finish Floor - Polished Concrete (Grey)\" (beside side A) (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "RIGHT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (24): Soffit - Beam Wrap 9 1/4\" (One Side), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Party - 6 1/8\" (2-hr); Floors (8): Finish Floor - Laminate, Concrete Slab 4\""
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

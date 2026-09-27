@@ -134,6 +134,17 @@ export function sheetOps(layout, info) {
     for (const note of layout.notes) {
         for (const ln of wrap(note.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
     }
+    // Fail-safe framing check (framing.mjs checkLayout): a sheet that fails it says so before anything else.
+    const issues = layout.issues || [];
+    if (issues.length) {
+        ly += 0.34;
+        out.push(rect(cx - 0.04, ly - 0.16, tableW + 0.08, 0.23, { fill: '#b00020', stroke: 'none', width: 0 }));
+        out.push(text(cx + 0.05, ly, `FRAMING CHECK FAILED (${issues.length}) - DO NOT RELEASE`, { size: 0.1, weight: 'bold', fill: '#ffffff' }));
+        for (const issue of issues.slice(0, 8)) {
+            for (const ln of wrap(issue.message.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
+        }
+        if (issues.length > 8) { ly += 0.12; out.push(text(cx, ly, `+ ${issues.length - 8} MORE (SEE THE PANEL PAGE)`, { size: 0.068, weight: 'bold', fill: '#b00020' })); }
+    }
 
     // --- Elevation, centered in the drawing area
     const ex = areaX + (areaW - L * s) / 2; // left end of the wall on the sheet
@@ -274,6 +285,10 @@ export function sheetOps(layout, info) {
     out.push(text(13.375, tbY + 0.45, 'NOT FOR CONSTRUCTION', { size: 0.08, anchor: 'middle', weight: 'bold', fill: '#b00020' }));
     out.push(text(12.7, tbY + 0.8, `DATE: ${info.date}`, { size: 0.075 }));
     out.push(text(12.7, tbY + 0.97, `DRAWN: ${info.drawnBy}`, { size: 0.075 }));
+    if (layout.issues) {
+        out.push(text(12.7, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : 'CHECK: PASSED',
+            { size: 0.075, weight: 'bold', fill: layout.issues.length ? '#b00020' : '#1e7b34' }));
+    }
     if (info.qrUrl) {
         // QR code to the panel page (drawing, conditions, links, comments): black modules on white.
         const qr = qrEncode(info.qrUrl), qs = 0.92, qx = 14.15 + (1.2 - qs) / 2, qy = tbY + 0.07, m = qs / qr.size;

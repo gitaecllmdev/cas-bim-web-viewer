@@ -1,0 +1,114 @@
+{
+  "key": "45ed4799-d124-4abc-8e2b-9d29089bad28-000b6bdf",
+  "mark": "P06-5337",
+  "dbId": 5337,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:58.002Z",
+  "frame": {
+    "lengthIn": 413.09356753911993,
+    "heightIn": 123.40845571137228,
+    "openings": [
+      {
+        "left": 172.7718379959212,
+        "right": 210.4438928972875,
+        "bottom": 0,
+        "top": 85.736400810006
+      },
+      {
+        "left": 244.21883867092623,
+        "right": 283.18992994820167,
+        "bottom": 0,
+        "top": 85.736400810006
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "P06-5337",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Interior - 6 1/8\" Partition (2-hr)",
+    "assembly": "3 5/8\" stud, 2 layers each side",
+    "board": "2 + 2 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "203 Studio Unit"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Interior - 8 1/2\" Partition (2-hr), Interior - 6 1/8\" Partition (2-hr)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Interior - 8 1/2\" Partition (2-hr)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (3): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "203 Studio Unit"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Interior - 8 1/2\" Partition (2-hr), Interior - 6 1/8\" Partition (2-hr)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Interior - 8 1/2\" Partition (2-hr)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (3): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

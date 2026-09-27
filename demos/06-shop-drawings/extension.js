@@ -164,6 +164,8 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             <p class="muted">${escapeHtml(c.wall.asm.label || '')} · ${fmtFtIn(lay.lengthIn)} long × ${fmtFtIn(lay.heightIn)} high ·
                 ${lay.openings.length} opening(s) · ${lay.cutList.reduce((a, r) => a + r.qty, 0)} members</p>
             ${lay.notes.map(t => `<p class="warn">${escapeHtml(t)}</p>`).join('')}
+            ${lay.issues?.length ? `<p class="warn"><b>Framing check failed (${lay.issues.length}): do not release.</b> ${lay.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</p>`
+                : '<p class="muted">✓ Framing check passed: no member through an opening, no crossing members, every opening framed.</p>'}
             <div class="row"><button data-svg>Download SVG</button><button data-csv>Cut list CSV</button><button data-elev>Elevation view</button><button data-exit>Back to model</button>
                 <a href="${escapeHtml(this.panelUrl(c))}" target="_blank" rel="noopener" title="The page the QR code on the sheet opens: the panel drawing, links and comments">Panel page ↗</a></div>
             ${this.contextHtml()}

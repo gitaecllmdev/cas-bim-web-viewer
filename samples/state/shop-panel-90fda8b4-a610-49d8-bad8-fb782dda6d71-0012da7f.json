@@ -1,0 +1,138 @@
+{
+  "key": "90fda8b4-a610-49d8-bad8-fb782dda6d71-0012da7f",
+  "mark": "W01-11281",
+  "dbId": 11281,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:03.855Z",
+  "frame": {
+    "lengthIn": 119.79843900203791,
+    "heightIn": 608.500007629399,
+    "openings": [
+      {
+        "left": 0,
+        "right": 1.9015625238418716,
+        "bottom": 0,
+        "top": 123.60156404972166
+      },
+      {
+        "left": 13.3109376668931,
+        "right": 53.2437506675724,
+        "bottom": 0,
+        "top": 87.4718760967261
+      },
+      {
+        "left": 0,
+        "right": 1.9015625238418716,
+        "bottom": 129.30625162124727,
+        "top": 608.500007629399
+      },
+      {
+        "left": 13.3109376668931,
+        "right": 53.2437506675724,
+        "bottom": 129.30625162124727,
+        "top": 216.77812771797335
+      },
+      {
+        "left": 13.3109376668931,
+        "right": 53.2437506675724,
+        "bottom": 289.0375036239645,
+        "top": 376.5093797206906
+      },
+      {
+        "left": 13.3109376668931,
+        "right": 53.2437506675724,
+        "bottom": 448.7687556266817,
+        "top": 536.2406317234078
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 2,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "W01-11281",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Party - 6 1/8\" (2-hr)",
+    "assembly": "Double 3 5/8\" stud, 2 layers each side",
+    "board": "2 + 2 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of roof \"Concrete - 6\"\" (0'-0 1/2\" gap); 50'-9\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: R2."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Core - Concrete 10\", Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 3 1/8\", Furring - GWB & Channels 1 7/8\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Party - 6 1/8\" (2-hr)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (2): Interior - 6 1/8\" Partition (2-hr), Exterior - 10 1/4\" Rainscreen w Insultation on Metal Stud"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of roof \"Concrete - 6\"\" (0'-0 1/2\" gap); 50'-9\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: R2."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Brown)\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Core - Concrete 10\", Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 3 1/8\", Furring - GWB & Channels 1 7/8\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Party - 6 1/8\" (2-hr)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (2): Interior - 6 1/8\" Partition (2-hr), Exterior - 10 1/4\" Rainscreen w Insultation on Metal Stud"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

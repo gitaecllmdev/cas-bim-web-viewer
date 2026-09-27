@@ -1,0 +1,120 @@
+{
+  "key": "9ae250f9-39c5-43a8-aca7-52422cc42f21-0016ec91",
+  "mark": "S04-14333",
+  "dbId": 14333,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:18.907Z",
+  "frame": {
+    "lengthIn": 166,
+    "heightIn": 253.99999999999997,
+    "openings": [
+      {
+        "left": 24,
+        "right": 51,
+        "bottom": 44,
+        "top": 146
+      },
+      {
+        "left": 61.99999999999999,
+        "right": 104,
+        "bottom": 44,
+        "top": 146
+      },
+      {
+        "left": 116,
+        "right": 143,
+        "bottom": 44,
+        "top": 146
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "S04-14333",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Chase - GWB & Metal Stud 6 5/8\"",
+    "assembly": "6\" stud chase, 1 layer one side",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "1 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "106 Residential Lobby"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Laminate\"; 21'-2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "12'-11 1/2\" ABOVE SLAB. Base of wall 12'-11 1/2\" above floor \"Finish Floor - Terrazo\" (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Meets Chase - GWB & Metal Stud 6 5/8\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Nothing else in the model"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "106 Residential Lobby"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Laminate\"; 21'-2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L4, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "12'-11 1/2\" ABOVE SLAB. Base of wall 12'-11 1/2\" above floor \"Finish Floor - Terrazo\" (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Meets Chase - GWB & Metal Stud 6 5/8\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Nothing else in the model"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

@@ -13,16 +13,33 @@ export function indexEntry(record) {
         key: record.key, mark: record.mark, level: record.info?.level || '', wallType: record.info?.wallType || '',
         lengthIn: record.frame?.lengthIn || 0, heightIn: record.frame?.heightIn || 0, savedAt: record.savedAt || '',
         sideA: line(record, 'SIDE A (AS DRAWN)'), sideB: line(record, 'SIDE B (FAR SIDE)'), head: line(record, 'HEAD OF WALL').split('.')[0],
-        ...countOpenings(record),
+        ...layoutFacts(record),
         frame: record.frame, flip: !!record.view?.flip,
     };
 }
 
-// Doors and windows as drawn (the layout leaves out slivers under 6"), so the card and the sheet agree.
-function countOpenings(record) {
-    let openings = [];
-    try { openings = record.frame ? entryLayout(record).openings : []; } catch { /* incomplete record */ }
-    return { doors: openings.filter(isDoor).length, windows: openings.filter(o => !isDoor(o)).length };
+// Doors and windows as drawn (the layout leaves out slivers under 6"), the framing check, and the panel types, so
+// the card and the sheet agree.
+function layoutFacts(record) {
+    let layout = null;
+    try { layout = record.frame ? entryLayout(record) : null; } catch { /* incomplete record */ }
+    const openings = layout?.openings || [];
+    return { doors: openings.filter(isDoor).length, windows: openings.filter(o => !isDoor(o)).length,
+        issues: layout?.issues?.length ?? 0, types: layout ? panelTypes(layout, record.frame?.rows) : [] };
+}
+
+// Panel types for the gallery filter: one by its openings, plus any of stacked openings, an opening at a wall end,
+// double stud rows and a tall wall (over 20 ft).
+export const PANEL_TYPES = ['Plain wall', 'Door', 'Window', 'Door + window', 'Multiple doors', 'Multiple windows',
+    'Stacked openings', 'Opening at a wall end', 'Double stud', 'Tall wall (over 20 ft)'];
+export function panelTypes(layout, rows = 1) {
+    const o = layout.openings, doors = o.filter(isDoor).length, windows = o.length - doors;
+    const types = [doors && windows ? 'Door + window' : doors > 1 ? 'Multiple doors' : windows > 1 ? 'Multiple windows' : doors ? 'Door' : windows ? 'Window' : 'Plain wall'];
+    if (o.some((a, i) => o.some((b, j) => j > i && Math.min(a.right, b.right) - Math.max(a.left, b.left) > 0))) types.push('Stacked openings');
+    if (o.some(x => x.left < 6 || x.right > layout.lengthIn - 6)) types.push('Opening at a wall end');
+    if (rows > 1) types.push('Double stud');
+    if (layout.heightIn > 240) types.push('Tall wall (over 20 ft)');
+    return types;
 }
 
 // Orders: 'complex' (default: most openings first, then longest; the panels worth showing), or 'level'

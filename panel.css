@@ -47,6 +47,10 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .panel-mark { font-weight: 700; font-size: 1.1em; }
 .panel-card .openings { font-weight: 600; color: #a01818; }
 .panel-card .openings.none { color: var(--muted); font-weight: 400; }
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip { font-size: 0.78em; padding: 1px 7px; border-radius: 10px; background: #eef1f5; color: var(--accent); }
+.check-failed { color: #fff; background: #b00020; border-radius: 4px; padding: 2px 6px; font-weight: 600; font-size: 0.9em; }
+.check-passed { color: #1e7b34; font-weight: 600; }
 .open { color: var(--accent); font-weight: 600; margin-top: 0.3em; }
 /* Home page (home.html) and the header links shared by the report pages. */
 .bar .links { margin-left: auto; display: flex; gap: 1em; }

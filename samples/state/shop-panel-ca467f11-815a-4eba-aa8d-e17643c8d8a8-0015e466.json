@@ -1,0 +1,126 @@
+{
+  "key": "ca467f11-815a-4eba-aa8d-e17643c8d8a8-0015e466",
+  "mark": "S04-13812",
+  "dbId": 13812,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:15.787Z",
+  "frame": {
+    "lengthIn": 328.5298500145717,
+    "heightIn": 129.13909198685994,
+    "openings": [
+      {
+        "left": 28.927156605056624,
+        "right": 72.31789151264157,
+        "bottom": 37.192058492215665,
+        "top": 112.60928821254187
+      },
+      {
+        "left": 107.44372453306747,
+        "right": 149.80134670475752,
+        "bottom": 37.192058492215665,
+        "top": 112.60928821254187
+      },
+      {
+        "left": 184.92717972518344,
+        "right": 228.31791463276835,
+        "bottom": 37.192058492215665,
+        "top": 112.60928821254187
+      },
+      {
+        "left": 263.4437476531943,
+        "right": 305.8013698248843,
+        "bottom": 37.192058492215665,
+        "top": 112.60928821254187
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "S04-13812",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Chase - GWB & Metal Stud 6 5/8\"",
+    "assembly": "6\" stud chase, 1 layer one side",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "1 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "202 Live/Work Unit"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "PARTIAL HEIGHT. Top of wall 26'-1 7/8\" below roof \"Concrete - 6\"\" (36'-11\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L3."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\" (beside side A)."
+      ],
+      [
+        "LEFT END",
+        "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 6 5/8\", Soffit - Beam Wrap 9 1/4\" (One Side)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Soffit - Beam Wrap 9 1/4\" (One Side)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (1): Finish Floor - Laminate; Walls (1): Exterior - 9 7/8\" EIFS on Mtl. Stud"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "202 Live/Work Unit"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "PARTIAL HEIGHT. Top of wall 26'-1 7/8\" below roof \"Concrete - 6\"\" (36'-11\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L3."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\" (beside side A)."
+    ],
+    [
+      "LEFT END",
+      "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 6 5/8\", Soffit - Beam Wrap 9 1/4\" (One Side)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Soffit - Beam Wrap 9 1/4\" (One Side)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (1): Finish Floor - Laminate; Walls (1): Exterior - 9 7/8\" EIFS on Mtl. Stud"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

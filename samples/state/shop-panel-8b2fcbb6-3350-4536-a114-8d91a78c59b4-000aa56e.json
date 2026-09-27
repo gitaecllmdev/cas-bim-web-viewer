@@ -1,0 +1,186 @@
+{
+  "key": "8b2fcbb6-3350-4536-a114-8d91a78c59b4-000aa56e",
+  "mark": "X04-4832",
+  "dbId": 4832,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:49:58.979Z",
+  "frame": {
+    "lengthIn": 598.3593804836297,
+    "heightIn": 832.5000076293978,
+    "openings": [
+      {
+        "left": 418.85156633854075,
+        "right": 598.3593804836297,
+        "bottom": 0,
+        "top": 98.85937590599099
+      },
+      {
+        "left": 20.812500190734944,
+        "right": 70.24218814373044,
+        "bottom": 179.5078141450889,
+        "top": 260.1562523841868
+      },
+      {
+        "left": 140.4843762874609,
+        "right": 189.91406424045638,
+        "bottom": 179.5078141450889,
+        "top": 260.1562523841868
+      },
+      {
+        "left": 221.1328145265588,
+        "right": 270.56250247955427,
+        "bottom": 179.5078141450889,
+        "top": 260.1562523841868
+      },
+      {
+        "left": 288.77344014644734,
+        "right": 340.8046906232847,
+        "bottom": 179.5078141450889,
+        "top": 260.1562523841868
+      },
+      {
+        "left": 374.625003433229,
+        "right": 416.2500038146989,
+        "bottom": 296.57812771797296,
+        "top": 390.2343785762802
+      },
+      {
+        "left": 119.67187609672592,
+        "right": 169.10156404972145,
+        "bottom": 330.3984405279173,
+        "top": 390.2343785762802
+      },
+      {
+        "left": 221.1328145265588,
+        "right": 270.56250247955427,
+        "bottom": 330.3984405279173,
+        "top": 390.2343785762802
+      },
+      {
+        "left": 124.87500114440967,
+        "right": 163.8984390020377,
+        "bottom": 457.8750041961688,
+        "top": 548.9296925306342
+      },
+      {
+        "left": 270.56250247955427,
+        "right": 319.99219043254976,
+        "bottom": 494.29687952995494,
+        "top": 554.1328175783178
+      },
+      {
+        "left": 418.85156633854075,
+        "right": 470.88281681537813,
+        "bottom": 494.29687952995494,
+        "top": 554.1328175783178
+      },
+      {
+        "left": 169.10156404972145,
+        "right": 221.1328145265588,
+        "bottom": 652.9921934843089,
+        "top": 712.8281315326719
+      },
+      {
+        "left": 270.56250247955427,
+        "right": 319.99219043254976,
+        "bottom": 652.9921934843089,
+        "top": 712.8281315326719
+      },
+      {
+        "left": 418.85156633854075,
+        "right": 470.88281681537813,
+        "bottom": 652.9921934843089,
+        "top": 712.8281315326719
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X04-4832",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 35",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 35"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "102 Café Kitchen"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "NO SLAB ABOVE IN MODEL. Nothing found above the wall in the model (roof, soffit or open to above?). Verify the head condition. Revit: Up to level: Parapet."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Foundation - 24\" Concrete, Core - Concrete 12\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Chase - GWB & Metal Stud 6 5/8\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (13): Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 4 1/4\"; Floors (3): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\", Roof - Sculpture Bed; Railings (1): Handrail - Balcony; Wall Sweeps (1): Coping_Rainscreen Wall"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 35"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "102 Café Kitchen"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "NO SLAB ABOVE IN MODEL. Nothing found above the wall in the model (roof, soffit or open to above?). Verify the head condition. Revit: Up to level: Parapet."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Foundation - 24\" Concrete, Core - Concrete 12\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Chase - GWB & Metal Stud 6 5/8\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (13): Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 4 1/4\"; Floors (3): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\", Roof - Sculpture Bed; Railings (1): Handrail - Balcony; Wall Sweeps (1): Coping_Rainscreen Wall"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

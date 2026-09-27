@@ -1,0 +1,116 @@
+{
+  "key": "30bd67ff-88d2-4644-a770-c24587575e58-00153fe7",
+  "mark": "P02-13063",
+  "dbId": 13063,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:27.158Z",
+  "frame": {
+    "lengthIn": 181,
+    "heightIn": 133,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      },
+      {
+        "left": 139,
+        "right": 177,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": [
+      "Gap across the wall from 11'-0\" to 11'-1\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ]
+  },
+  "info": {
+    "mark": "P02-13063",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 37",
+    "wallType": "Interior - 4 7/8\" Partition (NR)",
+    "assembly": "3 5/8\" stud, 1 layer each side",
+    "board": "1 + 1 layers, 5/8\" Regular",
+    "fireRating": "NR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 37"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "106 Residential Lobby"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 11'-0 1/2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2, offset -0'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Terrazo\"."
+      ],
+      [
+        "LEFT END",
+        "Free end (no wall within 1 ft)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Interior - 4 7/8\" Partition (NR)"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (1): Finish Floor - Terrazo; Walls (1): Interior - 7 1/4\" Partition (NR)"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 37"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "106 Residential Lobby"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 11'-0 1/2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2, offset -0'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Terrazo\"."
+    ],
+    [
+      "LEFT END",
+      "Free end (no wall within 1 ft)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Interior - 4 7/8\" Partition (NR)"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (1): Finish Floor - Terrazo; Walls (1): Interior - 7 1/4\" Partition (NR)"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

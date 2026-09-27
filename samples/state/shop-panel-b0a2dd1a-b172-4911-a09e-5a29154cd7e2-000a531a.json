@@ -1,0 +1,120 @@
+{
+  "key": "b0a2dd1a-b172-4911-a09e-5a29154cd7e2-000a531a",
+  "mark": "X04-4578",
+  "dbId": 4578,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:53.408Z",
+  "frame": {
+    "lengthIn": 505.2240007626166,
+    "heightIn": 109.28042649724307,
+    "openings": [
+      {
+        "left": 177.38272127088732,
+        "right": 216.97707869742467,
+        "bottom": 0,
+        "top": 99.7777807148741
+      },
+      {
+        "left": 239.14991885628558,
+        "right": 278.7442762828229,
+        "bottom": 0,
+        "top": 99.7777807148741
+      },
+      {
+        "left": 372.1869598094511,
+        "right": 468.7971919302022,
+        "bottom": 0,
+        "top": 99.7777807148741
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X04-4578",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 37",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 37"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "105 Commercial/Retail"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "PARTIAL HEIGHT. Top of wall 1'-11 1/4\" below floor \"Finish Floor - Laminate\" (11'-0 1/2\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L2, offset -2'-6\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Core - Concrete 12\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (3): Concrete Slab 4\", Finish Floor - Polished Concrete (Grey), Finish Floor - Laminate; Walls (2): Interior - 4 7/8\" Partition (NR), Party - 6 1/8\" (2-hr)"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 37"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "105 Commercial/Retail"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "PARTIAL HEIGHT. Top of wall 1'-11 1/4\" below floor \"Finish Floor - Laminate\" (11'-0 1/2\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L2, offset -2'-6\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Core - Concrete 12\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (3): Concrete Slab 4\", Finish Floor - Polished Concrete (Grey), Finish Floor - Laminate; Walls (2): Interior - 4 7/8\" Partition (NR), Party - 6 1/8\" (2-hr)"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

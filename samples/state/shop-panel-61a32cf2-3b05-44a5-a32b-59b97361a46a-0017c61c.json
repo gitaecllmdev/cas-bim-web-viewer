@@ -1,0 +1,114 @@
+{
+  "key": "61a32cf2-3b05-44a5-a32b-59b97361a46a-0017c61c",
+  "mark": "W01-14671",
+  "dbId": 14671,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:30.733Z",
+  "frame": {
+    "lengthIn": 553.4791817690309,
+    "heightIn": 139.24004572805808,
+    "openings": [
+      {
+        "left": 12.183504001205083,
+        "right": 52.21501714802178,
+        "bottom": 0,
+        "top": 88.76552915163703
+      },
+      {
+        "left": 0,
+        "right": 194.93606401928133,
+        "bottom": 132.27804344165517,
+        "top": 139.24004572805808
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 2,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "W01-14671",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 37",
+    "wallType": "Party - 6 1/8\" (2-hr)",
+    "assembly": "Double 3 5/8\" stud, 2 layers each side",
+    "board": "2 + 2 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 37"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "106 Residential Lobby"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "108 Commercial/Retail"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 11'-6 1/2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Terrazo\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Core - Concrete 18\", Core - Concrete 10\", Chase - GWB & Metal Stud 3 1/8\", Party - 6 1/8\" (2-hr), Furring - GWB & Channels 1 7/8\""
+      ],
+      [
+        "RIGHT END",
+        "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 3 1/8\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (4): Finish Floor - Polished Concrete (Grey), Finish Floor - Laminate, Finish Floor - Terrazo, ...; Walls (3): Interior - 6 1/8\" Partition (2-hr), Soffit - Beam Wrap (Both Sides), Soffit - Beam Wrap 10 1/2\" (Two Sides); Railings (2): Glass Panel - Bottom Fill (Extension Top and Bottom), Glass Panel - Bottom Fill (Extension Top); Ramps (1): Ramp (Wood); Top Rails (1): Elliptical - 1 1/2\" x 1 1/8\" (Extension Top and Bottom)"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 37"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "106 Residential Lobby"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "108 Commercial/Retail"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 11'-6 1/2\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Terrazo\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Core - Concrete 18\", Core - Concrete 10\", Chase - GWB & Metal Stud 3 1/8\", Party - 6 1/8\" (2-hr), Furring - GWB & Channels 1 7/8\""
+    ],
+    [
+      "RIGHT END",
+      "Meets Party - 6 1/8\" (2-hr), Chase - GWB & Metal Stud 3 1/8\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (4): Finish Floor - Polished Concrete (Grey), Finish Floor - Laminate, Finish Floor - Terrazo, ...; Walls (3): Interior - 6 1/8\" Partition (2-hr), Soffit - Beam Wrap (Both Sides), Soffit - Beam Wrap 10 1/2\" (Two Sides); Railings (2): Glass Panel - Bottom Fill (Extension Top and Bottom), Glass Panel - Bottom Fill (Extension Top); Ramps (1): Ramp (Wood); Top Rails (1): Elliptical - 1 1/2\" x 1 1/8\" (Extension Top and Bottom)"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

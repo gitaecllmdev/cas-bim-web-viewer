@@ -1,0 +1,114 @@
+{
+  "key": "50f92000-82f8-4258-b6a8-bb42c01b00a0-0009741e",
+  "mark": "X05-3747",
+  "dbId": 3747,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:24.914Z",
+  "frame": {
+    "lengthIn": 682.1369758837011,
+    "heightIn": 519.1105288171561,
+    "openings": [
+      {
+        "left": 435.4522204540607,
+        "right": 682.1369758837011,
+        "bottom": 441.8874749435296,
+        "top": 519.1105288171561
+      },
+      {
+        "left": 0,
+        "right": 405.4210328365393,
+        "bottom": 450.46781426282143,
+        "top": 519.1105288171561
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X05-3747",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 43",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud (Alley)",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 43"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "109 Commercial/Retail"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "PARTIAL HEIGHT. Top of wall 1'-8 7/8\" below floor \"Finish Floor - Laminate\" (beside side A) (45'-0\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L5."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Foundation - 24\" Concrete, Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+      ],
+      [
+        "RIGHT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Chase - GWB & Metal Stud 3 1/8\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (5): Chase - GWB & Metal Stud 4 1/4\", Interior - 4 7/8\" Partition (NR); Floors (3): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown)"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 43"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "109 Commercial/Retail"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "PARTIAL HEIGHT. Top of wall 1'-8 7/8\" below floor \"Finish Floor - Laminate\" (beside side A) (45'-0\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L5."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Foundation - 24\" Concrete, Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+    ],
+    [
+      "RIGHT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Chase - GWB & Metal Stud 3 1/8\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (5): Chase - GWB & Metal Stud 4 1/4\", Interior - 4 7/8\" Partition (NR); Floors (3): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown)"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

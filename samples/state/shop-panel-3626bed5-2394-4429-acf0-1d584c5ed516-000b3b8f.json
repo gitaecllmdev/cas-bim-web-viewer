@@ -1,0 +1,108 @@
+{
+  "key": "3626bed5-2394-4429-acf0-1d584c5ed516-000b3b8f",
+  "mark": "X04-5239",
+  "dbId": 5239,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:51:02.889Z",
+  "frame": {
+    "lengthIn": 190,
+    "heightIn": 131,
+    "openings": [
+      {
+        "left": 96,
+        "right": 190,
+        "bottom": 108,
+        "top": 131
+      }
+    ],
+    "studIn": 6,
+    "rows": 1,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "X04-5239",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L1 - Block 35",
+    "wallType": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+    "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
+    "board": "1 + 0 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L1 - Block 35"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "101 Café"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "NO ROOM FOUND"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Ceramic Tile (Wood)\"; 10'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2, offset -3'-1\"."
+      ],
+      [
+        "BASE OF WALL",
+        "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+      ],
+      [
+        "LEFT END",
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Interior - 7 1/4\" Partition (1 hr)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Core - Concrete 12\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Walls (2): Interior - 4 7/8\" Partition (NR), Interior - 4 7/8\" Partition (1-hr); Stairs (1): 7\" max riser 11\" tread; Supports (1): Stringer - 2\" Width"
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L1 - Block 35"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "101 Café"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "NO ROOM FOUND"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Ceramic Tile (Wood)\"; 10'-11\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L2, offset -3'-1\"."
+    ],
+    [
+      "BASE OF WALL",
+      "ON SLAB. Bottom track on floor \"Concrete Slab 4\"\"."
+    ],
+    [
+      "LEFT END",
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Interior - 7 1/4\" Partition (1 hr)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Core - Concrete 12\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Walls (2): Interior - 4 7/8\" Partition (NR), Interior - 4 7/8\" Partition (1-hr); Stairs (1): 7\" max riser 11\" tread; Supports (1): Stringer - 2\" Width"
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

@@ -1,0 +1,108 @@
+{
+  "key": "45ed4799-d124-4abc-8e2b-9d29089bad28-000b6d49",
+  "mark": "W01-5341",
+  "dbId": 5341,
+  "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
+  "savedAt": "2026-09-27T03:50:39.835Z",
+  "frame": {
+    "lengthIn": 395.2406317234087,
+    "heightIn": 448.5000076293999,
+    "openings": [
+      {
+        "left": 0,
+        "right": 7.007812619209373,
+        "bottom": 0,
+        "top": 262.0921919584306
+      }
+    ],
+    "studIn": 3.625,
+    "rows": 2,
+    "spacingIn": 16,
+    "mils": 43,
+    "member": "stud",
+    "notes": []
+  },
+  "info": {
+    "mark": "W01-5341",
+    "project": "Snowdon Towers (Arch)",
+    "level": "L2",
+    "wallType": "Party - 6 1/8\" (2-hr)",
+    "assembly": "Double 3 5/8\" stud, 2 layers each side",
+    "board": "2 + 2 layers, 5/8\" Type X",
+    "fireRating": "2 HR",
+    "date": "2026-09-27",
+    "drawnBy": "CAS BIM Web Viewer",
+    "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
+    "conditions": [
+      [
+        "LEVEL",
+        "L2"
+      ],
+      [
+        "SIDE A (AS DRAWN)",
+        "106 Residential Lobby"
+      ],
+      [
+        "SIDE B (FAR SIDE)",
+        "108 Commercial/Retail"
+      ],
+      [
+        "HEAD OF WALL",
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\" (beside side B) (0'-0 1/2\" gap); 37'-5\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L5."
+      ],
+      [
+        "BASE OF WALL",
+        "9'-6 1/2\" ABOVE SLAB. Base of wall 9'-6 1/2\" above floor \"Metal Stud 10\" - Laminate Finish\" (beside side B) (curb, soffit or stacked wall?). Verify."
+      ],
+      [
+        "LEFT END",
+        "Meets Party - 6 1/8\" (2-hr), Soffit - Beam Wrap (Both Sides), Interior - 6 1/8\" Partition (2-hr), Soffit - Beam Wrap 10 1/2\" (Two Sides), Interior - 8 1/2\" Partition (2-hr)"
+      ],
+      [
+        "RIGHT END",
+        "Meets Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+      ],
+      [
+        "WITHIN 1 FT",
+        "Walls (17): Party - 6 1/8\" (2-hr), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Soffit - Beam Wrap 10 1/2\" (Two Sides), ...; Floors (4): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown); Roofs (1): Concrete - 6\""
+      ]
+    ]
+  },
+  "conditions": [
+    [
+      "LEVEL",
+      "L2"
+    ],
+    [
+      "SIDE A (AS DRAWN)",
+      "106 Residential Lobby"
+    ],
+    [
+      "SIDE B (FAR SIDE)",
+      "108 Commercial/Retail"
+    ],
+    [
+      "HEAD OF WALL",
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\" (beside side B) (0'-0 1/2\" gap); 37'-5\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L5."
+    ],
+    [
+      "BASE OF WALL",
+      "9'-6 1/2\" ABOVE SLAB. Base of wall 9'-6 1/2\" above floor \"Metal Stud 10\" - Laminate Finish\" (beside side B) (curb, soffit or stacked wall?). Verify."
+    ],
+    [
+      "LEFT END",
+      "Meets Party - 6 1/8\" (2-hr), Soffit - Beam Wrap (Both Sides), Interior - 6 1/8\" Partition (2-hr), Soffit - Beam Wrap 10 1/2\" (Two Sides), Interior - 8 1/2\" Partition (2-hr)"
+    ],
+    [
+      "RIGHT END",
+      "Meets Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+    ],
+    [
+      "WITHIN 1 FT",
+      "Walls (17): Party - 6 1/8\" (2-hr), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Soffit - Beam Wrap 10 1/2\" (Two Sides), ...; Floors (4): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown); Roofs (1): Concrete - 6\""
+    ]
+  ],
+  "view": {
+    "flip": false
+  }
+}

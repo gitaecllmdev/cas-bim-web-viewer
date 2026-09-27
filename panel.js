@@ -85,6 +85,9 @@ function render() {
                     ${layout.cutList.reduce((a, r) => a + r.qty, 0)} members · saved ${escapeHtml(when(record.savedAt))}</span></div>
                 <div class="row"><a class="button secondary" href="${escapeHtml(open3d)}">Open in 3D</a><button data-pdf>Download PDF</button></div>
             </div>
+            ${layout.issues?.length ? `<div class="check-failed" style="margin-top:0.6em">Framing check failed (${layout.issues.length}): do not release.
+                ${layout.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</div>`
+                : '<div class="check-passed" style="margin-top:0.4em">✓ Framing check passed: no member through an opening, no crossing members, every opening framed.</div>'}
             <div class="sheet" style="margin-top:0.6em">${renderSheet(layout, info).replace('width="17in" height="11in"', 'width="100%"')}</div>
         </section>
         ${info.conditions.length ? `<section class="card"><h2>Conditions <span class="muted">(from the model; verify in the field)</span></h2>
