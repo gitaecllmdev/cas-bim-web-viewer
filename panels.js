@@ -35,7 +35,7 @@ async function start() {
     typeSelect.onchange = () => { if (typeSelect.value === 'Plain wall') openingsOnly.checked = false; remember(); render(); };
     search.value = params.get('q') || '';
     orderSelect.value = params.get('order') === 'level' ? 'level' : 'complex';
-    openingsOnly.checked = params.get('all') !== '1'; // the panels with openings are the ones worth showing
+    openingsOnly.checked = params.get('openings') === '1'; // every panel by default, the most openings first
     search.oninput = levelSelect.onchange = orderSelect.onchange = openingsOnly.onchange = () => { remember(); render(); };
     render();
 }
@@ -46,7 +46,7 @@ function remember() {
     if (search.value.trim()) p.set('q', search.value.trim());
     if (levelSelect.value) p.set('level', levelSelect.value);
     if (orderSelect.value === 'level') p.set('order', 'level');
-    if (!openingsOnly.checked) p.set('all', '1');
+    if (openingsOnly.checked) p.set('openings', '1');
     if (typeSelect.value) p.set('type', typeSelect.value);
     history.replaceState(null, '', `${location.pathname}${p.toString() ? `?${p}` : ''}`);
 }
