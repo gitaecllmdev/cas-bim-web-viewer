@@ -4,7 +4,7 @@
     { "id": "02-takeoff", "name": "2 · Framing & Finish Takeoff", "extensionId": "Drywall.Takeoff",
       "for": "Estimators", "summary": "Studs, track, headers, sills and cripples by mark and cut length, plus board and finish, with the walls colored by stud size." },
     { "id": "03-progress", "name": "3 · Install Progress Tracker", "extensionId": "Drywall.Progress",
-      "for": "Superintendents", "summary": "Mark walls Framed, Boarded, Taped or Finished and see progress by level in color, in 3D and on the plan." },
+      "for": "Superintendents and schedulers", "summary": "Mark walls Framed, Boarded, Taped or Finished and see progress by level in color, in 3D and on the plan, next to the P6 schedule as a Gantt chart and a calendar." },
     { "id": "04-punch", "name": "4 · Field QC / Punch Viewer", "extensionId": "Drywall.Punch",
       "for": "Foremen and QC", "summary": "Pin punch items on walls in 3D or on the plan, with type, notes and markup, and jump to any item in 3D." },
     { "id": "05-field-layout", "name": "5 · Field Layout Tablet Viewer", "extensionId": "Drywall.FieldLayout",

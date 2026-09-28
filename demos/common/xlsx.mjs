@@ -1,4 +1,4 @@
-// Minimal .xlsx reader for the engineer's framing criteria (Demo 2): every sheet's cell text as rows of strings.
+// Minimal .xlsx reader (Demo 2: the engineer's framing criteria; Demo 3: a P6 schedule exported to Excel): every sheet's cell text as rows of strings.
 // No library: an .xlsx is a ZIP of XML parts. Entries are stored or deflated (DecompressionStream 'deflate-raw');
 // the XML parts are regular enough to read with regular expressions. Runs in the browser and in Node (tests).
 // ZIP format: https://pkware.cachefly.net/webdocs/casestudies/APPNOTE.TXT

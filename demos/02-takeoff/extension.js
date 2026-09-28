@@ -14,7 +14,7 @@ import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, 
 import { takeoff, assemblyFor, fmtInches, ROLES, INSULATIONS } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
 import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
-import { readXlsx } from './xlsx.mjs';
+import { readXlsx } from '../common/xlsx.mjs';
 import { colorMap, NOT_OURS, NEEDS_REVIEW } from './colors.mjs';
 import { fmtFtIn } from '../common/framing.mjs';
 import { loadScans, scanWalls } from '../common/wallscan.js';
