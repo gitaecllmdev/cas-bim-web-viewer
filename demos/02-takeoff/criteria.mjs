@@ -162,8 +162,9 @@ const depthCode = (depthIn) => String(Math.floor(depthIn * 100 + 1e-6)).padStart
 //   asm: its assembly (calc.mjs assemblyFor); settings: the takeoff settings (gauge, spacing);
 //   opts: { criteria: { rows, group, building } | null, override: { stud, spacingIn, finishClass } kept by the wall's
 //   GUID, placeholder: rules.placeholder }.
-export function resolveFraming(wall, asm, settings, { criteria = null, override = null, placeholder = null } = {}) {
-    const heightIn = wall.scan?.heightIn || (wall.heightFt > 0 ? wall.heightFt * 12 : (wall.area / wall.length) * 12);
+//   heightIn: the height being framed (calc.mjs: floor to floor for a wall counted on its base level only).
+export function resolveFraming(wall, asm, settings, { criteria = null, override = null, placeholder = null, heightIn: framedIn = null } = {}) {
+    const heightIn = framedIn || wall.scan?.heightIn || (wall.heightFt > 0 ? wall.heightFt * 12 : (wall.area / wall.length) * 12);
     const finishClass = override?.finishClass || asm.finishClass || finishClassOf(wall.wallType);
     const base = { studIn: asm.studIn, flangeIn: 1.625, mils: asm.mils || settings.mils, spacingIn: asm.spacingIn || settings.studSpacingIn,
         rows: asm.rows || 1, finishClass, heightIn, key: '' };

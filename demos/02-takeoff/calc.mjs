@@ -71,20 +71,28 @@ export function orderLength(cutIn, mode, stockFt) {
 // Openings (jambs, headers, sills, cripples) are only known once the wall has been scanned (wall.scan).
 // ctx: { criteria, overrides, placeholder } - the engineer's criteria, the manual overrides by wall GUID and the SSMA
 // placeholder tables (criteria.mjs); the wall's framing (q.spec) and each opening's are resolved from them.
+// A wall that runs up through more levels (taller than wall.levelSpanFt, its base level's floor-to-floor height from
+// its base, by more than a foot) is counted on its base level only, studs floor to floor, board in proportion
+// (settings.multiLevel 'base', the default), or full height in one piece ('full'). q.capped says it was.
 export function wallQuantities(wall, asm, settings, ctx = {}) {
-    const length = Number(wall.length), area = Number(wall.area);
-    if (!(length > 0) || !(area > 0)) return { missing: true };
-    const height = wall.heightFt > 0 ? Number(wall.heightFt) : area / length; // Revit height; area ÷ length reads low with openings
-    const q = { length, area, height, lifts: 1, members: [], studs: 0, studLf: 0, trackLf: 0, openings: 0, scanned: !!wall.scan,
+    const length = Number(wall.length), fullArea = Number(wall.area);
+    if (!(length > 0) || !(fullArea > 0)) return { missing: true };
+    const fullHeight = wall.heightFt > 0 ? Number(wall.heightFt) : fullArea / length; // Revit height; area ÷ length reads low with openings
+    const capped = settings.multiLevel !== 'full' && wall.levelSpanFt > 0 && fullHeight > wall.levelSpanFt + 1;
+    const height = capped ? wall.levelSpanFt : fullHeight;
+    const area = capped ? fullArea * (height / fullHeight) : fullArea;
+    const q = { length, area, height, fullHeight, capped, lifts: 1, members: [], studs: 0, studLf: 0, trackLf: 0, openings: 0, scanned: !!wall.scan,
         boardSf: 0, finishSf: 0, sheathingSf: 0, layers: 0, spec: null };
     if (asm.scope !== 'framed') return q;
     const scan = wall.scan;
-    const spec = resolveFraming(wall, asm, settings, { criteria: ctx.criteria, override: ctx.overrides?.[wall.externalId], placeholder: ctx.placeholder });
+    const heightIn = capped ? height * 12 : scan?.heightIn || height * 12;
+    const spec = resolveFraming(wall, asm, settings, { criteria: ctx.criteria, override: ctx.overrides?.[wall.externalId], placeholder: ctx.placeholder, heightIn });
     q.spec = spec;
-    const openings = (scan?.openings || []).map(o => ({ ...o, framing: resolveOpening(o, spec, ctx) }));
+    // Openings on the counted height only (a wall counted on its base level leaves out the ones on the levels above).
+    const openings = (scan?.openings || []).filter(o => o.bottom < heightIn - 6).map(o => ({ ...o, framing: resolveOpening(o, spec, ctx) }));
     q.openingSources = openings.map(o => o.framing?.source).filter(Boolean);
     const lay = frameWall({
-        lengthIn: scan?.lengthIn || length * 12, heightIn: scan?.heightIn || height * 12, openings,
+        lengthIn: scan?.lengthIn || length * 12, heightIn, openings,
         studIn: spec.studIn, rows: spec.rows, spacingIn: spec.spacingIn, mils: spec.mils, member: asm.member, flangeIn: spec.flangeIn,
         studName: spec.studName, trackName: spec.trackName, topTrackName: spec.topTrackName,
         liftIn: settings.splitTallWalls ? Math.max(...settings.studStockFt) * 12 : Infinity,

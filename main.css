@@ -213,6 +213,8 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .tk-src.manual { background: #fff3d6; color: #7a4a00; }
 .tk-src.gap { background: #ffecd9; color: #8a4b00; }
 .tk-src.bad { background: #fde7ea; color: #b00020; }
+.demo-panel .tk-grid td.tk-height { white-space: nowrap; }
+.tk-capped { color: #8a4b00; font-weight: 700; font-size: 0.9em; cursor: help; }
 .demo-panel .tk-grid td.tk-info.tk-srcs { max-width: 17em; white-space: normal; overflow: visible; }
 .demo-panel .tk-grid td.tk-info { font-size: 0.92em; font-weight: 400; color: #33414f; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .demo-panel .tk-grid td.tk-wall { max-width: 19em; }

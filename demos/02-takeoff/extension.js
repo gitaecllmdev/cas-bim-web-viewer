@@ -10,7 +10,7 @@
 // Dashboard tutorial (aggregating properties): https://get-started.aps.autodesk.com/tutorials/dashboard/
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
-import { loadPropertyMap, getWallData, getBulkProperties, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
+import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
 import { takeoff, assemblyFor, fmtInches, ROLES } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
 import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
@@ -139,9 +139,20 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Revit's wall height (Unconnected Height) gives the real stud length; area ÷ length reads low when a wall has openings.
             const extra = new Map((await getBulkProperties(model, walls.map(w => w.dbId), ['Unconnected Height', 'Base Offset'])).map(r => [r.dbId, r]));
             const scans = await loadScans();
-            this.walls = walls.map(w => ({ ...w, length: Number(w.length) * lf, area: Number(w.area) * sf,
-                heightFt: Number(propValue(extra.get(w.dbId), 'Unconnected Height')) * lf || undefined,
-                baseOffsetFt: Number(propValue(extra.get(w.dbId), 'Base Offset')) * lf || 0, scan: scans[w.externalId] }));
+            // Level elevations (ft): a wall's span on its base level runs from its base to the next story up (8 ft or more
+            // above, as the header's level section box), so a wall through several levels is counted there only (calc.mjs).
+            const levels = (await getLevels(model, map).catch(() => [])).map(l => ({ name: l.name, ft: l.elevation * lf }));
+            const spanOf = (levelName, baseOffsetFt) => {
+                const base = levels.find(l => l.name === levelName);
+                const next = base && levels.find(l => l.ft >= base.ft + 8);
+                return next ? next.ft - (base.ft + baseOffsetFt) : undefined;
+            };
+            this.walls = walls.map(w => {
+                const baseOffsetFt = Number(propValue(extra.get(w.dbId), 'Base Offset')) * lf || 0;
+                return { ...w, length: Number(w.length) * lf, area: Number(w.area) * sf,
+                    heightFt: Number(propValue(extra.get(w.dbId), 'Unconnected Height')) * lf || undefined,
+                    baseOffsetFt, levelSpanFt: spanOf(w.level, baseOffsetFt), scan: scans[w.externalId] };
+            });
             this.scanStamp = 0;
             // Several levels from the link (lv=...), else the header's level.
             if (!this.filters.level.size && this.views.level) this.filters.level = new Set([this.views.level.name]);
@@ -417,6 +428,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             <label title="For walls that neither the criteria nor the SSMA placeholder cover">Fallback gauge <select data-set="mils">${opt(GAUGES, s.mils)}</select></label>
             <label>Studs @ <select data-set="studSpacingIn">${opt([12, 16, 24].map(v => [v, `${v}" o.c.`]), s.studSpacingIn)}</select></label>
             <label>Order studs at <select data-set-text="orderLengths">${opt(ORDER_MODES, s.orderLengths)}</select></label>
+            <label title="A wall taller than its base level's floor-to-floor height (e.g. an exterior wall up several floors)">Walls through several levels <select data-set-text="multiLevel">${opt([['base', 'Base level only, floor to floor'], ['full', 'Full height, one piece']], s.multiLevel || 'base')}</select></label>
             <label>Walls over 20' <select data-set-text="splitTallWalls">${opt([['false', 'One-piece studs'], ['true', 'Split into lifts']], String(!!s.splitTallWalls))}</select></label>
             <label>Board <select data-set="sheet">${opt(SHEETS.map(([l, sf]) => [sf, l]), s.sheet.sf)}</select></label>
             <label>Waste: framing <input data-set="framingWastePct" type="number" min="0" max="50" value="${s.framingWastePct}">%</label>
@@ -660,12 +672,12 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             }
         };
         walk(this.tree);
-        const cols = 12 + (this.sheathing ? 1 : 0);
+        const cols = 13 + (this.sheathing ? 1 : 0);
         const shareBy = `<select data-share-by aria-label="Share of">${Object.entries(SHARE_BY).map(([k, l]) => `<option value="${k}" ${k === this.shareBy ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         body.innerHTML = `<div class="tk-grid-wrap"><table class="tk-grid">
             <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th>
                 <th title="The wall types in the row">Wall info</th><th title="The SSMA stud of the walls">SSMA stud</th><th title="Where the framing of the row comes from, with wall counts: engineer criteria, manual override, SSMA placeholder, out of range">Source</th>
-                <th title="Finish class and board">Finish</th><th title="Gypsum layers, side A + side B">Layers</th>
+                <th title="Finish class and board">Finish</th><th title="Gypsum layers, side A + side B">Layers</th><th class="num" title="Stud length: for a group, its walls' full-height studs (a range when they differ); for a stud, jamb or cripple line, its cut length. ↥ = walls through several levels, counted on their base level only (floor to floor)">Stud height</th>
                 <th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}
                 <th class="num tk-share-h">% of ${shareBy}</th></tr></thead>
             <tbody>${rows.join('') || `<tr><td colspan="${cols}" class="muted">No framed walls match these filters.</td></tr>`}</tbody>
@@ -694,12 +706,21 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     }
 
     // The wall info of a row: its wall type, SSMA stud, finish and layers when there is one, else how many.
-    infoCells(t) {
+    infoCells(t, item = null) {
         const one = (list, many) => (!list?.length ? '<span class="muted">–</span>'
             : list.length === 1 ? escapeHtml(list[0]) : `<span class="muted" title="${attr(list.join('\n'))}">${list.length} ${many}</span>`);
         const src = (t.info.sources || []).map(({ source, walls }) => `<span class="tk-src ${SOURCE_TAG[source]?.[1] || ''}" title="${attr(source)}: ${walls} walls">${escapeHtml(SOURCE_TAG[source]?.[0] || source)} ${fmt(walls)}</span>`).join(' ');
         return `<td class="tk-info tk-wall">${one(t.info.wallTypes, 'wall types')}</td><td class="tk-info">${one(t.info.studs, 'studs')}</td><td class="tk-info tk-srcs">${src || '<span class="muted">–</span>'}</td>
-            <td class="tk-info">${one(t.info.finishes, 'finishes')}</td><td class="tk-info">${one(t.info.layers, 'layer mixes')}</td>`;
+            <td class="tk-info">${one(t.info.finishes, 'finishes')}</td><td class="tk-info">${one(t.info.layers, 'layer mixes')}</td>${this.heightCell(t, item)}`;
+    }
+
+    // Stud height: one value or a range for a group; the cut length for a stud, jamb or cripple line (item).
+    heightCell(t, item = null) {
+        const vertical = item && ['ST', 'JB', 'CR', 'FC'].includes(item.code);
+        const h = item ? (vertical ? { min: item.cutIn, max: item.cutIn } : null) : t.info.studHeight;
+        const text = !h ? '<span class="muted">–</span>' : h.min === h.max ? fmtFtIn(h.max) : `${fmtFtIn(h.min)} – ${fmtFtIn(h.max)}`;
+        const capped = t.info.capped ? ` <span class="tk-capped" title="${t.info.capped} wall${t.info.capped === 1 ? ' runs' : 's run'} up through more levels: counted on the base level only, floor to floor (Settings: walls through several levels)">↥${t.info.capped}</span>` : '';
+        return `<td class="num tk-height">${text}${capped}</td>`;
     }
 
     groupRow(g) {
@@ -714,7 +735,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     itemLabel(item, html = true) {
         if (item.kind === 'board') return html ? escapeHtml(item.member) : item.member;
         const mark = this.marks?.get(`${item.code}|${item.member}|${item.cutIn}`);
-        const text = `${item.role} · ${fmtFtIn(item.cutIn)}`;
+        // Studs, jambs and cripples show their cut length in the Stud height column; track keeps its length here.
+        const text = html && ['ST', 'JB', 'CR', 'FC'].includes(item.code) ? item.role : `${item.role} · ${fmtFtIn(item.cutIn)}`;
         const member = this.groups.includes('member') ? '' : ` <span class="muted">${escapeHtml(item.member)}</span>`; // else the group row names it
         return html ? `${mark ? `<b>${mark}</b> ` : ''}${escapeHtml(text)}${member}` : `${mark ? `${mark} ` : ''}${text} ${item.member}`;
     }
@@ -723,7 +745,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const key = `${g.key}${SEP}#${item.key}`;
         const sel = this.selection?.key === `itm:${key}` ? 'selected' : '';
         return `<tr class="tk-i clickable ${sel}" data-itm="${attr(key)}" title="Show the walls with this member">
-            <td style="padding-left:${1.9 + g.depth * 1.1}em">${this.itemLabel(item)}</td>${this.infoCells(item.totals)}${this.numCells(item.totals)}</tr>`;
+            <td style="padding-left:${1.9 + g.depth * 1.1}em">${this.itemLabel(item)}</td>${this.infoCells(item.totals, item)}${this.numCells(item.totals)}</tr>`;
     }
 
     // --- Order list: the material list with waste, each stud and track line with its marked cut-length schedule ---------
@@ -881,8 +903,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // Walls only (the report page adds the saved opening scans and the takeoff settings itself).
     saveSnapshot(model) {
         if (CONFIG.mode === 'static') return;
-        const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt }) =>
-            ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt }));
+        const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt }) =>
+            ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt }));
         const project = document.getElementById('models')?.selectedOptions[0]?.text || model.getDocumentNode()?.getDocument()?.getRoot()?.name?.() || 'Project';
         saveState(SNAPSHOT_STATE, { project, urn: location.hash.slice(1), savedAt: new Date().toISOString(), walls })
             .catch(err => console.warn('Takeoff snapshot not saved:', err.message));
@@ -905,9 +927,10 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Every group and member line (open or not), one column per grouping, net quantities.
             const dims = this.groups.map(d => DIMENSIONS[d].label);
             const lines = [[`Takeoff breakdown (${scope})`, 'net quantities, no waste'], [],
-                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Source (walls)', 'Finish', 'Layers', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
+                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Source (walls)', 'Finish', 'Layers', 'Stud height (in)', 'Walls counted on base level only', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
             const all = totalsOf(this.filteredLines);
-            const info = (t) => [t.info.wallTypes.join(' / '), t.info.studs.join(' / '), t.info.sources.map(x => `${x.source} ${x.walls}`).join(' / '), t.info.finishes.join(' / '), t.info.layers.join(' / ')];
+            const info = (t) => [t.info.wallTypes.join(' / '), t.info.studs.join(' / '), t.info.sources.map(x => `${x.source} ${x.walls}`).join(' / '), t.info.finishes.join(' / '), t.info.layers.join(' / '),
+                !t.info.studHeight ? '' : t.info.studHeight.min === t.info.studHeight.max ? t.info.studHeight.max : `${t.info.studHeight.min} - ${t.info.studHeight.max}`, t.info.capped || ''];
             const nums = (t) => [...info(t), t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1),
                 all[this.shareBy] ? ((100 * t[this.shareBy]) / all[this.shareBy]).toFixed(1) : ''];
             const walk = (groups, path) => {

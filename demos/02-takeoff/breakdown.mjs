@@ -53,7 +53,8 @@ export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}
         const spec = q.spec;
         const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated',
             framing: framingLabel({ studIn: spec.studIn, member: asm.member }), stud: spec.studName, finish: finishLabel(w, asm, spec.finishClass),
-            layers: layersLabel(asm), source: spec.source, wallSource: spec.source, key: spec.key };
+            layers: layersLabel(asm), source: spec.source, wallSource: spec.source, key: spec.key,
+            capped: q.capped, fullHeightFt: q.fullHeight }; // capped: counted on its base level only (calc.mjs)
         for (const m of q.members) {
             const code = m.code;
             const lf = (m.qty * m.lengthIn) / 12;
@@ -92,13 +93,17 @@ export function facets(lines, filters = {}, dims = Object.keys(DIMENSIONS)) {
 }
 
 // Totals of a set of lines: walls (distinct), stud pieces and LF, track LF, board and sheathing SF, the wall ids,
-// and the wall info of the group (distinct wall types, SSMA studs, finishes, layers, framing sources).
+// and the wall info of the group (distinct wall types, SSMA studs, finishes, layers, framing sources with wall counts,
+// the stud height range (each wall's full-height stud) and how many walls were counted on their base level only).
 export function totalsOf(lines) {
     const ids = new Set();
     const t = { walls: 0, studs: 0, studLf: 0, trackLf: 0, boardSf: 0, sheathingSf: 0, ids: [] };
     const info = { wallTypes: new Set(), studs: new Set(), finishes: new Set(), layers: new Set() };
     const sources = new Map(); // source -> walls
+    const studHeight = new Map(), capped = new Set(); // wall -> its full-height stud (the longest ST / FC piece)
     for (const l of lines) {
+        if ((l.code === 'ST' || l.code === 'FC') && l.cutIn > (studHeight.get(l.wall) || 0)) studHeight.set(l.wall, l.cutIn);
+        if (l.capped) capped.add(l.wall);
         ids.add(l.wall);
         info.wallTypes.add(l.wallType); info.studs.add(l.stud); info.finishes.add(l.finish); info.layers.add(l.layers);
         if (!sources.has(l.source)) sources.set(l.source, new Set());
@@ -110,6 +115,9 @@ export function totalsOf(lines) {
     t.ids = [...ids];
     t.info = Object.fromEntries(Object.entries(info).map(([k, set]) => [k, [...set].filter(Boolean).sort(byName)]));
     t.info.sources = [...sources].map(([source, walls]) => ({ source, walls: walls.size })).sort((a, b) => b.walls - a.walls);
+    const heights = [...studHeight.values()];
+    t.info.studHeight = heights.length ? { min: Math.min(...heights), max: Math.max(...heights) } : null;
+    t.info.capped = capped.size;
     return t;
 }
 

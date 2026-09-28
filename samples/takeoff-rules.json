@@ -5,6 +5,7 @@
         "mils": 33,
         "orderLengths": "exact",
         "splitTallWalls": false,
+        "multiLevel": "base",
         "sheet": {
             "label": "4' x 12'",
             "sf": 48
