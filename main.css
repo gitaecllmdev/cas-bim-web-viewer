@@ -177,7 +177,7 @@ body {
 /* ?dock=bottom (the takeoff link): 3D and plan on top, the panel full width underneath, with a bar to drag between them */
 #dock-split { display: none; }
 body.dock-bottom #main { flex-direction: column; }
-body.dock-bottom #views { flex: 0 0 56%; min-height: 0; }
+body.dock-bottom #views { flex: 0 0 50%; min-height: 0; }
 body.dock-bottom #panel, body.dock-bottom #panel.wide { flex: 1 1 auto; min-height: 0; border-left: none; padding-top: 0; }
 body.dock-bottom #dock-split { display: block; flex: 0 0 8px; cursor: row-resize; background: #1f3b57; position: relative; touch-action: none; }
 body.dock-bottom #dock-split::after { content: ""; position: absolute; left: 50%; top: 2px; width: 36px; height: 4px; margin-left: -18px; border-radius: 2px; background: rgba(255, 255, 255, 0.55); }
@@ -187,7 +187,15 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 
 /* Takeoff (Demo 2): compact toolbar, slicers and grid, in the spirit of a model-based takeoff grid */
 .demo-panel.tk { font-size: 0.95em; }
-.tk-bar { position: sticky; top: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 0.6em; padding: 0.5em 0 0.45em; background: #fff; border-bottom: 1px solid #e3e6ea; }
+/* Toolbar, filter row and selection stay on top; the grid's column titles stick right under them (--tk-head). */
+.tk-head { position: sticky; top: 0; z-index: 4; background: #fff; border-bottom: 1px solid #e3e6ea; padding-bottom: 0.4em; }
+.tk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 0.6em; padding: 0.5em 0 0.35em; }
+.tk-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35em; }
+.tk-sep { width: 1px; height: 1.5em; background: #d5dce3; margin: 0 0.35em; }
+.tk-groupby { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 0.3em; font-size: 0.9em; }
+.tk-filters .tk-sl-label { min-width: 0; margin-right: 0.1em; }
+.demo-panel .tk-grid thead th { position: sticky; top: var(--tk-head, 0px); z-index: 2; }
+.tk-dd-list .tk-legend { margin: 0.4em 0 0; }
 .tk-title { color: #1f3b57; font-size: 1.05em; }
 .tk-tabs { display: inline-flex; }
 .demo-panel .tk-tabs button { border: 1px solid #b8c2cc; background: #fff; padding: 0.25em 0.8em; margin: 0; border-radius: 0; }
@@ -200,15 +208,8 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .tk-scan-bar { display: inline-block; width: 6em; }
 .tk-settings { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 1em; margin: 0.5em 0; padding: 0.5em 0.7em; background: #f7f9fb; border: 1px solid #e3e6ea; border-radius: 6px; font-size: 0.9em; }
 .tk-settings input[type=number] { width: 3.5em; }
-.tk-slicers { display: grid; gap: 0.3em; margin: 0.5em 0; }
-.tk-slicer { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em; }
-.tk-sl-label { min-width: 7.5em; font-size: 0.75em; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5a6b7b; }
-.demo-panel .tk-chip { border: 1px solid #c9d1da; border-radius: 999px; background: #fff; padding: 0.12em 0.65em; font-size: 0.85em; line-height: 1.5; color: #1d2b38; }
-.demo-panel .tk-chip:hover { border-color: #1f3b57; }
-.demo-panel .tk-chip.on { background: #1f3b57; border-color: #1f3b57; color: #fff; }
-.tk-chip .n { color: #7a8794; font-size: 0.85em; margin-left: 0.15em; }
-.tk-chip.on .n { color: rgba(255, 255, 255, 0.75); }
-.tk-chip .swatch, .tk-legend .swatch { margin-right: 0.3em; }
+.tk-sl-label { font-size: 0.75em; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase; color: #5a6b7b; }
+.tk-dd-list .swatch, .tk-legend .swatch { margin-right: 0.3em; }
 .tk-legend { font-size: 0.8em; margin-left: 0.3em; }
 .tk-dd { position: relative; font-size: 0.85em; }
 .tk-dd > summary { list-style: none; cursor: pointer; border: 1px solid #c9d1da; border-radius: 999px; padding: 0.12em 0.7em; background: #fff; max-width: 22em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -220,9 +221,8 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .tk-dd-list a { display: block; margin-bottom: 0.3em; }
 .demo-panel .tk-clear { font-size: 0.85em; border: none; background: none; color: #1f3b57; text-decoration: underline; padding: 0 0.3em; }
 .tk-selbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.6em; margin: 0.4em 0; padding: 0.35em 0.7em; background: #e3edf7; border-left: 4px solid #1f3b57; border-radius: 0 4px 4px 0; }
-.tk-groupby { display: flex; flex-wrap: wrap; align-items: center; gap: 0.35em; margin: 0.5em 0 0.35em; font-size: 0.9em; }
 .demo-panel .tk-groupby button { padding: 0 0.55em; font-weight: 700; }
-.tk-grid-wrap { border: 1px solid #dde3e9; border-radius: 4px; overflow: hidden; }
+.tk-grid-wrap { border: 1px solid #dde3e9; border-top: none; margin-top: 0.4em; }
 .demo-panel table.tk-grid { font-size: 0.88em; }
 .demo-panel .tk-grid th { background: #f1f4f7; color: #34414e; font-weight: 600; border-bottom: 1px solid #d5dce3; white-space: nowrap; }
 .demo-panel .tk-grid td { padding: 0.22em 0.5em; }

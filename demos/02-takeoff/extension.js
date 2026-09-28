@@ -76,9 +76,17 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.showLevels = true;
         this.expanded = new Set(); // Order list items showing their cut-length schedule
         this.panel.innerHTML = `<div class="demo-panel"><h2>Takeoff</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
+        // A filter list closes when you click anywhere else.
+        const closeLists = (e) => {
+            if (e.target.closest?.('.tk-dd')) return;
+            this.panel.querySelectorAll('details.tk-dd[open]').forEach(d => { d.open = false; });
+            this.openDropdown = null;
+        };
+        document.addEventListener('click', closeLists);
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', (level) => this.onHeaderLevel(level)),
+            () => document.removeEventListener('click', closeLists),
         ];
         return true;
     }
@@ -248,23 +256,30 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.assignDepthColors();
         const warn = this.missing.length
             ? `<p class="warn">No wall has ${this.missing.map(k => `"${escapeHtml(this.map[k])}"`).join(', ')}. Fix the name in samples/property-map.json.</p>` : '';
+        // The table comes first: one toolbar row and one filter row, kept at the top (with the grid's column titles)
+        // while the rows scroll under them.
+        const docked = document.body.classList.contains('dock-bottom');
         this.panel.innerHTML = `<div class="demo-panel tk">
-            <div class="tk-bar">
-                <b class="tk-title">Takeoff</b>
-                <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
-                ${this.scanHtml()}
-                <span class="tk-spacer"></span>
-                <button data-settings class="${this.showSettings ? 'active' : ''}" title="Gauge, stud spacing, order lengths, board and waste">⚙ Settings</button>
-                <button data-csv title="Download what this tab shows">Export CSV</button>
+            <div class="tk-head">
+                <div class="tk-bar">
+                    <b class="tk-title">Takeoff</b>
+                    <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
+                    ${this.scanHtml()}
+                    <span class="tk-spacer"></span>
+                    ${docked ? '<button data-dock title="Give the table most of the screen; click again to bring the model back">⤢ Table</button>' : ''}
+                    <button data-settings class="${this.showSettings ? 'active' : ''}" title="Gauge, stud spacing, order lengths, board and waste">⚙ Settings</button>
+                    <button data-csv title="Download what this tab shows">Export CSV</button>
+                </div>
+                ${this.showSettings ? this.settingsHtml() : ''}
+                <div class="tk-filters">${this.filtersHtml()}</div>
+                ${this.selectionHtml()}
             </div>
-            ${this.showSettings ? this.settingsHtml() : ''}
             ${warn}
-            ${this.slicersHtml()}
-            ${this.selectionHtml()}
             <div data-body></div></div>`;
         this.bindBar();
         const body = this.panel.querySelector('[data-body]');
         ({ breakdown: () => this.renderBreakdown(body), materials: () => this.renderMaterials(body), assemblies: () => this.renderAssemblies(body), gross: () => this.renderGross(body) })[this.tab]();
+        this.panel.style.setProperty('--tk-head', `${this.panel.querySelector('.tk-head').offsetHeight}px`); // column titles stick under it
         this.colorWalls();
         this.applyIsolation();
         this.syncUrl();
@@ -277,9 +292,25 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         p.querySelector('[data-settings]').onclick = () => { this.showSettings = !this.showSettings; this.render(); };
         p.querySelector('[data-scan]')?.addEventListener('click', () => this.scanOpenings());
         p.querySelector('[data-scan-stop]')?.addEventListener('click', () => { this.cancelScan = true; });
-        p.querySelectorAll('[data-chip]').forEach(b => b.onclick = () => this.setFilter(b.dataset.chip, b.dataset.value, !b.classList.contains('on')));
+        p.querySelector('[data-dock]')?.addEventListener('click', () => document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })));
         p.querySelectorAll('[data-check]').forEach(el => el.onchange = () => this.setFilter(el.dataset.check, el.value, el.checked));
-        p.querySelectorAll('details[data-dd]').forEach(d => d.ontoggle = () => { this.openDropdown = d.open ? d.dataset.dd : (this.openDropdown === d.dataset.dd ? null : this.openDropdown); });
+        p.querySelectorAll('[data-group]').forEach(el => el.onchange = () => {
+            const i = Number(el.dataset.group);
+            this.groups = [...this.groups.slice(0, i), ...(el.value ? [el.value] : [])];
+            if (!this.groups.length) this.groups = [...DEFAULT_GROUPS];
+            this.select(null);
+            this.render();
+        });
+        p.querySelector('[data-expand-all]')?.addEventListener('click', () => {
+            const all = (groups) => groups.flatMap(g => [g.key, ...all(g.children)]);
+            this.open = new Set(all(this.tree));
+            this.render();
+        });
+        p.querySelector('[data-collapse-all]')?.addEventListener('click', () => { this.open = new Set(); this.render(); });
+        p.querySelectorAll('details[data-dd]').forEach(d => d.ontoggle = () => {
+            if (d.open) p.querySelectorAll('details[data-dd][open]').forEach(o => { if (o !== d) o.open = false; }); // one list at a time
+            this.openDropdown = d.open ? d.dataset.dd : (this.openDropdown === d.dataset.dd ? null : this.openDropdown);
+        });
         p.querySelectorAll('[data-dd-clear]').forEach(b => b.onclick = (e) => { e.preventDefault(); this.filters[b.dataset.ddClear].clear(); this.render(); });
         p.querySelector('[data-clear-filters]')?.addEventListener('click', () => this.clearFilters());
         p.querySelector('[data-clear-selection]')?.addEventListener('click', () => { this.select(null); this.render(); });
@@ -324,28 +355,25 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         </div>`;
     }
 
-    // Slicers: level, framing type and role as chips (click to add or remove); wall type and fire rating as lists.
-    slicersHtml() {
+    // One row: the slicers as dropdown lists (tick values to add or remove them; counts are walls, cross-filtered),
+    // then, on the Breakdown, the grouping.
+    filtersHtml() {
         const values = this.slicerValues();
-        const chips = (dim, extra = () => '') => values[dim].map(({ value, walls }) => `<button class="tk-chip ${this.filters[dim].has(value) ? 'on' : ''}" data-chip="${dim}" data-value="${attr(value)}"
-                title="${attr(value)}: ${walls} wall${walls === 1 ? '' : 's'}">${extra(value)}${escapeHtml(value)} <span class="n">${fmt(walls)}</span></button>`).join('');
         const swatch = (label) => `<span class="swatch" style="background:${this.framingColors.get(label) || EXCLUDED_COLOR}"></span>`;
         const dropdown = (dim) => {
             const set = this.filters[dim];
             const summary = set.size ? (set.size === 1 ? [...set][0] : `${set.size} selected`) : 'All';
+            const mark = dim === 'framing' ? swatch : () => '';
             return `<details class="tk-dd ${set.size ? 'on' : ''}" data-dd="${dim}" ${this.openDropdown === dim ? 'open' : ''}>
-                <summary>${DIMENSIONS[dim].label}: <b>${escapeHtml(summary)}</b></summary>
+                <summary title="${attr(set.size ? [...set].join(', ') : `All ${DIMENSIONS[dim].label.toLowerCase()}s`)}">${DIMENSIONS[dim].label}: <b>${escapeHtml(summary)}</b></summary>
                 <div class="tk-dd-list">${set.size ? `<a href="#" data-dd-clear="${dim}">Show all</a>` : ''}
                 ${values[dim].map(({ value, walls }) => `<label><input type="checkbox" data-check="${dim}" value="${attr(value)}" ${set.has(value) ? 'checked' : ''}>
-                    ${escapeHtml(value)} <span class="muted">${fmt(walls)}</span></label>`).join('')}</div></details>`;
+                    ${mark(value)}${escapeHtml(value)} <span class="muted">${fmt(walls)}</span></label>`).join('')}
+                ${dim === 'framing' ? `<p class="muted tk-legend">${swatch('')}grey in the model: not ours</p>` : ''}</div></details>`;
         };
-        return `<div class="tk-slicers">
-            <div class="tk-slicer"><span class="tk-sl-label">Level</span>${chips('level')}</div>
-            <div class="tk-slicer"><span class="tk-sl-label">Framing type</span>${chips('framing', swatch)}<span class="muted tk-legend">${swatch('')}not ours</span></div>
-            <div class="tk-slicer"><span class="tk-sl-label">Role</span>${chips('role')}
-                ${dropdown('wallType')}${dropdown('fire')}
-                ${this.filtering ? '<button class="tk-clear" data-clear-filters>Clear filters</button>' : ''}</div>
-        </div>`;
+        return `<span class="tk-sl-label">Filter</span>${SLICERS.map(dropdown).join('')}
+            ${this.filtering ? '<button class="tk-clear" data-clear-filters>Clear</button>' : ''}
+            ${this.tab === 'breakdown' ? `<span class="tk-sep"></span>${this.groupByHtml()}` : ''}`;
     }
 
     // --- Selection: a row (group, member line, material or mark) shows its walls in 3D and on the plan ------------------
@@ -443,10 +471,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 ${options.map(([d, def]) => `<option value="${d}" ${this.groups[i] === d ? 'selected' : ''}>${def.label}</option>`).join('')}</select>`;
         };
         const count = Math.min(this.groups.length + 1, 4);
-        return `<div class="tk-groupby"><span class="tk-sl-label">Group by</span>
+        return `<span class="tk-groupby"><span class="tk-sl-label">Group</span>
             ${Array.from({ length: count }, (_, i) => select(i)).join('<span class="muted">▸</span>')}
-            <button data-expand-all title="Expand all">+</button><button data-collapse-all title="Collapse all">−</button>
-            <span class="muted">Click a row to show its walls; ▸ to open it.</span></div>`;
+            <button data-expand-all title="Open every group">+</button><button data-collapse-all title="Close every group">−</button></span>`;
     }
 
     renderBreakdown(body) {
@@ -469,14 +496,13 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         };
         walk(this.tree);
         const cols = 6 + (this.sheathing ? 1 : 0);
-        body.innerHTML = `${this.groupByHtml()}
-            <div class="tk-grid-wrap"><table class="tk-grid">
+        body.innerHTML = `<div class="tk-grid-wrap"><table class="tk-grid">
             <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th><th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}</tr></thead>
             <tbody>${rows.join('') || `<tr><td colspan="${cols}" class="muted">No framed walls match these filters.</td></tr>`}</tbody>
             <tfoot><tr class="total"><td>Total${this.filtering ? ` <span class="muted">(${escapeHtml(this.scopeLabel())})</span>` : ''}</td>${this.numCells(total)}</tr></tfoot>
             </table></div>
             ${this.result.missing ? `<p class="warn">${this.result.missing} wall(s) have no length or area and are left out.</p>` : ''}
-            <p class="note">Net quantities from the framing layout, no waste: the Order list adds ${s.framingWastePct}% framing and ${s.boardWastePct}% board waste and rounds to pieces. ${DISCLAIMER}</p>`;
+            <p class="note">Click a row to show its walls in 3D and on the plan; ▸ opens it. Net quantities from the framing layout, no waste: the Order list adds ${s.framingWastePct}% framing and ${s.boardWastePct}% board waste and rounds to pieces. ${DISCLAIMER}</p>`;
         body.querySelectorAll('[data-caret]').forEach(b => b.onclick = (e) => {
             e.stopPropagation();
             const key = b.dataset.caret;
@@ -485,19 +511,6 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         });
         body.querySelectorAll('[data-grp]').forEach(tr => tr.onclick = () => this.toggleSelection(`grp:${tr.dataset.grp}`));
         body.querySelectorAll('[data-itm]').forEach(tr => tr.onclick = () => this.toggleSelection(`itm:${tr.dataset.itm}`));
-        body.querySelectorAll('[data-group]').forEach(el => el.onchange = () => {
-            const i = Number(el.dataset.group);
-            this.groups = [...this.groups.slice(0, i), ...(el.value ? [el.value] : [])];
-            if (!this.groups.length) this.groups = [...DEFAULT_GROUPS];
-            this.select(null);
-            this.render();
-        });
-        body.querySelector('[data-expand-all]').onclick = () => {
-            const all = (groups) => groups.flatMap(g => [g.key, ...all(g.children)]);
-            this.open = new Set(all(this.tree));
-            this.render();
-        };
-        body.querySelector('[data-collapse-all]').onclick = () => { this.open = new Set(); this.render(); };
     }
 
     numCells(t) {

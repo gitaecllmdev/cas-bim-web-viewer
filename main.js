@@ -94,11 +94,12 @@ async function onModelSelected(urn) {
 }
 
 // ?dock=bottom: drag the bar between the viewers and the tables (arrow keys too; double-click resets). The split is a
-// per-browser convenience, kept in localStorage.
+// per-browser convenience, kept in localStorage. A panel can ask for the table to take most of the screen and back
+// with document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })) (the takeoff's ⤢ Table button).
 function setupDockSplit(views) {
     const bar = document.getElementById('dock-split'), main = document.getElementById('main'), pane = document.getElementById('views');
     if (!bar || !document.body.classList.contains('dock-bottom')) return;
-    const KEY = 'drywall-demos:dock-split', DEFAULT = 56;
+    const KEY = 'drywall-demos:dock-split', DEFAULT = 50, TABLE = 20;
     let pct = DEFAULT, frame = 0;
     const set = (value, save) => {
         pct = Math.min(85, Math.max(15, value));
@@ -125,6 +126,10 @@ function setupDockSplit(views) {
         bar.addEventListener('pointercancel', up);
     });
     bar.addEventListener('dblclick', () => set(DEFAULT, true));
+    let before = DEFAULT; // the split to go back to after "table" mode
+    document.addEventListener('dock-split', () => {
+        if (pct > TABLE + 1) { before = pct; set(TABLE, true); } else set(before > TABLE + 1 ? before : DEFAULT, true);
+    });
     bar.addEventListener('keydown', (e) => {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
         e.preventDefault();
