@@ -11,7 +11,7 @@
 import { toThemingColor, getLevels, loadPropertyMap, findWalls, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
-const PLAN_OTHER_WALLS = '#cfd5dc'; // on the plan, walls outside the isolated set
+const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
 const PLAN_ISOLATED = '#1f3b57';    // isolated walls without a color of their own
 
 export class Views {
@@ -81,17 +81,38 @@ export class Views {
         this.setColors([]);
     }
 
-    // On the plan, isolated walls keep their color (or navy) and the other walls go light grey, while everything else
-    // (room names, doors, grids) stays at full strength: Viewer isolation would fade the whole drawing.
+    // On the plan, isolated walls are highlighted with the plan's selection highlight over their color, and the other
+    // walls fade to light grey, while everything else (room names, doors, grids) stays at full strength: Viewer
+    // isolation would fade the whole drawing. The highlight stays on the plan (not mirrored to the 3D selection).
     applyColors(viewer, model) {
         viewer.clearThemingColors(model);
         if (viewer === this.viewer2d && this.isolated) {
             const iso = new Set(this.isolated);
             for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
             for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
+            this.highlightPlan(viewer, model, this.isolated);
             return;
         }
         for (const [dbId, hex] of this.colors) viewer.setThemingColor(dbId, toThemingColor(hex), model);
+        if (viewer === this.viewer2d) this.highlightPlan(viewer, model, null);
+    }
+
+    // The plan's selection highlight for the isolated walls (null: take it off, if it is still ours).
+    // Viewer3D select / clearSelection / getSelection: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    highlightPlan(viewer, model, ids) {
+        const current = viewer.getSelection();
+        const same = (a, b) => a.length === b.length && a.every(id => b.includes(id));
+        if (ids?.length) {
+            if (this.planHighlight && same(current, ids)) return;
+            this.planHighlight = [...ids];
+            this.quietUntil = performance.now() + 300; // don't mirror this selection to the 3D view
+            viewer.select(ids, model);
+        } else if (this.planHighlight) {
+            const ours = same(current, this.planHighlight);
+            this.planHighlight = null;
+            this.quietUntil = performance.now() + 300;
+            if (ours) viewer.clearSelection();
+        }
     }
 
     // Isolate dbIds in both viewers (null/empty = show everything again). Fits the 3D view. The plan shows it with
@@ -142,7 +163,7 @@ export class Views {
     syncSelection(viewer) {
         viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, () => {
             const other = viewer === this.viewer3d ? this.viewer2d : this.viewer3d;
-            if (this.syncing || !other?.model) return;
+            if (this.syncing || !other?.model || performance.now() < (this.quietUntil || 0)) return; // the plan's own highlight: not mirrored
             const ids = viewer.getSelection();
             const current = other.getSelection();
             if (ids.length === current.length && ids.every(id => current.includes(id))) return;
