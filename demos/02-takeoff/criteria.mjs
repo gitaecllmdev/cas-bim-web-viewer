@@ -1,13 +1,25 @@
-// Engineer's framing criteria for the takeoff (Demo 2): which SSMA stud, track and spacing a wall gets from its stud
-// depth, finish class (GYP / TILE / SHAFT), gypsum layers and height, as in the engineer's criteria workbook
-// (KEY_WALL sheet: WALL MARK, FINISH, SPECIFIC MAX HEIGHT, SPACING (O.C.), STUD SIZE, BOTTOM TRACK, TOP TRACK, ...).
-// Per wall, the framing comes from (first that applies): a manual override kept by the element's GUID (Revit
-// UniqueId, so it carries to the next model version), the criteria row for its band, or the assembly default.
-// Pure functions (no Viewer); tests/takeoff.test.js checks them.
+// Framing rules for the takeoff (Demo 2): which SSMA members a wall and each of its openings get.
+//   Walls: stud, spacing, bottom and top track from the wall's stud depth, finish class (GYP / TILE / SHAFT), gypsum
+//     layers and height (the engineer's KEY_WALL sheet).
+//   Openings (scanned doors and windows): header, jamb and sill framing from the wall's depth and finish class, the
+//     wall height, the height above the opening and the opening width (the KEY_DOOR / KEY_WINDOW sheets).
+// Where the framing comes from, first that applies (the takeoff shows it as the "source" of every member):
+//   a manual override kept by the wall's GUID (Revit UniqueId: it carries to the next model version);
+//   the engineer's criteria loaded from their .xlsx;
+//   the SSMA placeholder tables in samples/takeoff-rules.json ("placeholder": typical values, not engineered);
+//   else the assembly default (flagged "out of range").
+// Pure functions (no Viewer); tests/criteria.test.js checks them.
 import { memberType } from '../common/framing.mjs';
 
 export const FINISH_CLASSES = ['GYP', 'TILE', 'SHAFT'];
-export const SOURCES = { override: 'Manual override', criteria: 'Criteria', assembly: 'Assembly default', outOfBand: 'Out of criteria band' };
+export const SOURCES = {
+    override: 'Manual override',
+    criteria: 'Engineer criteria',
+    placeholder: 'SSMA placeholder',
+    gap: 'SSMA placeholder, not in criteria', // criteria loaded, but no row covers it
+    outOfRange: 'Out of range',                // no criteria row and no placeholder row: assembly default, check it
+    assembly: 'Assembly default',               // furring and other non-stud assemblies
+};
 
 // SSMA designator, e.g. 600S162-33, 362SLT250-43, 250CT-22, (2)600S250-68 (two per location).
 // Returns { qty, depthIn, profile, flangeIn, mils, name } or null.
@@ -19,6 +31,16 @@ export function parseDesignator(text) {
     return { qty: Number(qty || 1), depthIn: Number(depth) / 100, profile: profile.toUpperCase(), flangeIn: flange ? Number(flange) / 100 : null, mils: Number(mils), name };
 }
 
+// A member spec: parts joined by WITH, each the first of its OR alternatives: "(2) 600S162-33 WITH (2) 600T125-33".
+// Returns { parts: [{ qty, name }], alt: true when an OR alternative was left out } or null.
+export function parseMemberSpec(text) {
+    const parts = String(text || '').split(/\bWITH\b/i).map(p => parseDesignator(p.split(/\bOR\b/i)[0])).filter(Boolean);
+    return parts.length ? { parts: parts.map(d => ({ qty: d.qty, name: d.name })), alt: /\bOR\b/i.test(String(text)) } : null;
+}
+
+// Studs (S, CS, CT) count as studs; tracks (T, SLT, JR, U, ...) as track.
+export const isStudProfile = (name) => /^\d{3}(S|CS|CT)\d*-/.test(name || '');
+
 // 14' - 0", 18'-6", 12'-11", 16", 3/4" -> inches (null if unreadable).
 export function parseFeetInches(text) {
     const s = String(text || '').replace(/[″”]/g, '"').replace(/[′’]/g, "'").trim();
@@ -27,10 +49,20 @@ export function parseFeetInches(text) {
     return Number(m[1] || 0) * 12 + Number(m[2] || 0) + (m[3] ? Number(m[3]) / Number(m[4]) : 0);
 }
 
+// "0 TO 3'-6"" -> [0, 42]; " 3'-6" TO 6'-6"" -> [42, 78].
+function parseBand(text) {
+    const m = /^\s*(.*?)\s+TO\s+(.*?)\s*$/i.exec(String(text || ''));
+    if (!m) return null;
+    const a = parseFeetInches(m[1]), b = parseFeetInches(m[2]);
+    return a == null || b == null ? null : [a, b];
+}
+
+const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
+const groupKey = (s) => norm(s).replace(/[^A-Z0-9]/g, ''); // "1A, 1B, 2, 4A, 4B, & 5" matches "1A, 1B, 2, 4A, 4B & 5"
+
 // The wall criteria rows from a workbook (readXlsx output): the sheet whose header has STUD SIZE and FINISH.
 // Returns { rows: [...], sheet, warnings: [...] }.
 export function wallCriteria(sheets) {
-    const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim().toUpperCase();
     for (const sheet of sheets) {
         const h = sheet.rows.findIndex(r => r.some(c => norm(c) === 'STUD SIZE') && r.some(c => norm(c) === 'FINISH'));
         if (h < 0) continue;
@@ -48,8 +80,8 @@ export function wallCriteria(sheets) {
             const band = /_([^_]*?)\s+TO\s+([^_]*?)_/i.exec(mark);
             const layers = /\((\d+)(?:\s*-\s*(\d+))?\s*LAYERS?\)/i.exec(mark);
             rows.push({
-                mark, key: `${mark.split(/[-_]/)[0]}-${String(r[at.finish] || '').trim().toUpperCase()}`,
-                finish: String(r[at.finish] || '').trim().toUpperCase(), minIn: band ? parseFeetInches(band[1]) ?? 0 : 0, maxIn,
+                mark, key: `${mark.split(/[-_]/)[0]}-${norm(r[at.finish])}`,
+                finish: norm(r[at.finish]), minIn: band ? parseFeetInches(band[1]) ?? 0 : 0, maxIn,
                 spacingIn: parseFeetInches(r[at.spacing]) || null, stud, studText: String(r[at.stud]).trim(),
                 bottomTrack: parseDesignator(r[at.bottom])?.name || null, topTrack: parseDesignator(r[at.top])?.name || null,
                 defl: String(r[at.defl] || '').trim(), group: String(r[at.group] || '').trim(), building: String(r[at.building] || '').trim(),
@@ -61,6 +93,36 @@ export function wallCriteria(sheets) {
     return { sheet: null, rows: [], warnings: ['No sheet with STUD SIZE and FINISH columns (the engineer\'s KEY_WALL sheet).'] };
 }
 
+// The door and window opening rows (KEY_DOOR / KEY_WINDOW sheets): mark, max wall height, max height above the
+// opening, opening width band, header, jamb and sill framing, wall types. The header row can sit anywhere in the
+// sheet (the engineer's door sheet has it half way down); rows above it use the same columns.
+// Returns { rows: [...], warnings: [...] }.
+export function openingCriteria(sheets) {
+    const rows = [], warnings = [];
+    for (const sheet of sheets) {
+        const h = sheet.rows.findIndex(r => r.some(c => norm(c) === 'HEADER FRAMING') && r.some(c => norm(c) === 'JAMB FRAMING'));
+        if (h < 0 && !/DOOR|WINDOW/i.test(sheet.name)) continue;
+        const header = h >= 0 ? sheet.rows[h].map(norm) : [];
+        const col = (name, fallback) => { const i = header.findIndex(c => c.startsWith(name)); return i >= 0 ? i : fallback; };
+        const markCol = header.findIndex(c => /OPENING MARK$/.test(c));
+        const at = { mark: markCol >= 0 ? markCol : 0, wall: col('MAX HEIGHT OF WALL', 1), above: col('MAX HEIGHT ABOVE', 2), width: col('MAX OPENING WIDTH', 3),
+            head: col('HEADER FRAMING', 4), jamb: col('JAMB FRAMING', 5), sill: col('SILL FRAMING', 6), group: col('WALL TYPE', 7) };
+        sheet.rows.forEach((r, i) => {
+            if (i === h) return;
+            const mark = String(r[at.mark] || '').trim();
+            const m = /^(\d{3})[A-Z]*-(DOOR|WINDOW)(?:\/MEP)?\/(GWB|GYP|TILE)(?![A-Z])/i.exec(mark); // "_" follows: no \b
+            if (!m) return;
+            const width = parseBand(r[at.width]), wallIn = parseFeetInches(r[at.wall]), aboveIn = parseFeetInches(r[at.above]);
+            const head = parseMemberSpec(r[at.head]), jamb = parseMemberSpec(r[at.jamb]), sill = parseMemberSpec(r[at.sill]);
+            if (!width || !wallIn || !head || !jamb) { warnings.push(`${mark.slice(0, 40)}: can't read the ${!width ? 'width band' : !wallIn ? 'wall height' : !head ? 'header' : 'jamb'}; row skipped`); return; }
+            rows.push({ mark, key: mark.split('_')[0], kind: m[2].toLowerCase(), finish: /TILE/i.test(m[3]) ? 'TILE' : 'GYP', depthIn: Number(m[1]) / 100,
+                maxWallIn: wallIn, maxAboveIn: aboveIn ?? Infinity, minWidthIn: width[0], maxWidthIn: width[1],
+                head: head.parts, jamb: jamb.parts, sill: sill?.parts || null, alt: head.alt || jamb.alt || !!sill?.alt, group: String(r[at.group] || '').trim() });
+        });
+    }
+    return { rows, warnings };
+}
+
 // Choices a project makes once: which wall-type group and building of the criteria apply (when it has several).
 export function criteriaChoices(rows) {
     const groups = [...new Set(rows.map(r => r.group).filter(Boolean))];
@@ -68,13 +130,24 @@ export function criteriaChoices(rows) {
     return { groups, buildings };
 }
 
-// The criteria row for one wall, or null (no band fits: out of the criteria).
+// The criteria row for one wall, or null (no band fits).
 export function pickCriteria(rows, { depthIn, finishClass, layers, heightIn, group = '', building = '' }) {
     const fits = rows.filter(r => Math.abs(r.stud.depthIn - depthIn) < 0.02 && r.finish === finishClass
-        && (!group || !r.group || r.group === group)
+        && (!group || !r.group || groupKey(r.group) === groupKey(group))
         && (!building || !r.building || /^ALL$/i.test(r.building) || r.building.toUpperCase().includes(building.toUpperCase()))
         && (!r.layers || layers == null || (layers >= r.layers[0] && layers <= r.layers[1])));
     return fits.sort((a, b) => a.maxIn - b.maxIn).find(r => heightIn <= r.maxIn + 0.5) || null;
+}
+
+// The criteria row for one opening, or null: its kind, the wall's depth and finish, the wall height, the height
+// above the opening and its width. The engineer's wall-type group names are matched loosely (punctuation aside).
+export function pickOpening(rows, { kind, depthIn, finishClass, wallHeightIn, aboveIn, widthIn, group = '' }) {
+    const g = groupKey(group).replace(/^FOR/, '');
+    return rows.filter(r => r.kind === kind && Math.abs(r.depthIn - depthIn) < 0.02 && r.finish === finishClass
+        && (!g || !r.group || groupKey(r.group).replace(/^FOR/, '') === g)
+        && widthIn > r.minWidthIn - 0.5 && widthIn <= r.maxWidthIn + 0.5
+        && wallHeightIn <= r.maxWallIn + 0.5 && aboveIn <= r.maxAboveIn + 0.5)
+        .sort((a, b) => a.maxWallIn - b.maxWallIn || a.maxAboveIn - b.maxAboveIn)[0] || null;
 }
 
 // "SHAFT" for shaft walls, "TILE" when the type says tile, else "GYP" (the Assemblies tab or an override can change it).
@@ -82,31 +155,63 @@ export function finishClassOf(typeName) {
     return /shaft/i.test(typeName || '') ? 'SHAFT' : /tile/i.test(typeName || '') ? 'TILE' : 'GYP';
 }
 
+const depthCode = (depthIn) => String(Math.floor(depthIn * 100 + 1e-6)).padStart(3, '0');
+
 // The framing of one wall: { studIn, flangeIn, mils, spacingIn, rows, studName, trackName, topTrackName, source,
 // key, finishClass, heightIn }.
 //   asm: its assembly (calc.mjs assemblyFor); settings: the takeoff settings (gauge, spacing);
-//   criteria: { rows, group, building } or null; override: { stud, spacingIn, finishClass } kept by the wall's GUID.
-export function resolveFraming(wall, asm, settings, criteria = null, override = null) {
+//   opts: { criteria: { rows, group, building } | null, override: { stud, spacingIn, finishClass } kept by the wall's
+//   GUID, placeholder: rules.placeholder }.
+export function resolveFraming(wall, asm, settings, { criteria = null, override = null, placeholder = null } = {}) {
     const heightIn = wall.scan?.heightIn || (wall.heightFt > 0 ? wall.heightFt * 12 : (wall.area / wall.length) * 12);
     const finishClass = override?.finishClass || asm.finishClass || finishClassOf(wall.wallType);
     const base = { studIn: asm.studIn, flangeIn: 1.625, mils: asm.mils || settings.mils, spacingIn: asm.spacingIn || settings.studSpacingIn,
         rows: asm.rows || 1, finishClass, heightIn, key: '' };
     const named = (spec) => ({ ...spec, studName: spec.studName || memberType(spec.studIn, 'stud', spec.mils, asm.member),
         trackName: spec.trackName || memberType(spec.studIn, 'track', spec.mils, asm.member) });
+    const fromStud = (d, extra) => named({ ...base, studIn: d.depthIn, flangeIn: d.flangeIn || base.flangeIn, mils: d.mils, rows: base.rows * d.qty, studName: d.name, ...extra });
     const manual = parseDesignator(override?.stud);
     if (manual || override?.spacingIn) {
         const d = manual || { depthIn: base.studIn, flangeIn: base.flangeIn, mils: base.mils, qty: 1, name: null };
-        return named({ ...base, studIn: d.depthIn, flangeIn: d.flangeIn || base.flangeIn, mils: d.mils, rows: base.rows * d.qty,
-            spacingIn: override.spacingIn || base.spacingIn, studName: d.name, source: SOURCES.override });
+        return fromStud(d, { spacingIn: override.spacingIn || base.spacingIn, source: SOURCES.override });
     }
-    if (criteria?.rows?.length && asm.member !== 'furring channel') {
-        const row = pickCriteria(criteria.rows, { depthIn: asm.studIn, finishClass, layers: Math.max(...(asm.layers || [0])), heightIn, group: criteria.group, building: criteria.building });
-        if (row) {
-            return named({ ...base, studIn: row.stud.depthIn, flangeIn: row.stud.flangeIn || base.flangeIn, mils: row.stud.mils, rows: base.rows * row.stud.qty,
-                spacingIn: row.spacingIn || base.spacingIn, studName: row.stud.name, trackName: row.bottomTrack, topTrackName: row.topTrack,
-                source: SOURCES.criteria, key: row.key });
-        }
-        return named({ ...base, source: SOURCES.outOfBand });
+    if (asm.member === 'furring channel') return named({ ...base, source: SOURCES.assembly });
+    const layers = Math.max(...(asm.layers || [0]));
+    if (criteria?.rows?.length) {
+        const row = pickCriteria(criteria.rows, { depthIn: asm.studIn, finishClass, layers, heightIn, group: criteria.group, building: criteria.building });
+        if (row) return fromStud(row.stud, { spacingIn: row.spacingIn || base.spacingIn, trackName: row.bottomTrack, topTrackName: row.topTrack, source: SOURCES.criteria, key: row.key });
     }
-    return named({ ...base, source: SOURCES.assembly });
+    const ph = placeholderStud(placeholder, asm.studIn, finishClass, heightIn);
+    if (ph) return fromStud(ph, { source: criteria?.rows?.length ? SOURCES.gap : SOURCES.placeholder, key: 'placeholder' });
+    return named({ ...base, source: SOURCES.outOfRange });
+}
+
+function placeholderStud(placeholder, depthIn, finishClass, heightIn) {
+    if (!placeholder?.walls?.length) return null;
+    const need = heightIn * (finishClass === 'TILE' ? placeholder.tileHeightFactor || 1 : 1);
+    const row = placeholder.walls.filter(r => Math.abs(r.depthIn - depthIn) < 0.02).sort((a, b) => a.maxHeightFt - b.maxHeightFt)
+        .find(r => need <= r.maxHeightFt * 12 + 0.5);
+    return row ? parseDesignator(row.stud) : null;
+}
+
+// The framing of one opening: { head, jamb, sill: [{ qty, name }] | null, source, key, alt }.
+//   o: { left, right, bottom, top } in inches (a door reaches the floor); spec: the wall's resolveFraming result.
+export function resolveOpening(o, spec, { criteria = null, placeholder = null } = {}) {
+    const kind = o.bottom <= 1 ? 'door' : 'window';
+    const widthIn = o.right - o.left, aboveIn = Math.max(0, spec.heightIn - o.top);
+    if (spec.source === SOURCES.override || spec.source === SOURCES.assembly || !(spec.studName && isStudProfile(spec.studName))) {
+        return null; // hand-set or furring walls: the opening takes the wall's own stud and track
+    }
+    if (criteria?.openings?.length) {
+        const row = pickOpening(criteria.openings, { kind, depthIn: spec.studIn, finishClass: spec.finishClass, wallHeightIn: spec.heightIn, aboveIn, widthIn, group: criteria.group });
+        if (row) return { head: row.head, jamb: row.jamb, sill: kind === 'window' ? row.sill : null, source: SOURCES.criteria, key: row.key, alt: row.alt };
+    }
+    const rules = placeholder?.openings || [];
+    const ph = [...rules].sort((a, b) => a.maxWidthFt - b.maxWidthFt).find(r => widthIn <= r.maxWidthFt * 12 + 0.5) || rules[rules.length - 1];
+    if (!ph) return null;
+    const d = depthCode(spec.studIn);
+    const spec2 = (t) => (t ? parseMemberSpec(t.replace(/\{D\}/g, d))?.parts || null : null);
+    const wide = widthIn > ph.maxWidthFt * 12 + 0.5;
+    return { head: spec2(ph.header), jamb: spec2(ph.jamb), sill: kind === 'window' ? spec2(ph.sill) : null,
+        source: wide ? SOURCES.outOfRange : criteria?.openings?.length ? SOURCES.gap : SOURCES.placeholder, key: 'placeholder', alt: false };
 }

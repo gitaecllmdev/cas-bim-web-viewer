@@ -205,6 +205,15 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel .tk-badge.ok { color: #1e7b34; border-color: #7cc08c; }
 .demo-panel .tk-badge.manual { color: #7a4a00; border-color: #e0b766; background: #fff8e8; }
 .demo-panel .tk-badge.bad { color: #b00020; border-color: #e79aa6; background: #fff2f4; }
+.demo-panel .tk-badge.ph { color: #3d5266; border-color: #aab8c6; background: #f4f7fa; }
+.demo-panel .tk-badge.gap { color: #8a4b00; border-color: #e3a86a; background: #fff4e8; }
+/* Source column: short tags with wall counts */
+.tk-src { display: inline-block; padding: 0 0.4em; margin: 0 0.15em 0.1em 0; border-radius: 3px; font-size: 0.92em; white-space: nowrap; background: #eef2f6; color: #3d5266; }
+.tk-src.ok { background: #e6f4ea; color: #1e6b31; }
+.tk-src.manual { background: #fff3d6; color: #7a4a00; }
+.tk-src.gap { background: #ffecd9; color: #8a4b00; }
+.tk-src.bad { background: #fde7ea; color: #b00020; }
+.demo-panel .tk-grid td.tk-info.tk-srcs { max-width: 17em; white-space: normal; overflow: visible; }
 .demo-panel .tk-grid td.tk-info { font-size: 0.92em; font-weight: 400; color: #33414f; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .demo-panel .tk-grid td.tk-wall { max-width: 19em; }
 .demo-panel .tk-grid td.tk-share { position: relative; min-width: 5.5em; }

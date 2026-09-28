@@ -91,9 +91,9 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
 }
 
 // Openings clipped to the panel: at least 6" each way, and never into the top track (a scanned gap that runs to the
-// top of the wall is an opening up to the underside of the top track).
+// top of the wall is an opening up to the underside of the top track). Other fields (an opening's framing) are kept.
 function clipOpenings(openings, L, H, trackLegIn) {
-    return openings.map(o => ({ left: round16(Math.max(0, o.left)), right: round16(Math.min(L, o.right)), bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(H - trackLegIn, o.top)) }))
+    return openings.map(o => ({ ...o, left: round16(Math.max(0, o.left)), right: round16(Math.min(L, o.right)), bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(H - trackLegIn, o.top)) }))
         .filter(o => o.right - o.left >= 6 && o.top - o.bottom >= 6)
         .sort((a, b) => a.left - b.left);
 }
@@ -103,7 +103,10 @@ function clipOpenings(openings, L, H, trackLegIn) {
 // tracks: it only runs where the wall is solid. Openings stacked in one bay (a door under a high window or a soffit gap)
 // get a piece between them, never a stud through either one. checkLayout() verifies the result.
 // studName / trackName / topTrackName: the engineer's SSMA members when known (e.g. 600S200-54 on 600T125-54 with a
-// 600SLT250-54 slip track at the top); else named from depth and gauge.
+// 600SLT250-54 slip track at the top); else named from depth and gauge. An opening can carry its own framing,
+// o.framing = { head, jamb, sill: [{ qty, name }], source } (the takeoff's criteria): its header, jamb and sill
+// members then take the first part's name, and all parts (e.g. a box header of (2) studs WITH (2) tracks) go in
+// member.parts for the counts; the geometry stays one member each.
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
     member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn;
@@ -125,11 +128,13 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     // Head track over each opening (none when it runs up to the top track), sill track under each window. They reach
     // one flange past the opening each side (the tabs fastened to the jambs). A sill that would sit on the head track
     // of an opening right below it is left out: that head track carries it.
+    // An opening's own framing for a member (see above): { type, parts, src } or nothing.
+    const framed = (o, what) => (o.framing?.[what]?.length ? { type: o.framing[what][0].name, parts: o.framing[what], src: o.framing.source } : {});
     const heads = [];
     for (const o of ops) {
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
         if (!reachesTop(o)) {
-            const head = { role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0 };
+            const head = { role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'head') };
             heads.push(head);
             add(head);
         }
@@ -137,7 +142,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     for (const o of ops.filter(o => !isDoor(o))) {
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), y = o.bottom - LEG;
         const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + LEG > h.y);
-        if (!onHead && y >= LEG) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0 });
+        if (!onHead && y >= LEG) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'sill') });
     }
 
     // Where a vertical at x can run: between the tracks, minus every opening in its bay with its head and sill track.
@@ -161,7 +166,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     // A vertical in pieces where it has to be: a full-height piece keeps its role; a piece of a layout stud, or any
     // piece that doesn't stand on the bottom track, is a cripple. Returns true for a full-height vertical, false for
     // pieces, null when there was no room for any.
-    const vertical = (x, role) => {
+    const vertical = (x, role, own = {}) => {
         let pieces = solidAt(x);
         for (const p of placed.filter(p => x < p.x1 + 0.5 && x + flangeIn > p.x0 - 0.5)) pieces = pieces.flatMap(r => cut(r, [p.y0, p.y1]));
         pieces = pieces.filter(([a, b]) => b - a > 3);
@@ -172,18 +177,18 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
             const r = full ? role : role !== 'stud' && a <= LEG + 1e-6 ? role : 'cripple';
             // Cut lengths as before: a full-height stud is the panel height less the seat allowance (it sits in the tracks);
             // a piece is its track-to-track length less the seat allowance.
-            add({ role: r, orient: 'v', type: studType, x, y: a, w: flangeIn, h: b - a, lengthIn: (full ? H : b - a) - cutbackIn });
+            add({ role: r, orient: 'v', type: studType, x, y: a, w: flangeIn, h: b - a, lengthIn: (full ? H : b - a) - cutbackIn, ...(r === 'jamb stud' ? own : {}) });
         }
         return full;
     };
 
     // End studs and a jamb stud each side of every opening (only where no vertical within 1/2" already runs).
-    const place = (x, role) => vertical(Math.min(Math.max(0, x), L - flangeIn), role);
+    const place = (x, role, own) => vertical(Math.min(Math.max(0, x), L - flangeIn), role, own);
     place(0, 'end stud');
     place(L - flangeIn, 'end stud');
     for (const o of ops) {
-        place(o.left - flangeIn, 'jamb stud');
-        place(o.right, 'jamb stud');
+        place(o.left - flangeIn, 'jamb stud', framed(o, 'jamb'));
+        place(o.right, 'jamb stud', framed(o, 'jamb'));
     }
 
     // Studs on layout (centers at k × spacing from the left end); in an opening's bay they become cripples.

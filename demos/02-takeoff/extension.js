@@ -3,16 +3,17 @@
 // Colors and isolation go through core/client/views.js (3D + 2D plan). Slicers (level, framing type, SSMA stud, role,
 // finish, layers, wall type, fire rating, framing source) filter every tab and the model; the Level slicer follows the
 // header Level picker and back. Walls are colored by framing type, SSMA stud, finish or layers (./colors.mjs).
-// Framing per wall (./criteria.mjs): a manual override kept by the wall's GUID (externalId = Revit UniqueId, so it
-// carries to the next model version), else the engineer's criteria loaded from their .xlsx (kept in this browser or
-// on the local server, never published with the site), else the assembly default.
+// Framing per wall and per opening (./criteria.mjs): a manual override kept by the wall's GUID (externalId = Revit
+// UniqueId, so it carries to the next model version), else the engineer's criteria loaded from their .xlsx (kept in
+// this browser or on the local server, never published with the site), else the SSMA placeholder tables of
+// samples/takeoff-rules.json. Every member line says which (its source).
 // Dashboard tutorial (aggregating properties): https://get-started.aps.autodesk.com/tutorials/dashboard/
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 import { loadPropertyMap, getWallData, getBulkProperties, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
 import { takeoff, assemblyFor, fmtInches, ROLES } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
-import { wallCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
+import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
 import { readXlsx } from './xlsx.mjs';
 import { colorMap, NOT_OURS, NEEDS_REVIEW } from './colors.mjs';
 import { fmtFtIn } from '../common/framing.mjs';
@@ -38,7 +39,10 @@ const CRITERIA_STATE = 'takeoff-criteria';
 // Slicers and their link parameters (level: the header's ?level=, or lv=... for several levels).
 const SLICERS = ['level', 'framing', 'stud', 'role', 'finish', 'layers', 'wallType', 'fire', 'source'];
 const PARAM = { level: 'lv', framing: 'framing', stud: 'stud', role: 'role', finish: 'finish', layers: 'layers', wallType: 'type', fire: 'fire', source: 'source' };
-const WALL_DIMS = ['level', 'framing', 'stud', 'finish', 'layers', 'wallType', 'fire', 'source']; // every slicer but role is per wall
+const WALL_DIMS = ['level', 'framing', 'stud', 'finish', 'layers', 'wallType', 'fire']; // role and source are per member line
+// Short names and badge styles of the framing sources (criteria.mjs SOURCES).
+const SOURCE_TAG = { [SOURCES.override]: ['Manual', 'manual'], [SOURCES.criteria]: ['Criteria', 'ok'], [SOURCES.placeholder]: ['Placeholder', 'ph'],
+    [SOURCES.gap]: ['Placeholder, not in criteria', 'gap'], [SOURCES.outOfRange]: ['Out of range', 'bad'], [SOURCES.assembly]: ['Assembly', 'ph'] };
 const COLOR_BY = { framing: 'Framing type', stud: 'SSMA stud', finish: 'Finish', layers: 'Layers' };
 const SHARE_BY = { studLf: 'Stud LF', trackLf: 'Track LF', boardSf: 'Board SF', walls: 'Walls' };
 // Suggestions for a manual stud override (any SSMA designator can be typed).
@@ -175,7 +179,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // The criteria and manual overrides the framing is resolved with (criteria.mjs).
     get ctx() {
         const c = this.criteria;
-        return { criteria: c ? { rows: c.rows, group: c.group || '', building: c.building || '' } : null, overrides: this.elementOverrides };
+        return { criteria: c ? { rows: c.rows, openings: c.openings || [], group: c.group || '', building: c.building || '' } : null, overrides: this.elementOverrides };
     }
 
     // Every framed wall's member and board lines, recomputed when the settings, assemblies, scans, criteria or
@@ -207,7 +211,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             const sort = dim === 'level' ? this.levelOrder() : DIMENSIONS[dim].sort;
             out[dim] = [...counts].map(([value, walls]) => ({ value, walls })).sort((a, b) => sort(a.value, b.value));
         }
-        out.role = facets(this.lines, this.filters, ['role']).role;
+        Object.assign(out, facets(this.lines, this.filters, ['role', 'source']));
         return out;
     }
 
@@ -363,14 +367,20 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.bindOverride(p);
     }
 
-    // Framing source counts for the walls in scope: from the engineer's criteria, manual overrides, out of band.
+    // Where the walls' framing comes from (walls in scope, by their stud): click one to show those member lines.
     sourceHtml() {
         const counts = new Map();
-        for (const w of this.scope) { const v = this.wallInfo.get(w.dbId)?.source; if (v) counts.set(v, (counts.get(v) || 0) + 1); }
-        const chip = (src, cls, tip) => (counts.get(src) ? `<button class="tk-badge ${cls}" data-source-filter="${attr(src)}" title="${attr(tip)}">${escapeHtml(src)} ${fmt(counts.get(src))}</button>` : '');
-        return chip(SOURCES.criteria, 'ok', "Walls framed from the engineer's criteria: click to show them")
-            + chip(SOURCES.override, 'manual', 'Walls with framing set by hand (kept by GUID): click to show them')
-            + chip(SOURCES.outOfBand, 'bad', 'No criteria row fits these walls (depth, finish, layers or height): framed with the assembly default; click to show them');
+        for (const w of this.scope) { const v = this.wallInfo.get(w.dbId)?.wallSource; if (v) counts.set(v, (counts.get(v) || 0) + 1); }
+        const tips = {
+            [SOURCES.criteria]: "Walls framed from the engineer's criteria",
+            [SOURCES.override]: 'Walls with framing set by hand (kept by GUID)',
+            [SOURCES.placeholder]: 'No engineer criteria loaded: typical SSMA placeholder framing by stud depth and height (samples/takeoff-rules.json). Not engineered.',
+            [SOURCES.gap]: "The engineer's criteria have no row for these walls (depth, finish, layers or height): SSMA placeholder framing. Ask the engineer.",
+            [SOURCES.outOfRange]: 'Neither the criteria nor the placeholder cover these walls (too tall): the fallback gauge. Check them.',
+            [SOURCES.assembly]: 'Furring and other non-stud assemblies',
+        };
+        return Object.keys(SOURCE_TAG).filter(src => counts.get(src)).map(src => `<button class="tk-badge ${SOURCE_TAG[src][1]}" data-source-filter="${attr(src)}"
+            title="${attr(`${tips[src]}: click to show them`)}">${escapeHtml(SOURCE_TAG[src][0])} ${fmt(counts.get(src))}</button>`).join('');
     }
 
     // Colors of the model and the grid: by framing type, SSMA stud, finish or layers, with the key.
@@ -404,7 +414,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
         return `<div class="tk-settings">
             ${this.criteriaHtml()}
-            <label>Default gauge <select data-set="mils">${opt(GAUGES, s.mils)}</select></label>
+            <label title="For walls that neither the criteria nor the SSMA placeholder cover">Fallback gauge <select data-set="mils">${opt(GAUGES, s.mils)}</select></label>
             <label>Studs @ <select data-set="studSpacingIn">${opt([12, 16, 24].map(v => [v, `${v}" o.c.`]), s.studSpacingIn)}</select></label>
             <label>Order studs at <select data-set-text="orderLengths">${opt(ORDER_MODES, s.orderLengths)}</select></label>
             <label>Walls over 20' <select data-set-text="splitTallWalls">${opt([['false', 'One-piece studs'], ['true', 'Split into lifts']], String(!!s.splitTallWalls))}</select></label>
@@ -477,7 +487,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // The model shows the selected row's walls, else the sliced walls (one level alone is the header's section box).
     applyIsolation() {
         const sliced = SLICERS.some(d => d !== 'level' && this.filters[d].size) || this.filters.level.size > 1;
-        const ids = this.selection?.ids || (sliced ? (this.filters.role.size ? totalsOf(this.filteredLines).ids : this.scope.map(w => w.dbId)) : null);
+        const byLine = this.filters.role.size || this.filters.source.size; // member-line slicers: the walls those lines are in
+        const ids = this.selection?.ids || (sliced ? (byLine ? totalsOf(this.filteredLines).ids : this.scope.map(w => w.dbId)) : null);
         if (sameIds(ids, this.isolatedNow)) return;
         this.isolatedNow = ids;
         this.views.isolate(ids?.length ? ids : null, { fit: !!ids?.length });
@@ -550,12 +561,12 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const c = this.criteria;
         const file = `<label class="tk-file" title="The engineer's framing criteria workbook (the KEY_WALL sheet)">${c ? 'Replace' : 'Load'} criteria .xlsx<input type="file" accept=".xlsx" data-criteria-file hidden></label>`;
         if (!c) {
-            return `<div class="tk-criteria"><b>Engineer's criteria:</b> none loaded, framing from the assemblies. ${file}
-                <span class="muted">With criteria, studs, tracks and spacing follow the stud depth, finish class, layers and height of each wall.</span></div>`;
+            return `<div class="tk-criteria"><b>Engineer's criteria:</b> none loaded: studs, tracks and opening framing from the SSMA placeholder tables (typical values, not engineered). ${file}
+                <span class="muted">With criteria, each wall's stud, spacing and tracks follow its stud depth, finish class, layers and height, and each door and window its header, jambs and sill.</span></div>`;
         }
         const pick = (key, list, cur, label) => (list.length > 1 ? `<label>${label} <select data-criteria-${key}>${list.map(v => `<option ${v === cur ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select></label>` : '');
         const skipped = c.warnings?.length ? ` · <span class="warn" title="${attr(c.warnings.join('\n'))}">${c.warnings.length} rows skipped</span>` : '';
-        return `<div class="tk-criteria"><b>Engineer's criteria:</b> ${escapeHtml(c.file)} · ${fmt(c.rows.length)} wall rows${skipped}
+        return `<div class="tk-criteria"><b>Engineer's criteria:</b> ${escapeHtml(c.file)} · ${fmt(c.rows.length)} wall rows · ${fmt(c.openings?.length || 0)} door and window rows${skipped}
             ${pick('group', c.choices.groups, c.group, 'Wall types')} ${pick('building', c.choices.buildings, c.building, 'Building')}
             ${file} <button data-criteria-clear>Remove</button>
             <span class="muted">Kept ${CONFIG.mode === 'static' ? 'in this browser' : 'on the local server'}; never published with the site.</span></div>`;
@@ -566,11 +577,13 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             const file = e.target.files?.[0];
             if (!file) return;
             try {
-                const found = wallCriteria(await readXlsx(await file.arrayBuffer()));
+                const sheets = await readXlsx(await file.arrayBuffer());
+                const found = wallCriteria(sheets);
                 if (!found.rows.length) throw new Error(found.warnings[0] || 'No wall criteria rows found');
                 const choices = criteriaChoices(found.rows);
-                this.criteria = { file: file.name, importedAt: new Date().toISOString(), sheet: found.sheet, rows: found.rows, warnings: found.warnings,
-                    choices, group: choices.groups[0] || '', building: choices.buildings[0] || '' };
+                const openings = openingCriteria(sheets);
+                this.criteria = { file: file.name, importedAt: new Date().toISOString(), sheet: found.sheet, rows: found.rows, openings: openings.rows,
+                    warnings: [...found.warnings, ...openings.warnings], choices, group: choices.groups[0] || '', building: choices.buildings[0] || '' };
                 await this.saveCriteria();
             } catch (err) {
                 alert(`Could not read the criteria: ${err.message || err}`);
@@ -647,11 +660,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             }
         };
         walk(this.tree);
-        const cols = 11 + (this.sheathing ? 1 : 0);
+        const cols = 12 + (this.sheathing ? 1 : 0);
         const shareBy = `<select data-share-by aria-label="Share of">${Object.entries(SHARE_BY).map(([k, l]) => `<option value="${k}" ${k === this.shareBy ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         body.innerHTML = `<div class="tk-grid-wrap"><table class="tk-grid">
             <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th>
-                <th title="The wall types in the row">Wall info</th><th title="The SSMA stud of the walls (engineer's criteria, override or assembly)">SSMA stud</th>
+                <th title="The wall types in the row">Wall info</th><th title="The SSMA stud of the walls">SSMA stud</th><th title="Where the framing of the row comes from, with wall counts: engineer criteria, manual override, SSMA placeholder, out of range">Source</th>
                 <th title="Finish class and board">Finish</th><th title="Gypsum layers, side A + side B">Layers</th>
                 <th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}
                 <th class="num tk-share-h">% of ${shareBy}</th></tr></thead>
@@ -684,7 +697,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     infoCells(t) {
         const one = (list, many) => (!list?.length ? '<span class="muted">–</span>'
             : list.length === 1 ? escapeHtml(list[0]) : `<span class="muted" title="${attr(list.join('\n'))}">${list.length} ${many}</span>`);
-        return `<td class="tk-info tk-wall">${one(t.info.wallTypes, 'wall types')}</td><td class="tk-info">${one(t.info.studs, 'studs')}</td>
+        const src = (t.info.sources || []).map(({ source, walls }) => `<span class="tk-src ${SOURCE_TAG[source]?.[1] || ''}" title="${attr(source)}: ${walls} walls">${escapeHtml(SOURCE_TAG[source]?.[0] || source)} ${fmt(walls)}</span>`).join(' ');
+        return `<td class="tk-info tk-wall">${one(t.info.wallTypes, 'wall types')}</td><td class="tk-info">${one(t.info.studs, 'studs')}</td><td class="tk-info tk-srcs">${src || '<span class="muted">–</span>'}</td>
             <td class="tk-info">${one(t.info.finishes, 'finishes')}</td><td class="tk-info">${one(t.info.layers, 'layer mixes')}</td>`;
     }
 
@@ -891,9 +905,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Every group and member line (open or not), one column per grouping, net quantities.
             const dims = this.groups.map(d => DIMENSIONS[d].label);
             const lines = [[`Takeoff breakdown (${scope})`, 'net quantities, no waste'], [],
-                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Finish', 'Layers', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
+                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Source (walls)', 'Finish', 'Layers', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
             const all = totalsOf(this.filteredLines);
-            const info = (t) => ['wallTypes', 'studs', 'finishes', 'layers'].map(k => t.info[k].join(' / '));
+            const info = (t) => [t.info.wallTypes.join(' / '), t.info.studs.join(' / '), t.info.sources.map(x => `${x.source} ${x.walls}`).join(' / '), t.info.finishes.join(' / '), t.info.layers.join(' / ')];
             const nums = (t) => [...info(t), t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1),
                 all[this.shareBy] ? ((100 * t[this.shareBy]) / all[this.shareBy]).toFixed(1) : ''];
             const walk = (groups, path) => {

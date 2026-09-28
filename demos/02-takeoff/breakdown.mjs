@@ -37,10 +37,13 @@ export const finishLabel = (w, asm, finishClass) => (asm.layers[0] + asm.layers[
 export const layersLabel = (asm) => `${asm.layers[0]} + ${asm.layers[1]}`;
 
 // Flat lines for the framed walls: one per member (code, member type, cut length) and one per board material.
-// Each line: { wall, level, wallType, fire, framing, stud, finish, layers, source, key, member, role, code,
-// kind: 'stud'|'track'|'board', cutIn, pcs, lf, sf }. ctx: { criteria, overrides by wall GUID } (calc.mjs).
-export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}, ctx = {}) {
+// Each line: { wall, level, wallType, fire, framing, stud, finish, layers, source, wallSource, key, member, role, code,
+// kind: 'stud'|'track'|'board', cutIn, pcs, lf, sf }. source: where that member's framing came from (an opening's
+// header can come from the criteria when the wall's stud came from a placeholder); wallSource: the wall's.
+// ctx: { criteria, overrides by wall GUID } (calc.mjs); the SSMA placeholder comes from the rules file.
+export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}, ctxIn = {}) {
     const settings = { ...rules.settings, ...settingsOverride };
+    const ctx = { placeholder: rules.placeholder, ...ctxIn };
     const lines = [];
     for (const w of walls) {
         const asm = assemblyFor(w.wallType ?? NOT_SET, rules, overrides);
@@ -50,11 +53,11 @@ export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}
         const spec = q.spec;
         const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated',
             framing: framingLabel({ studIn: spec.studIn, member: asm.member }), stud: spec.studName, finish: finishLabel(w, asm, spec.finishClass),
-            layers: layersLabel(asm), source: spec.source, key: spec.key };
+            layers: layersLabel(asm), source: spec.source, wallSource: spec.source, key: spec.key };
         for (const m of q.members) {
             const code = m.code;
             const lf = (m.qty * m.lengthIn) / 12;
-            lines.push({ ...base, member: m.type, role: ROLE_NAMES[code] || code, code, kind: m.vertical ? 'stud' : 'track', cutIn: m.lengthIn,
+            lines.push({ ...base, source: m.src || spec.source, member: m.type, role: ROLE_NAMES[code] || code, code, kind: m.vertical ? 'stud' : 'track', cutIn: m.lengthIn,
                 pcs: m.vertical ? m.qty : 0, lf, sf: 0 });
         }
         if (q.boardSf) lines.push({ ...base, member: `${boardFor(w, asm)} gypsum board`, role: ROLE_NAMES.BD, code: 'BD', kind: 'board', cutIn: 0, pcs: 0, lf: 0, sf: q.boardSf });
@@ -93,16 +96,20 @@ export function facets(lines, filters = {}, dims = Object.keys(DIMENSIONS)) {
 export function totalsOf(lines) {
     const ids = new Set();
     const t = { walls: 0, studs: 0, studLf: 0, trackLf: 0, boardSf: 0, sheathingSf: 0, ids: [] };
-    const info = { wallTypes: new Set(), studs: new Set(), finishes: new Set(), layers: new Set(), sources: new Set() };
+    const info = { wallTypes: new Set(), studs: new Set(), finishes: new Set(), layers: new Set() };
+    const sources = new Map(); // source -> walls
     for (const l of lines) {
         ids.add(l.wall);
-        info.wallTypes.add(l.wallType); info.studs.add(l.stud); info.finishes.add(l.finish); info.layers.add(l.layers); info.sources.add(l.source);
+        info.wallTypes.add(l.wallType); info.studs.add(l.stud); info.finishes.add(l.finish); info.layers.add(l.layers);
+        if (!sources.has(l.source)) sources.set(l.source, new Set());
+        sources.get(l.source).add(l.wall);
         if (l.kind === 'stud') { t.studs += l.pcs; t.studLf += l.lf; } else if (l.kind === 'track') t.trackLf += l.lf;
         else if (l.member === 'Exterior sheathing') t.sheathingSf += l.sf; else t.boardSf += l.sf;
     }
     t.walls = ids.size;
     t.ids = [...ids];
     t.info = Object.fromEntries(Object.entries(info).map(([k, set]) => [k, [...set].filter(Boolean).sort(byName)]));
+    t.info.sources = [...sources].map(([source, walls]) => ({ source, walls: walls.size })).sort((a, b) => b.walls - a.walls);
     return t;
 }
 

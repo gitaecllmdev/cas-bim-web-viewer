@@ -202,5 +202,32 @@
             ],
             "sheathingSides": 1
         }
-    ]
+    ],
+    "placeholder": {
+        "_comment": "PLACEHOLDER framing when the engineer's criteria are not loaded or don't cover a wall or opening: typical estimating values in the style of SSMA limiting-height tables (interior partitions, one stud row). NOT engineered and not copied from SSMA tables: replace them with the engineer's criteria (Demo 2, Settings > Load criteria .xlsx). walls: the first row of the wall's stud depth whose maxHeightFt fits its height gives the stud; tile walls use tileHeightFactor x the height (stiffer studs); tracks are the stud's depth and gauge (T125). openings: by opening width, {D} = the wall's stud depth code (362, 600, ...); a WITH part adds members, (2) = two per location.",
+        "tileHeightFactor": 1.25,
+        "walls": [
+            { "depthIn": 1.625, "maxHeightFt": 10, "stud": "162S125-33" },
+            { "depthIn": 2.5, "maxHeightFt": 12, "stud": "250S162-33" },
+            { "depthIn": 2.5, "maxHeightFt": 14, "stud": "250S162-43" },
+            { "depthIn": 3.625, "maxHeightFt": 14, "stud": "362S162-33" },
+            { "depthIn": 3.625, "maxHeightFt": 16, "stud": "362S162-43" },
+            { "depthIn": 3.625, "maxHeightFt": 18, "stud": "362S162-54" },
+            { "depthIn": 3.625, "maxHeightFt": 20, "stud": "362S200-68" },
+            { "depthIn": 4, "maxHeightFt": 15, "stud": "400S162-33" },
+            { "depthIn": 4, "maxHeightFt": 17, "stud": "400S162-43" },
+            { "depthIn": 4, "maxHeightFt": 20, "stud": "400S162-54" },
+            { "depthIn": 6, "maxHeightFt": 18, "stud": "600S162-33" },
+            { "depthIn": 6, "maxHeightFt": 21, "stud": "600S162-43" },
+            { "depthIn": 6, "maxHeightFt": 24, "stud": "600S162-54" },
+            { "depthIn": 6, "maxHeightFt": 28, "stud": "600S200-68" },
+            { "depthIn": 8, "maxHeightFt": 24, "stud": "800S162-43" },
+            { "depthIn": 8, "maxHeightFt": 28, "stud": "800S162-54" },
+            { "depthIn": 8, "maxHeightFt": 32, "stud": "800S200-68" }
+        ],
+        "openings": [
+            { "maxWidthFt": 4, "header": "{D}T200-54", "jamb": "{D}S162-54", "sill": "{D}T150-54" },
+            { "maxWidthFt": 8, "header": "(2) {D}S162-54 WITH (2) {D}T125-54", "jamb": "(2) {D}S162-54", "sill": "{D}T150-54" }
+        ]
+    }
 }
