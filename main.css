@@ -89,6 +89,12 @@ body {
 .pane2d-bar button.active { background: #fff4d6; border-color: #c9a227; }
 .pane2d-bar button:disabled { cursor: default; opacity: 0.5; }
 #sheet-status { margin-left: 0.6em; color: #666; }
+/* Plan labels (views.js setPlanLabels): text on the walls, in the wall's color; dimmed while the view moves */
+.plan-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; transition: opacity 0.15s; }
+.plan-labels.moving { opacity: 0; }
+.plan-label { position: absolute; white-space: nowrap; font: 600 11px/13px "Segoe UI", sans-serif; color: #1d2b38; background: rgba(255, 255, 255, 0.9);
+    border: 1px solid; border-radius: 3px; padding: 0 4px 0 3px; box-shadow: 0 1px 2px rgba(0, 0, 0, 0.15); }
+.plan-label i { display: inline-block; width: 7px; height: 7px; border-radius: 1px; margin-right: 3px; vertical-align: 0; }
 #sheet-status.error { color: #b00020; }
 
 #viewer2d {
@@ -216,8 +222,11 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel .tk-grid td.tk-height { white-space: nowrap; }
 .tk-capped { color: #8a4b00; font-weight: 700; font-size: 0.9em; cursor: help; }
 .demo-panel .tk-grid td.tk-info.tk-srcs { max-width: 17em; white-space: normal; overflow: visible; }
-.demo-panel .tk-grid td.tk-info { font-size: 0.92em; font-weight: 400; color: #33414f; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.demo-panel .tk-grid td.tk-wall { max-width: 19em; }
+/* Wall info columns wrap (up to two lines) so the grid fits the panel */
+.demo-panel .tk-grid td.tk-info { font-size: 0.9em; font-weight: 400; color: #33414f; max-width: 9em; line-height: 1.15; overflow: hidden; white-space: normal;
+    display: table-cell; overflow-wrap: anywhere; }
+.demo-panel .tk-grid td.tk-wall { max-width: 13em; }
+.demo-panel .tk-grid th { white-space: normal; line-height: 1.15; }
 .demo-panel .tk-grid td.tk-share { position: relative; min-width: 5.5em; }
 .tk-share-bar { position: absolute; left: 0.3em; top: 22%; height: 56%; background: rgba(31, 59, 87, 0.14); border-radius: 2px; max-width: calc(100% - 0.6em); }
 .tk-share > span:last-child { position: relative; }
@@ -262,6 +271,10 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel .tk-grid tr.tk-g.d2 td, .demo-panel .tk-grid tr.tk-g.d3 td { background: #fff; font-weight: 600; }
 .demo-panel .tk-grid tr.tk-g:hover td, .demo-panel .tk-grid tr.tk-i:hover td { background: #dfe8f1; }
 .demo-panel .tk-grid tr.selected td { background: #cfe0f0 !important; }
+/* Rows of a wall picked on the plan or in 3D */
+.demo-panel .tk-grid tr.picked td { background: #fff1c2 !important; }
+.demo-panel .tk-grid tr.picked td:first-child { box-shadow: inset 4px 0 0 #e0a100; }
+.tk-pickbar { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3em 0.6em; margin: 0.35em 0 0; padding: 0.3em 0.7em; background: #fff6d9; border-left: 4px solid #e0a100; border-radius: 0 4px 4px 0; font-size: 0.92em; }
 .demo-panel .tk-grid tfoot td { background: #f1f4f7; font-weight: 700; border-top: 2px solid #9aa7b4; }
 .demo-panel .tk-caret { border: none; background: none; padding: 0; width: 1.3em; color: #4a5866; font-size: 0.9em; }
 

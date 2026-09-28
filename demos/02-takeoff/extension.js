@@ -44,6 +44,9 @@ const WALL_DIMS = ['level', 'system', 'framing', 'stud', 'finish', 'layers', 'in
 const SOURCE_TAG = { [SOURCES.override]: ['Manual', 'manual'], [SOURCES.criteria]: ['Criteria', 'ok'], [SOURCES.placeholder]: ['Placeholder', 'ph'],
     [SOURCES.gap]: ['Placeholder, not in criteria', 'gap'], [SOURCES.outOfRange]: ['Out of range', 'bad'], [SOURCES.assembly]: ['Assembly', 'ph'] };
 const COLOR_BY = { framing: 'Framing type', system: 'Wall system', stud: 'SSMA stud', finish: 'Finish', layers: 'Layers', insulation: 'Insulation' };
+// Plan labels (text on each wall of the plan, views.js setPlanLabels): what they say.
+const PLAN_LABELS = { none: 'None', wallType: 'Wall type', typeMark: 'Type mark', stud: 'SSMA stud', track: 'Track', framing: 'Framing type',
+    studHeight: 'Stud height', source: 'Framing source', system: 'Wall system', finish: 'Finish', layers: 'Layers', insulation: 'Insulation' };
 const SHARE_BY = { studLf: 'Stud LF', trackLf: 'Track LF', boardSf: 'Board SF', insulationSf: 'Insulation SF', walls: 'Walls' };
 // Suggestions for a manual stud override (any SSMA designator can be typed).
 const SSMA_SUGGEST = ['162S125-18', '250S125-18', '250S162-33', '362S125-18', '362S162-33', '362S162-43', '362S162-54', '362S200-43', '362S200-54',
@@ -92,6 +95,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.showSettings = false;
         this.showLevels = true;
         this.colorBy = COLOR_BY[params.get('color')] ? params.get('color') : 'framing';
+        this.planLabel = PLAN_LABELS[params.get('labels')] ? params.get('labels') : 'none';
+        this.picked = new Set(); // walls picked on the plan or in 3D (marked in the list)
         this.shareBy = 'studLf';
         this.expanded = new Set(); // Order list items showing their cut-length schedule
         this.panel.innerHTML = `<div class="demo-panel"><h2>Takeoff</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
@@ -102,7 +107,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             this.openDropdown = null;
         };
         document.addEventListener('click', closeLists);
+        const onPick = () => this.onPick();
+        this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onPick);
         this.stops = [
+            () => this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, onPick),
+            () => this.views.setPlanLabels(null),
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', (level) => this.onHeaderLevel(level)),
             () => document.removeEventListener('click', closeLists),
@@ -139,7 +148,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Revit's wall height (Unconnected Height) gives the real stud length; area ÷ length reads low when a wall has openings.
             // Structural Material: the only layer material the Revit export carries in this model (the "Structure" layer list
             // comes through empty); a 1" liner there makes a shaft wall (criteria.mjs wallSystem). R: Revit's thermal resistance.
-            const extra = new Map((await getBulkProperties(model, walls.map(w => w.dbId), ['Unconnected Height', 'Base Offset', 'Structural Material', 'Thermal Resistance (R)', 'Function'])).map(r => [r.dbId, r]));
+            const extra = new Map((await getBulkProperties(model, walls.map(w => w.dbId), ['Unconnected Height', 'Base Offset', 'Structural Material', 'Thermal Resistance (R)', 'Function', 'Type Mark'])).map(r => [r.dbId, r]));
             const scans = await loadScans();
             // Level elevations (ft): a wall's span on its base level runs from its base to the next story up (8 ft or more
             // above, as the header's level section box), so a wall through several levels is counted there only (calc.mjs).
@@ -155,9 +164,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 return { ...w, length: Number(w.length) * lf, area: Number(w.area) * sf,
                     heightFt: Number(p('Unconnected Height')) * lf || undefined,
                     baseOffsetFt, levelSpanFt: spanOf(w.level, baseOffsetFt), scan: scans[w.externalId],
-                    materials: [p('Structural Material')].filter(m => m && !/^<By Category>$/.test(m)), rValue: Number(p('Thermal Resistance (R)')) || null, function: p('Function') || '' };
+                    materials: [p('Structural Material')].filter(m => m && !/^<By Category>$/.test(m)), rValue: Number(p('Thermal Resistance (R)')) || null, function: p('Function') || '',
+                    typeMark: p('Type Mark') || '' };
             });
             this.scanStamp = 0;
+            this.wallById = new Map(this.walls.map(w => [w.dbId, w]));
             // Several levels from the link (lv=...), else the header's level.
             if (!this.filters.level.size && this.views.level) this.filters.level = new Set([this.views.level.name]);
             this.render();
@@ -293,6 +304,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         if (this.groups.join() === DEFAULT_GROUPS.join()) params.delete('group'); else params.set('group', this.groups.join());
         if (this.tab === 'breakdown') params.delete('tab'); else params.set('tab', this.tab);
         if (this.colorBy === 'framing') params.delete('color'); else params.set('color', this.colorBy);
+        if (this.planLabel === 'none') params.delete('labels'); else params.set('labels', this.planLabel);
         history.replaceState(null, '', `?${params}${location.hash}`);
     }
 
@@ -300,7 +312,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     render() {
         const lines = this.lines; // first: the walls' framing (wallInfo) that the slicers read
-        this.result = takeoff(this.scope, this.rules, this.overrides, this.settings, this.ctx);
+        const scope = this.scope;
+        this.scopeIds = new Set(scope.map(w => w.dbId));
+        this.result = takeoff(scope, this.rules, this.overrides, this.settings, this.ctx);
         this.filteredLines = filterLines(lines, this.filters);
         this.tree = groupLines(this.filteredLines, this.groups, { level: this.levelOrder() });
         this.refreshSelection();
@@ -325,6 +339,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 <div class="tk-filters">${this.filtersHtml()}</div>
                 ${this.legendHtml()}
                 ${this.selectionHtml()}
+                ${this.pickHtml()}
             </div>
             ${warn}
             <div data-body></div></div>`;
@@ -334,7 +349,78 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.panel.style.setProperty('--tk-head', `${this.panel.querySelector('.tk-head').offsetHeight}px`); // column titles stick under it
         this.colorWalls();
         this.applyIsolation();
+        this.views.setPlanLabels(this.planLabel !== 'none' ? (id) => this.planLabelFor(id) : null);
         this.syncUrl();
+        if (this.scrollToPicked) {
+            this.scrollToPicked = false;
+            // The deepest marked row, scrolled into view up and down only (the grid can be wider than the panel).
+            const rows = [...this.panel.querySelectorAll('tr.picked')], row = rows.find(r => r.classList.contains('tk-i')) || rows[rows.length - 1];
+            if (row) { const left = this.panel.scrollLeft; row.scrollIntoView({ block: 'center' }); this.panel.scrollLeft = left; }
+        }
+    }
+
+    // --- Plan to list: a wall picked on the plan or in 3D is marked in the list (QC from the drawing) ---------------
+
+    onPick() {
+        if (!this.walls) return;
+        const ids = this.viewer.getSelection().filter(id => this.wallById.has(id));
+        const same = ids.length === this.picked.size && ids.every(id => this.picked.has(id));
+        if (same) return;
+        this.picked = new Set(ids);
+        if (ids.length) {
+            // Open the groups that hold the picked walls, down to their member lines.
+            this.open ??= new Set();
+            const walk = (groups) => { for (const g of groups) if (g.totals.ids.some(id => this.picked.has(id))) { this.open.add(g.key); walk(g.children); } };
+            walk(this.tree || []);
+            this.scrollToPicked = true;
+        }
+        this.render();
+    }
+
+    isPicked(ids) {
+        return this.picked.size > 0 && ids?.some(id => this.picked.has(id));
+    }
+
+    // The picked wall(s): what the takeoff counts for them.
+    pickHtml() {
+        if (!this.picked.size) return '';
+        const ids = [...this.picked];
+        const inView = ids.filter(id => this.filteredLines.some(l => l.wall === id));
+        if (ids.length > 1) {
+            return `<div class="tk-pickbar"><b>${ids.length} walls picked</b> on the plan / in 3D: their rows are marked${inView.length < ids.length ? ` (${ids.length - inView.length} not in these filters)` : ''}.
+                <button data-pick-clear>✕ Clear</button></div>`;
+        }
+        const w = this.wallById.get(ids[0]), info = this.wallInfo.get(ids[0]);
+        const height = (this.filteredLines.filter(l => l.wall === ids[0] && l.code === 'ST').reduce((m, l) => Math.max(m, l.cutIn), 0));
+        const facts = info
+            ? [info.level, info.system, `<b>${escapeHtml(info.stud)}</b>${info.track ? ` on ${escapeHtml(info.track)}` : ''} @ ${fmt(info.spacingIn || 0) || ''}`,
+                height ? `studs ${fmtFtIn(height)}${info.capped ? ' (base level only)' : ''}` : '', info.finish, `layers ${info.layers}`, info.insulation !== 'None' ? info.insulation : '',
+                `<span class="tk-src ${SOURCE_TAG[info.wallSource]?.[1] || ''}">${escapeHtml(SOURCE_TAG[info.wallSource]?.[0] || info.wallSource)}</span>`]
+            : [w.level, 'not in the framing takeoff (not ours: concrete, CMU, glazing, ...)'];
+        return `<div class="tk-pickbar">Picked: <b>${escapeHtml(w.wallType || '')}</b>${w.typeMark ? ` <span class="muted">(${escapeHtml(w.typeMark)})</span>` : ''} · ${facts.filter(Boolean).map(f => (/^</.test(f) ? f : escapeHtml(f)).replace(/&lt;(\/?)b&gt;/g, '<$1b>')).join(' · ')}
+            ${info && !inView.length ? '<span class="warn">not in these filters</span>' : ''}
+            ${info ? '<button data-pick-show title="Show only this wall in the list, in 3D and on the plan">Show only this wall</button>' : ''} <button data-pick-clear>✕</button></div>`;
+    }
+
+    // --- Plan labels ------------------------------------------------------------------------------------------------
+
+    planLabelFor(id) {
+        const w = this.wallById?.get(id);
+        if (!w || !this.scopeIds?.has(id)) return null;
+        if (this.isolatedNow?.length && !this.isolatedNow.includes(id)) return null; // a selected row: only its walls
+        const info = this.wallInfo.get(id);
+        const color = info ? this.colorMaps[this.colorBy].get(info[this.colorBy]) || NOT_OURS : NOT_OURS;
+        const k = this.planLabel;
+        let text = k === 'wallType' ? w.wallType : k === 'typeMark' ? w.typeMark || w.wallType : null;
+        if (text == null) {
+            if (!info) return null; // framing facts: framed walls only
+            if (k === 'studHeight') {
+                const h = this.lines.filter(l => l.wall === id && l.code === 'ST').reduce((m, l) => Math.max(m, l.cutIn), 0);
+                text = h ? `${fmtFtIn(h)}${info.capped ? ' ↥' : ''}` : '';
+            } else if (k === 'source') text = SOURCE_TAG[info.wallSource]?.[0] || info.wallSource;
+            else text = info[k];
+        }
+        return text ? { text: String(text), color } : null;
     }
 
     bindBar() {
@@ -377,6 +463,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             this.save();
         });
         p.querySelector('[data-color-by]')?.addEventListener('change', (e) => { this.colorBy = e.target.value; this.render(); });
+        p.querySelector('[data-plan-labels]')?.addEventListener('change', (e) => { this.planLabel = e.target.value; this.render(); });
+        p.querySelector('[data-pick-clear]')?.addEventListener('click', () => this.viewer.clearSelection());
+        p.querySelector('[data-pick-show]')?.addEventListener('click', () => { const id = [...this.picked][0]; this.viewer.clearSelection(); this.select(`wall:${id}`); this.render(); });
         p.querySelectorAll('[data-source-filter]').forEach(b => b.onclick = () => { this.filters.source = new Set([b.dataset.sourceFilter]); this.render(); });
         this.bindCriteria(p);
         this.bindOverride(p);
@@ -407,7 +496,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         return `<div class="tk-legend-row"><span class="tk-sl-label">Colors</span>
             <select data-color-by aria-label="Color the walls by">${Object.entries(COLOR_BY).map(([k, l]) => `<option value="${k}" ${k === this.colorBy ? 'selected' : ''}>${l}</option>`).join('')}</select>
             ${items.map(([v, n]) => `<span class="tk-key" title="${attr(v)}: ${n} walls"><span class="swatch" style="background:${map.get(v)}"></span>${escapeHtml(v)} <span class="muted">${fmt(n)}</span></span>`).join('')}
-            <span class="tk-key muted"><span class="swatch" style="background:${NOT_OURS}"></span>not ours</span></div>`;
+            <span class="tk-key muted"><span class="swatch" style="background:${NOT_OURS}"></span>not ours</span>
+            <span class="tk-sep"></span><label class="tk-sl-label" title="Text on each wall of the plan, in the wall's color">Plan labels</label>
+            <select data-plan-labels aria-label="Plan labels">${Object.entries(PLAN_LABELS).map(([k, l]) => `<option value="${k}" ${k === this.planLabel ? 'selected' : ''}>${l}</option>`).join('')}</select></div>`;
     }
 
     // Openings are read from the wall geometry (about 1 s per wall), once per wall; Demo 6 saves its scans here too.
@@ -476,6 +567,10 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             const g = findGroup(this.tree, value.slice(0, at)), itemKey = value.slice(at + 2);
             const item = g?.items?.find(i => i.key === itemKey);
             return item ? { ids: item.totals.ids, label: `${pathLabel(g.key)} ▸ ${this.itemLabel(item, false)}` } : null;
+        }
+        if (kind === 'wall') {
+            const w = this.wallById.get(Number(value));
+            return w ? { ids: [w.dbId], label: `${w.wallType}${w.typeMark ? ` (${w.typeMark})` : ''} · ${w.level}` } : null;
         }
         if (kind === 'item') {
             const m = r.materials.find(x => x.item === value);
@@ -730,7 +825,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     groupRow(g) {
         const open = this.open.has(g.key);
         const swatch = this.colorMaps[g.dim] ? `<span class="swatch" style="background:${this.colorMaps[g.dim].get(g.value) || NOT_OURS}"></span>` : '';
-        const sel = this.selection?.key === `grp:${g.key}` ? 'selected' : '';
+        const sel = `${this.selection?.key === `grp:${g.key}` ? 'selected' : ''} ${this.isPicked(g.totals.ids) ? 'picked' : ''}`;
         return `<tr class="tk-g d${Math.min(g.depth, 3)} clickable ${sel}" data-grp="${attr(g.key)}" title="Show these ${fmt(g.totals.walls)} walls">
             <td style="padding-left:${0.3 + g.depth * 1.1}em"><button class="tk-caret" data-caret="${attr(g.key)}" aria-label="${open ? 'Close' : 'Open'}" aria-expanded="${open}">${open ? '▾' : '▸'}</button>${swatch}${escapeHtml(g.value)}</td>
             ${this.infoCells(g.totals)}${this.numCells(g.totals)}</tr>`;
@@ -747,7 +842,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     itemRow(g, item) {
         const key = `${g.key}${SEP}#${item.key}`;
-        const sel = this.selection?.key === `itm:${key}` ? 'selected' : '';
+        const sel = `${this.selection?.key === `itm:${key}` ? 'selected' : ''} ${this.isPicked(item.totals.ids) ? 'picked' : ''}`;
         return `<tr class="tk-i clickable ${sel}" data-itm="${attr(key)}" title="Show the walls with this member">
             <td style="padding-left:${1.9 + g.depth * 1.1}em">${this.itemLabel(item)}</td>${this.infoCells(item.totals, item)}${this.numCells(item.totals)}</tr>`;
     }
@@ -781,21 +876,21 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     // A material line; stud and track lines expand to their cut-length schedule (the lengths to order).
     materialRow(m) {
-        const isSel = (key) => (this.selection?.key === key ? 'selected' : '');
+        const isSel = (key, ids) => `${this.selection?.key === key ? 'selected' : ''} ${this.isPicked(ids) ? 'picked' : ''}`;
         if (!m.marks) {
-            const pick = m.ids?.length ? ` class="clickable ${isSel(`item:${m.item}`)}" data-select-item="${escapeHtml(m.item)}" title="Show these walls"` : '';
+            const pick = m.ids?.length ? ` class="clickable ${isSel(`item:${m.item}`, m.ids)}" data-select-item="${escapeHtml(m.item)}" title="Show these walls"` : '';
             return `<tr${pick}><td style="padding-left:1em">${escapeHtml(m.item)}</td><td class="num">${fmt(m.qty)}</td><td>${m.unit}</td><td class="num muted">${m.extra || ''}</td></tr>`;
         }
         const open = this.expanded.has(m.item);
         const s = this.result.settings;
         const long = m.longCount ? ` <span class="warn" title="longer than the longest stock stud">${fmt(m.longCount)} over ${Math.max(...s.studStockFt)}'</span>` : '';
-        const head = `<tr class="clickable ${isSel(`item:${m.item}`)}" data-toggle-item="${escapeHtml(m.item)}" title="Show these walls and the member schedule"><td style="padding-left:0.3em">${open ? '▾' : '▸'} ${escapeHtml(m.item)}${long}</td>
+        const head = `<tr class="clickable ${isSel(`item:${m.item}`, m.ids)}" data-toggle-item="${escapeHtml(m.item)}" title="Show these walls and the member schedule"><td style="padding-left:0.3em">${open ? '▾' : '▸'} ${escapeHtml(m.item)}${long}</td>
             <td class="num">${fmt(m.qty)}</td><td>${m.unit}</td><td class="num muted">${m.extra || ''}</td></tr>`;
         if (!open) return head;
         const isStud = m.kind === 'stud';
         const order = (e) => !isStud ? `cut from ${s.trackStockFt}' stock` : e.perPiece > 1 ? `${fmtFtIn(e.orderIn)} stock, ${e.perPiece} per piece → ${fmt(e.pieces)}`
             : e.orderIn === e.cutIn ? 'cut to length' : `order ${fmtFtIn(e.orderIn)}`;
-        const rows = m.marks.map(e => `<tr class="clickable ${isSel(`mark:${e.mark}`)}" data-select-mark="${escapeHtml(e.mark)}" title="Show the walls with ${escapeHtml(e.mark)}"><td style="padding-left:1.6em"><b>${e.mark}</b></td><td>${escapeHtml(e.role)}</td>
+        const rows = m.marks.map(e => `<tr class="clickable ${isSel(`mark:${e.mark}`, e.ids)}" data-select-mark="${escapeHtml(e.mark)}" title="Show the walls with ${escapeHtml(e.mark)}"><td style="padding-left:1.6em"><b>${e.mark}</b></td><td>${escapeHtml(e.role)}</td>
             <td class="num">${fmtFtIn(e.cutIn)}${e.long ? ' <span class="warn">long</span>' : ''}</td><td class="num">${fmt(e.qty)}</td>
             <td>${order(e)}</td><td class="num muted">${fmt(e.lf)}</td></tr>`).join('');
         const summary = isStud && s.orderLengths !== 'exact' && m.order?.length

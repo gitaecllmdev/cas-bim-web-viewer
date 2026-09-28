@@ -103,7 +103,8 @@ export class Views {
         const current = viewer.getSelection();
         const same = (a, b) => a.length === b.length && a.every(id => b.includes(id));
         if (ids?.length) {
-            if (this.planHighlight && same(current, ids)) return;
+            // Already shown, or the user has picked something on the plan or in 3D since: leave their pick.
+            if (this.planHighlight && (same(current, ids) || (current.length && !same(current, this.planHighlight)))) return;
             this.planHighlight = [...ids];
             this.quietUntil = performance.now() + 300; // don't mirror this selection to the 3D view
             viewer.select(ids, model);
@@ -174,6 +175,90 @@ export class Views {
                 this.syncing = false;
             }
         });
+    }
+
+    // --- Plan labels: text on the walls of the plan (e.g. the wall type or its SSMA stud), in the wall's color ------
+    // labelOf(dbId) -> { text, color } | null (null: no label for that object). Where each wall is drawn on the sheet is
+    // not in the 2D data, so the plan is sampled where it is shown: Viewer3D.hitTest (which object) and clientToWorld
+    // (where on the sheet) on a grid, in small batches while the view is still. Each sheet's samples are kept and grow
+    // as the user pans and zooms; a label goes at the middle of the wall's samples, along the wall; labels that would
+    // overlap are left out. Viewer3D hitTest, clientToWorld, worldToClient, CAMERA_CHANGE_EVENT:
+    // https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+
+    setPlanLabels(labelOf) {
+        this.planLabelOf = labelOf || null;
+        if (!labelOf) { this.viewer2d?.container.querySelector('.plan-labels')?.remove(); return; }
+        this.schedulePlanLabels(50);
+    }
+
+    schedulePlanLabels(delay = 350) {
+        clearTimeout(this.planLabelTimer);
+        this.planLabelTimer = setTimeout(() => this.drawPlanLabels(), delay);
+    }
+
+    async drawPlanLabels() {
+        const v = this.viewer2d, model = this.model2d;
+        if (!this.planLabelOf || !v || !model?.isLoadDone() || !v.container.clientWidth) return;
+        const run = (this.planLabelRun = (this.planLabelRun || 0) + 1);
+        this.planSamples ??= new Map();
+        const key = model.getDocumentNode()?.guid?.() || model.id;
+        if (!this.planSamples.has(key)) this.planSamples.set(key, { cells: new Set(), walls: new Map() });
+        const store = this.planSamples.get(key);
+        this.placePlanLabels(store); // what is known already, right away
+        // Sample the view on a 7 px grid, ~250 points per step so the page stays responsive.
+        const W = v.container.clientWidth, H = v.container.clientHeight, step = 7;
+        const size = (() => { const a = v.clientToWorld(0, 0)?.point, b = v.clientToWorld(step, 0)?.point; return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0; })();
+        if (!size) return;
+        const pts = [];
+        for (let y = step / 2; y < H; y += step) for (let x = step / 2; x < W; x += step) pts.push([x, y]);
+        for (let i = 0; i < pts.length; i += 250) {
+            if (run !== this.planLabelRun || this.model2d !== model) return; // the view moved or the sheet changed
+            for (const [x, y] of pts.slice(i, i + 250)) {
+                const w = v.clientToWorld(x, y)?.point;
+                if (!w) continue;
+                const cell = `${Math.round(w.x / size)},${Math.round(w.y / size)}`;
+                if (store.cells.has(cell)) continue; // sampled before, at this zoom or finer
+                store.cells.add(cell);
+                const id = v.hitTest(x, y, false)?.dbId;
+                if (!(id > 0)) continue;
+                if (!store.walls.has(id)) store.walls.set(id, []);
+                store.walls.get(id).push(w.x, w.y);
+            }
+            await new Promise(r => setTimeout(r, 0));
+        }
+        if (run === this.planLabelRun) this.placePlanLabels(store);
+    }
+
+    placePlanLabels(store) {
+        const v = this.viewer2d;
+        let layer = v.container.querySelector('.plan-labels');
+        if (!layer) { layer = document.createElement('div'); layer.className = 'plan-labels'; v.container.appendChild(layer); }
+        const W = v.container.clientWidth, H = v.container.clientHeight, placed = [], html = [];
+        for (const [id, p] of store.walls) {
+            if (p.length < 6) continue;
+            const label = this.planLabelOf(id);
+            if (!label?.text) continue;
+            // Middle and direction of the wall's samples (principal axis).
+            let sx = 0, sy = 0; const n = p.length / 2;
+            for (let i = 0; i < p.length; i += 2) { sx += p[i]; sy += p[i + 1]; }
+            const cx = sx / n, cy = sy / n;
+            let xx = 0, yy = 0, xy = 0;
+            for (let i = 0; i < p.length; i += 2) { const dx = p[i] - cx, dy = p[i + 1] - cy; xx += dx * dx; yy += dy * dy; xy += dx * dy; }
+            const a = 0.5 * Math.atan2(2 * xy, xx - yy);
+            const c = v.worldToClient(new THREE.Vector3(cx, cy, 0)), d = v.worldToClient(new THREE.Vector3(cx + Math.cos(a), cy + Math.sin(a), 0));
+            if (!c || c.x < 0 || c.y < 0 || c.x > W || c.y > H) continue;
+            let deg = (Math.atan2(d.y - c.y, d.x - c.x) * 180) / Math.PI;
+            if (deg > 90) deg -= 180; else if (deg < -90) deg += 180;
+            const w = label.text.length * 6.4 + 10, h = 15, r = (Math.abs(deg) * Math.PI) / 180;
+            const bw = w * Math.cos(r) + h * Math.sin(r), bh = w * Math.sin(r) + h * Math.cos(r);
+            const box = [c.x - bw / 2, c.y - bh / 2, c.x + bw / 2, c.y + bh / 2];
+            if (placed.some(q => box[0] < q[2] && box[2] > q[0] && box[1] < q[3] && box[3] > q[1])) continue;
+            placed.push(box);
+            html.push(`<div class="plan-label" style="left:${c.x.toFixed(1)}px;top:${c.y.toFixed(1)}px;transform:translate(-50%,-50%) rotate(${deg.toFixed(1)}deg);border-color:${label.color || '#1f3b57'}">`
+                + `<i style="background:${label.color || '#1f3b57'}"></i>${escapeHtml(label.text)}</div>`);
+        }
+        layer.innerHTML = html.join('');
+        layer.classList.remove('moving');
     }
 
     // --- Levels: section box in 3D + that level's plan in 2D -------------------------------------
@@ -281,6 +366,12 @@ export class Views {
         viewer.setTheme('light-theme');
         this.viewer2d = viewer;
         this.syncSelection(viewer);
+        // Plan labels follow the camera: dimmed while it moves, re-placed (and the new view sampled) when it stops.
+        viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+            if (!this.planLabelOf) return;
+            viewer.container.querySelector('.plan-labels')?.classList.add('moving');
+            this.schedulePlanLabels();
+        });
         this.emit('viewer2d', viewer);
         return viewer;
     }
@@ -318,7 +409,7 @@ export class Views {
             this.frame2d();
         };
         apply();
-        const loaded = () => { if (viewer.model === model) this.setSheetStatus(''); apply(); };
+        const loaded = () => { if (viewer.model === model) this.setSheetStatus(''); apply(); if (this.planLabelOf) this.schedulePlanLabels(100); };
         if (model.isLoadDone()) loaded();
         else {
             viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function onLoaded(ev) {

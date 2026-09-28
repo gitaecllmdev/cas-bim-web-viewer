@@ -56,7 +56,7 @@ export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}
         const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated',
             framing: framingLabel({ studIn: spec.studIn, member: asm.member }), stud: spec.studName, finish: finishLabel(w, asm, spec.finishClass),
             layers: layersLabel(asm), source: spec.source, wallSource: spec.source, key: spec.key,
-            system: spec.system, systemWhy: spec.systemWhy, insulation: q.insulation || 'None',
+            system: spec.system, systemWhy: spec.systemWhy, insulation: q.insulation || 'None', track: spec.trackName, spacingIn: spec.spacingIn,
             capped: q.capped, fullHeightFt: q.fullHeight }; // capped: counted on its base level only (calc.mjs)
         for (const m of q.members) {
             const code = m.code;
