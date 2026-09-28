@@ -11,6 +11,8 @@
 import { toThemingColor, getLevels, loadPropertyMap, findWalls, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
+const PLAN_OTHER_WALLS = '#cfd5dc'; // on the plan, walls outside the isolated set
+const PLAN_ISOLATED = '#1f3b57';    // isolated walls without a color of their own
 
 export class Views {
     constructor(viewer3d) {
@@ -79,17 +81,43 @@ export class Views {
         this.setColors([]);
     }
 
+    // On the plan, isolated walls keep their color (or navy) and the other walls go light grey, while everything else
+    // (room names, doors, grids) stays at full strength: Viewer isolation would fade the whole drawing.
     applyColors(viewer, model) {
         viewer.clearThemingColors(model);
+        if (viewer === this.viewer2d && this.isolated) {
+            const iso = new Set(this.isolated);
+            for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
+            for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
+            return;
+        }
         for (const [dbId, hex] of this.colors) viewer.setThemingColor(dbId, toThemingColor(hex), model);
     }
 
-    // Isolate dbIds in both viewers (null/empty = show everything again). Fits the 3D view.
+    // Isolate dbIds in both viewers (null/empty = show everything again). Fits the 3D view. The plan shows it with
+    // colors instead (applyColors).
     isolate(ids, { fit = true } = {}) {
         this.isolated = ids?.length ? [...ids] : null;
-        for (const [viewer, model] of this.active) viewer.isolate(this.isolated || [], model);
+        for (const [viewer, model] of this.active) {
+            if (viewer === this.viewer2d) this.applyColors(viewer, model);
+            else viewer.isolate(this.isolated || [], model);
+        }
         if (fit && this.viewer3d.model) this.viewer3d.fitToView(this.isolated, this.viewer3d.model);
         if (fit && this.model2d) this.frame2d();
+    }
+
+    // Open the plan of the level where most of these walls are (none: the header level's plan), if it isn't open.
+    async showPlanFor(ids) {
+        let best = this.level?.name || null, most = 0;
+        if (ids?.length) {
+            const set = new Set(ids);
+            for (const [name, walls] of this.wallsByLevel) {
+                const n = walls.reduce((k, id) => k + (set.has(id) ? 1 : 0), 0);
+                if (n > most) { most = n; best = name; }
+            }
+        }
+        const plan = this.planFor(best);
+        if (this.showing2d && plan && plan !== this.model2d?.getDocumentNode()) await this.openSheet(plan);
     }
 
     hide(ids) {
@@ -100,7 +128,10 @@ export class Views {
     showAll() {
         this.isolated = null;
         this.hidden = [];
-        for (const [viewer] of this.active) viewer.showAll();
+        for (const [viewer, model] of this.active) {
+            viewer.showAll();
+            if (viewer === this.viewer2d) this.applyColors(viewer, model);
+        }
     }
 
     select(ids) {
@@ -259,8 +290,7 @@ export class Views {
         // Re-apply the shared state once the sheet's objects are there.
         const apply = () => {
             if (viewer.model !== model) return;
-            this.applyColors(viewer, model);
-            viewer.isolate(this.isolated || [], model);
+            this.applyColors(viewer, model); // with the isolated walls highlighted (no Viewer isolation on plans)
             if (this.hidden.length) viewer.hide(this.hidden, model);
             const selection = this.viewer3d.getSelection();
             if (selection.length) viewer.select(selection, model);

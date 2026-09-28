@@ -422,11 +422,14 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         if (sameIds(ids, this.isolatedNow)) return;
         this.isolatedNow = ids;
         this.views.isolate(ids?.length ? ids : null, { fit: !!ids?.length });
+        // The plan follows: the level where most of these walls are, or back to the header's level.
+        this.views.showPlanFor(ids).catch(err => console.warn('Plan not switched:', err.message));
     }
 
     isolateWalls(ids) {
         this.isolatedNow = ids;
         this.views.isolate(ids);
+        this.views.showPlanFor(ids).catch(err => console.warn('Plan not switched:', err.message));
     }
 
     selectionHtml() {

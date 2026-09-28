@@ -130,7 +130,7 @@ export async function roomsBeside(views, g, dbId) {
         };
         return { A: pickRoom(hits.A), B: pickRoom(hits.B), plan: m2.getDocumentNode()?.name?.() || '' };
     } finally {
-        v2.isolate(views.isolated || [], m2);
+        views.applyColors(v2, m2); // plans show isolation with colors, never Viewer isolation (views.js)
         views.frame2d();
     }
 }
