@@ -1,6 +1,7 @@
 // The takeoff Breakdown (Demo 2): every framing member and board line of every framed wall as a flat line, so the
-// grid can slice (filter) and group it by any mix of level, framing type, member, role, wall type and fire rating,
-// with sub-totals on every group. Pure functions (no Viewer); tests/takeoff.test.js checks them against takeoff().
+// grid can slice (filter) and group it by any mix of level, framing type, SSMA stud, member, role, finish, layers,
+// wall type, fire rating and framing source, with sub-totals and wall info on every group. Pure functions (no
+// Viewer); tests/takeoff.test.js checks them against takeoff().
 // Quantities are net (no waste): the Order list (takeoff().materials) adds waste and rounds to pieces.
 import { assemblyFor, boardFor, wallQuantities, fmtInches } from './calc.mjs';
 
@@ -13,10 +14,14 @@ const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric
 export const DIMENSIONS = {
     level: { label: 'Level', value: l => l.level, sort: byName },
     framing: { label: 'Framing type', value: l => l.framing, sort: (a, b) => depthOf(a) - depthOf(b) || byName(a, b) },
+    stud: { label: 'SSMA stud', value: l => l.stud, sort: byName },
     member: { label: 'Member', value: l => l.member, sort: (a, b) => memberRank(a) - memberRank(b) || byName(a, b) },
     role: { label: 'Role', value: l => l.role, sort: (a, b) => ROLE_ORDER.indexOf(codeOf(a)) - ROLE_ORDER.indexOf(codeOf(b)) },
+    finish: { label: 'Finish', value: l => l.finish, sort: byName },
+    layers: { label: 'Layers', value: l => l.layers, sort: byName },
     wallType: { label: 'Wall type', value: l => l.wallType, sort: byName },
     fire: { label: 'Fire rating', value: l => l.fire, sort: byName },
+    source: { label: 'Framing source', value: l => l.source, sort: byName },
 };
 export const DEFAULT_GROUPS = ['level', 'framing', 'member'];
 
@@ -24,20 +29,28 @@ const depthOf = (label) => { const m = /^(\d+)(?: (\d+)\/(\d+))?"|^(\d+)\/(\d+)"
 const memberRank = (name) => (/gypsum|sheathing/i.test(name) ? 2 : /T\d/.test(name) ? 1 : 0); // studs, then track, then board
 const codeOf = (roleName) => Object.keys(ROLE_NAMES).find(k => ROLE_NAMES[k] === roleName) || 'ZZ';
 
-// "3 5/8" studs", "7/8" furring": the framing type of a wall's assembly.
-export const framingLabel = (asm) => `${fmtInches(asm.studIn)} ${asm.member === 'furring channel' ? 'furring' : 'studs'}`;
+// "3 5/8" framing", "7/8" furring": the framing type (stud depth) of a wall.
+export const framingLabel = (asm) => `${fmtInches(asm.studIn)} ${asm.member === 'furring channel' ? 'furring' : 'framing'}`;
+
+// The wall's finish: finish class (GYP / TILE / SHAFT) and board, and its gypsum layers per side.
+export const finishLabel = (w, asm, finishClass) => (asm.layers[0] + asm.layers[1] ? `${finishClass} · ${boardFor(w, asm)}` : 'No board');
+export const layersLabel = (asm) => `${asm.layers[0]} + ${asm.layers[1]}`;
 
 // Flat lines for the framed walls: one per member (code, member type, cut length) and one per board material.
-// Each line: { wall, level, wallType, fire, framing, member, role, code, kind: 'stud'|'track'|'board', cutIn, pcs, lf, sf }.
-export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}) {
+// Each line: { wall, level, wallType, fire, framing, stud, finish, layers, source, key, member, role, code,
+// kind: 'stud'|'track'|'board', cutIn, pcs, lf, sf }. ctx: { criteria, overrides by wall GUID } (calc.mjs).
+export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}, ctx = {}) {
     const settings = { ...rules.settings, ...settingsOverride };
     const lines = [];
     for (const w of walls) {
         const asm = assemblyFor(w.wallType ?? NOT_SET, rules, overrides);
         if (asm.scope !== 'framed') continue;
-        const q = wallQuantities(w, asm, settings);
+        const q = wallQuantities(w, asm, settings, ctx);
         if (q.missing) continue;
-        const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated', framing: framingLabel(asm) };
+        const spec = q.spec;
+        const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated',
+            framing: framingLabel({ studIn: spec.studIn, member: asm.member }), stud: spec.studName, finish: finishLabel(w, asm, spec.finishClass),
+            layers: layersLabel(asm), source: spec.source, key: spec.key };
         for (const m of q.members) {
             const code = m.code;
             const lf = (m.qty * m.lengthIn) / 12;
@@ -75,17 +88,21 @@ export function facets(lines, filters = {}, dims = Object.keys(DIMENSIONS)) {
     return out;
 }
 
-// Totals of a set of lines: walls (distinct), stud pieces and LF, track LF, board and sheathing SF, and the wall ids.
+// Totals of a set of lines: walls (distinct), stud pieces and LF, track LF, board and sheathing SF, the wall ids,
+// and the wall info of the group (distinct wall types, SSMA studs, finishes, layers, framing sources).
 export function totalsOf(lines) {
     const ids = new Set();
     const t = { walls: 0, studs: 0, studLf: 0, trackLf: 0, boardSf: 0, sheathingSf: 0, ids: [] };
+    const info = { wallTypes: new Set(), studs: new Set(), finishes: new Set(), layers: new Set(), sources: new Set() };
     for (const l of lines) {
         ids.add(l.wall);
+        info.wallTypes.add(l.wallType); info.studs.add(l.stud); info.finishes.add(l.finish); info.layers.add(l.layers); info.sources.add(l.source);
         if (l.kind === 'stud') { t.studs += l.pcs; t.studLf += l.lf; } else if (l.kind === 'track') t.trackLf += l.lf;
         else if (l.member === 'Exterior sheathing') t.sheathingSf += l.sf; else t.boardSf += l.sf;
     }
     t.walls = ids.size;
     t.ids = [...ids];
+    t.info = Object.fromEntries(Object.entries(info).map(([k, set]) => [k, [...set].filter(Boolean).sort(byName)]));
     return t;
 }
 

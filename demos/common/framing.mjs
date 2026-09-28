@@ -102,17 +102,19 @@ function clipOpenings(openings, L, H, trackLegIn) {
 // Every vertical (end stud, jamb stud, layout stud) is cut around ALL the openings in its bay, with their head and sill
 // tracks: it only runs where the wall is solid. Openings stacked in one bay (a door under a high window or a soffit gap)
 // get a piece between them, never a stud through either one. checkLayout() verifies the result.
+// studName / trackName / topTrackName: the engineer's SSMA members when known (e.g. 600S200-54 on 600T125-54 with a
+// 600SLT250-54 slip track at the top); else named from depth and gauge.
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
-    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN }) {
+    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn;
     const ops = clipOpenings(openings, L, H, LEG);
-    const studType = memberType(studIn, 'stud', mils, member), trackType = memberType(studIn, 'track', mils, member);
+    const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
     const members = [];
     const add = (m) => members.push({ func: FUNC_OF_ROLE[m.role], ...m, lengthIn: floor8(m.lengthIn) });
     const reachesTop = (o) => o.top >= H - LEG - 1;
 
     // Tracks: top full length; bottom broken at door openings.
-    add({ role: 'top track', orient: 'h', type: trackType, x: 0, y: H - LEG, w: L, h: LEG, lengthIn: L });
+    add({ role: 'top track', orient: 'h', type: topTrackName || trackType, x: 0, y: H - LEG, w: L, h: LEG, lengthIn: L });
     let start = 0;
     for (const door of ops.filter(isDoor)) {
         if (door.left - start > 1) add({ role: 'bottom track', orient: 'h', type: trackType, x: start, y: 0, w: door.left - start, h: LEG, lengthIn: door.left - start });

@@ -1,6 +1,7 @@
 // Takeoff report (takeoff.html): framing (studs, track, headers, sills, cripples by mark and cut length), board and
 // finish, by level. Same math as Demo 2 (demos/02-takeoff/calc.mjs) on the walls Demo 2 saved from the model
-// ('takeoff-snapshot'), the opening scans ('wall-openings') and the estimator's settings and assemblies ('takeoff').
+// ('takeoff-snapshot'), the opening scans ('wall-openings'), the estimator's settings, assemblies and framing overrides
+// by wall GUID ('takeoff'), and the engineer's criteria if this browser has loaded them ('takeoff-criteria').
 // Changes made here (level, gauge, order lengths) are for viewing only and are not saved.
 import { loadState, fetchJson, escapeHtml, downloadCsv } from './helpers.js';
 import { takeoff, ROLES } from './demos/02-takeoff/calc.mjs';
@@ -13,14 +14,14 @@ const GAUGES = [[18, '18 mil (25 ga)'], [30, '30 mil (20 ga EQ)'], [33, '33 mil 
 const fmt = (n, digits = 0) => Number(n || 0).toLocaleString(undefined, { minimumFractionDigits: digits, maximumFractionDigits: digits });
 const nat = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
 
-let snapshot, rules, saved, walls, result;
+let snapshot, rules, saved, criteria, walls, result;
 const view = { level: params.get('level') || '', tab: params.get('tab') === 'types' ? 'types' : 'materials', settings: {}, expanded: new Set() };
 
 start().catch(err => { main.innerHTML = `<p class="warn">Could not load the takeoff: ${escapeHtml(err.message || err)}</p>`; });
 
 async function start() {
-    [snapshot, rules, saved] = await Promise.all([loadState('takeoff-snapshot').catch(() => ({})), fetchJson('samples/takeoff-rules.json'),
-        loadState('takeoff').catch(() => ({}))]);
+    [snapshot, rules, saved, criteria] = await Promise.all([loadState('takeoff-snapshot').catch(() => ({})), fetchJson('samples/takeoff-rules.json'),
+        loadState('takeoff').catch(() => ({})), loadState('takeoff-criteria').catch(() => ({}))]);
     if (!snapshot.walls?.length) {
         main.innerHTML = `<section class="card"><h2>No takeoff published yet</h2>
             <p>Open the <a href="index.html?demo=02-takeoff">3D takeoff</a> once on the local server, then publish the site.</p></section>`;
@@ -34,7 +35,9 @@ async function start() {
 
 function render() {
     const scope = view.level ? walls.filter(w => (w.level ?? 'Not set') === view.level) : walls;
-    result = takeoff(scope, rules, saved.overrides || {}, view.settings);
+    const ctx = { overrides: saved.elementOverrides || {},
+        criteria: criteria?.rows?.length ? { rows: criteria.rows, group: criteria.group || '', building: criteria.building || '' } : null };
+    result = takeoff(scope, rules, saved.overrides || {}, view.settings, ctx);
     const s = result.settings;
     const levels = [...new Set(walls.map(w => w.level).filter(Boolean))].sort(nat);
     main.innerHTML = `

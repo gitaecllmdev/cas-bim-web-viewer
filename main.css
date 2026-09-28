@@ -196,6 +196,26 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .tk-filters .tk-sl-label { min-width: 0; margin-right: 0.1em; }
 .demo-panel .tk-grid thead th { position: sticky; top: var(--tk-head, 0px); z-index: 2; }
 .tk-dd-list .tk-legend { margin: 0.4em 0 0; }
+/* Colors key (the model and the grid), framing source badges, share bars, wall info columns */
+.tk-legend-row { display: flex; flex-wrap: wrap; align-items: center; gap: 0.25em 0.8em; margin-top: 0.35em; font-size: 0.82em; }
+.tk-legend-row select { font-size: 1em; }
+.tk-key { white-space: nowrap; }
+.tk-key .swatch { width: 1.05em; height: 1.05em; margin-right: 0.3em; }
+.demo-panel .tk-badge { font-size: 0.78em; padding: 0.1em 0.55em; border-radius: 999px; border: 1px solid; background: #fff; }
+.demo-panel .tk-badge.ok { color: #1e7b34; border-color: #7cc08c; }
+.demo-panel .tk-badge.manual { color: #7a4a00; border-color: #e0b766; background: #fff8e8; }
+.demo-panel .tk-badge.bad { color: #b00020; border-color: #e79aa6; background: #fff2f4; }
+.demo-panel .tk-grid td.tk-info { font-size: 0.92em; font-weight: 400; color: #33414f; max-width: 11em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo-panel .tk-grid td.tk-wall { max-width: 19em; }
+.demo-panel .tk-grid td.tk-share { position: relative; min-width: 5.5em; }
+.tk-share-bar { position: absolute; left: 0.3em; top: 22%; height: 56%; background: rgba(31, 59, 87, 0.14); border-radius: 2px; max-width: calc(100% - 0.6em); }
+.tk-share > span:last-child { position: relative; }
+.tk-share-h select { font-size: 0.95em; font-weight: 600; }
+.tk-override, .tk-criteria { display: flex; flex-wrap: wrap; align-items: center; gap: 0.4em 0.8em; flex-basis: 100%; }
+.tk-override { margin-top: 0.3em; padding-top: 0.35em; border-top: 1px dashed #b8c7d6; }
+.tk-criteria { padding-bottom: 0.4em; margin-bottom: 0.2em; border-bottom: 1px solid #e3e6ea; }
+.demo-panel .tk-file { display: inline-block; padding: 0.2em 0.7em; border: 1px solid #1f3b57; border-radius: 4px; color: #1f3b57; cursor: pointer; background: #fff; }
+.demo-panel .tk-file:hover { background: #eef3f8; }
 .tk-title { color: #1f3b57; font-size: 1.05em; }
 .tk-tabs { display: inline-flex; }
 .demo-panel .tk-tabs button { border: 1px solid #b8c2cc; background: #fff; padding: 0.25em 0.8em; margin: 0; border-radius: 0; }

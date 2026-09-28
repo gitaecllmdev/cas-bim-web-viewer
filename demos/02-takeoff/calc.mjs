@@ -5,6 +5,7 @@
 // All framing members come from the same layout engine as the shop drawings (../common/framing.mjs), so the
 // takeoff's counts and cut lengths (1/8", rounded down) match what the shop drawings frame.
 import { frameWall, floor8 } from '../common/framing.mjs';
+import { resolveFraming } from './criteria.mjs';
 
 export const fmtInches = (inches) => {
     const whole = Math.floor(inches + 1e-9);
@@ -67,17 +68,22 @@ export function orderLength(cutIn, mode, stockFt) {
 // Quantities for one wall (no waste; waste is applied to the totals). Every framing member comes from frameWall():
 // members = [{ code, role, type, lengthIn, qty }] with cut lengths in inches (qty covers all stud rows).
 // Openings (jambs, headers, sills, cripples) are only known once the wall has been scanned (wall.scan).
-export function wallQuantities(wall, asm, settings) {
+// ctx: { criteria, overrides } - the engineer's criteria and the manual overrides by wall GUID (criteria.mjs); the
+// wall's framing (q.spec: SSMA stud and tracks, spacing, where they came from) is resolved from them.
+export function wallQuantities(wall, asm, settings, ctx = {}) {
     const length = Number(wall.length), area = Number(wall.area);
     if (!(length > 0) || !(area > 0)) return { missing: true };
     const height = wall.heightFt > 0 ? Number(wall.heightFt) : area / length; // Revit height; area ÷ length reads low with openings
     const q = { length, area, height, lifts: 1, members: [], studs: 0, studLf: 0, trackLf: 0, openings: 0, scanned: !!wall.scan,
-        boardSf: 0, finishSf: 0, sheathingSf: 0, layers: 0 };
+        boardSf: 0, finishSf: 0, sheathingSf: 0, layers: 0, spec: null };
     if (asm.scope !== 'framed') return q;
     const scan = wall.scan;
+    const spec = resolveFraming(wall, asm, settings, ctx.criteria, ctx.overrides?.[wall.externalId]);
+    q.spec = spec;
     const lay = frameWall({
         lengthIn: scan?.lengthIn || length * 12, heightIn: scan?.heightIn || height * 12, openings: scan?.openings || [],
-        studIn: asm.studIn, rows: asm.rows, spacingIn: asm.spacingIn || settings.studSpacingIn, mils: asm.mils || settings.mils, member: asm.member,
+        studIn: spec.studIn, rows: spec.rows, spacingIn: spec.spacingIn, mils: spec.mils, member: asm.member, flangeIn: spec.flangeIn,
+        studName: spec.studName, trackName: spec.trackName, topTrackName: spec.topTrackName,
         liftIn: settings.splitTallWalls ? Math.max(...settings.studStockFt) * 12 : Infinity,
     });
     q.lifts = lay.lifts;
@@ -88,7 +94,7 @@ export function wallQuantities(wall, asm, settings) {
         const code = roleCode(m.role, asm.member);
         const key = `${code}|${m.type}|${m.lengthIn}`;
         const e = byKey.get(key) || { code, role: m.role, type: m.type, lengthIn: m.lengthIn, qty: 0, vertical: m.orient === 'v' };
-        e.qty += asm.rows;
+        e.qty += spec.rows;
         byKey.set(key, e);
     }
     q.members = [...byKey.values()];
@@ -103,8 +109,8 @@ export function wallQuantities(wall, asm, settings) {
 }
 
 // Everything for a set of walls: per wall type rows, the material list (with the marked member schedule),
-// and walls left out.
-export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
+// and walls left out. ctx: { criteria, overrides by wall GUID } (see wallQuantities).
+export function takeoff(walls, rules, overrides = {}, settingsOverride = {}, ctx = {}) {
     const settings = { ...rules.settings, ...settingsOverride };
     const types = new Map();
     const framing = new Map(); // member type (e.g. 362S162-33) -> { kind, depth, member, entries: Map(code|length -> { qty, ids }) }
@@ -114,7 +120,7 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
     for (const wall of walls) {
         const typeName = wall.wallType ?? 'Not set';
         const asm = assemblyFor(typeName, rules, overrides);
-        const q = wallQuantities(wall, asm, settings);
+        const q = wallQuantities(wall, asm, settings, ctx);
         if (!types.has(typeName)) {
             types.set(typeName, { typeName, asm, ids: [], count: 0, length: 0, area: 0, studs: 0, studLf: 0, trackLf: 0, openings: 0,
                 boardSf: 0, finishSf: 0, sheathingSf: 0, missing: 0, board: boardFor(wall, asm) });
@@ -129,7 +135,7 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}) {
         if (q.scanned) scannedWalls++;
         for (const m of q.members) {
             const kind = m.vertical ? 'stud' : 'track';
-            if (!framing.has(m.type)) framing.set(m.type, { kind, depth: asm.studIn, member: asm.member, entries: new Map() });
+            if (!framing.has(m.type)) framing.set(m.type, { kind, depth: q.spec.studIn, member: asm.member, entries: new Map() });
             const entries = framing.get(m.type).entries, key = `${m.code}|${m.lengthIn}`;
             if (!entries.has(key)) entries.set(key, { qty: 0, ids: new Set() });
             entries.get(key).qty += m.qty;

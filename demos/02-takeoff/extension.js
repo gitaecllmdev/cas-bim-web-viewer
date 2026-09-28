@@ -1,13 +1,20 @@
 // Demo 02: Quantity Takeoff Viewer: framing (studs, track), board and finish, plus gross wall quantities.
 // Spec and acceptance criteria: demos/02-takeoff/README.md. Math: ./calc.mjs and ./breakdown.mjs; assemblies: samples/takeoff-rules.json.
-// Colors and isolation go through core/client/views.js (3D + 2D plan). Slicers (level, framing type, role, wall type,
-// fire rating) filter every tab and the model; the Level slicer follows the header Level picker and back.
+// Colors and isolation go through core/client/views.js (3D + 2D plan). Slicers (level, framing type, SSMA stud, role,
+// finish, layers, wall type, fire rating, framing source) filter every tab and the model; the Level slicer follows the
+// header Level picker and back. Walls are colored by framing type, SSMA stud, finish or layers (./colors.mjs).
+// Framing per wall (./criteria.mjs): a manual override kept by the wall's GUID (externalId = Revit UniqueId, so it
+// carries to the next model version), else the engineer's criteria loaded from their .xlsx (kept in this browser or
+// on the local server, never published with the site), else the assembly default.
 // Dashboard tutorial (aggregating properties): https://get-started.aps.autodesk.com/tutorials/dashboard/
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
-import { loadPropertyMap, getWallData, getBulkProperties, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState, paletteColor } from '../../helpers.js';
+import { loadPropertyMap, getWallData, getBulkProperties, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
 import { takeoff, assemblyFor, fmtInches, ROLES } from './calc.mjs';
-import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, framingLabel, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
+import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
+import { wallCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
+import { readXlsx } from './xlsx.mjs';
+import { colorMap, NOT_OURS, NEEDS_REVIEW } from './colors.mjs';
 import { fmtFtIn } from '../common/framing.mjs';
 import { loadScans, scanWalls } from '../common/wallscan.js';
 import { CONFIG } from '../../config.js';
@@ -26,11 +33,17 @@ const SHEETS = [['4\' x 8\'', 32], ['4\' x 10\'', 40], ['4\' x 12\'', 48]];
 const GROSS_NOTE = 'Gross quantities from model properties. Not net board counts; openings, layers and waste not included.';
 const TABS = { breakdown: 'Breakdown', materials: 'Order list', assemblies: 'Assemblies', gross: 'Gross' };
 const STUDS = [0.875, 1.625, 2.5, 3.625, 4, 6, 8];
-const EXCLUDED_COLOR = '#d9d9d9';
-const REVIEW_COLOR = '#d7263d';
+// The engineer's criteria: its own state, left out of the published site (scripts/build-site.js copies named states only).
+const CRITERIA_STATE = 'takeoff-criteria';
 // Slicers and their link parameters (level: the header's ?level=, or lv=... for several levels).
-const SLICERS = ['level', 'framing', 'role', 'wallType', 'fire'];
-const PARAM = { level: 'lv', framing: 'framing', role: 'role', wallType: 'type', fire: 'fire' };
+const SLICERS = ['level', 'framing', 'stud', 'role', 'finish', 'layers', 'wallType', 'fire', 'source'];
+const PARAM = { level: 'lv', framing: 'framing', stud: 'stud', role: 'role', finish: 'finish', layers: 'layers', wallType: 'type', fire: 'fire', source: 'source' };
+const WALL_DIMS = ['level', 'framing', 'stud', 'finish', 'layers', 'wallType', 'fire', 'source']; // every slicer but role is per wall
+const COLOR_BY = { framing: 'Framing type', stud: 'SSMA stud', finish: 'Finish', layers: 'Layers' };
+const SHARE_BY = { studLf: 'Stud LF', trackLf: 'Track LF', boardSf: 'Board SF', walls: 'Walls' };
+// Suggestions for a manual stud override (any SSMA designator can be typed).
+const SSMA_SUGGEST = ['162S125-18', '250S125-18', '250S162-33', '362S125-18', '362S162-33', '362S162-43', '362S162-54', '362S200-43', '362S200-54',
+    '400S162-33', '400S162-43', '400S200-54', '600S162-33', '600S162-43', '600S162-54', '600S200-54', '600S250-68', '800S162-43', '800S200-54'];
 const SEP = '␟'; // separates group keys (breakdown.mjs)
 // Revit property units -> feet / square feet for the takeoff math.
 const TO_FT = { ft: 1, m: 3.28084, mm: 0.00328084, cm: 0.0328084, in: 1 / 12 };
@@ -74,6 +87,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.open = null; // expanded Breakdown groups (null: the first grouping level, set on the first render)
         this.showSettings = false;
         this.showLevels = true;
+        this.colorBy = COLOR_BY[params.get('color')] ? params.get('color') : 'framing';
+        this.shareBy = 'studLf';
         this.expanded = new Set(); // Order list items showing their cut-length schedule
         this.panel.innerHTML = `<div class="demo-panel"><h2>Takeoff</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
         // A filter list closes when you click anywhere else.
@@ -102,11 +117,14 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     async init(model) {
         try {
-            const [map, rules, saved] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState(STATE_NAME)]);
+            const [map, rules, saved, criteria] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState(STATE_NAME),
+                loadState(CRITERIA_STATE).catch(() => ({}))]);
             this.map = map;
             this.rules = rules;
             this.settings = saved.settings || {};
             this.overrides = saved.overrides || {};
+            this.elementOverrides = saved.elementOverrides || {}; // wall GUID -> { stud, spacingIn, finishClass, at }
+            this.criteria = criteria?.rows?.length ? criteria : null;
             const { walls, missing } = await getWallData(model, map);
             this.missing = missing;
             this.units = {
@@ -136,28 +154,40 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         return assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides);
     }
 
+    // A wall's value for a slicer. Framing type, SSMA stud, finish, layers and framing source come from the wall's
+    // resolved framing (its lines); walls that aren't ours have none.
     wallValue(w, dim) {
         if (dim === 'level') return w.level ?? NOT_SET;
         if (dim === 'wallType') return w.wallType ?? NOT_SET;
         if (dim === 'fire') return w.fireRating || NOT_RATED;
-        if (dim === 'framing') { const a = this.asmOf(w); return a.scope === 'framed' ? framingLabel(a) : null; }
-        return null;
+        return this.wallInfo.get(w.dbId)?.[dim] ?? null;
     }
 
     // A wall passes the wall slicers (all but role), leaving out one slicer when counting that slicer's values.
     wallPasses(w, skip = null) {
-        return ['level', 'framing', 'wallType', 'fire'].every(dim => dim === skip || !this.filters[dim].size || this.filters[dim].has(this.wallValue(w, dim)));
+        return WALL_DIMS.every(dim => dim === skip || !this.filters[dim].size || this.filters[dim].has(this.wallValue(w, dim)));
     }
 
     get scope() {
         return this.walls.filter(w => this.wallPasses(w));
     }
 
-    // Every framed wall's member and board lines, recomputed when the settings, assemblies or scans change.
+    // The criteria and manual overrides the framing is resolved with (criteria.mjs).
+    get ctx() {
+        const c = this.criteria;
+        return { criteria: c ? { rows: c.rows, group: c.group || '', building: c.building || '' } : null, overrides: this.elementOverrides };
+    }
+
+    // Every framed wall's member and board lines, recomputed when the settings, assemblies, scans, criteria or
+    // overrides change; with each wall's framing (wallInfo) and the color of every value (fixed for the project).
     get lines() {
-        const key = JSON.stringify([this.settings, this.overrides, this.scanStamp]);
+        const c = this.criteria;
+        const key = JSON.stringify([this.settings, this.overrides, this.scanStamp, this.elementOverrides, c?.importedAt, c?.group, c?.building]);
         if (this.linesKey !== key) {
-            this.linesCache = takeoffLines(this.walls, this.rules, this.overrides, this.settings);
+            this.linesCache = takeoffLines(this.walls, this.rules, this.overrides, this.settings, this.ctx);
+            this.wallInfo = new Map();
+            for (const l of this.linesCache) if (!this.wallInfo.has(l.wall)) this.wallInfo.set(l.wall, l);
+            this.colorMaps = Object.fromEntries(Object.keys(COLOR_BY).map(d => [d, colorMap(d, this.linesCache.map(l => l[d]))]));
             this.linesKey = key;
         }
         return this.linesCache;
@@ -166,7 +196,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // Slicer values with wall counts, each cross-filtered by the other slicers; role comes from the member lines.
     slicerValues() {
         const out = {};
-        for (const dim of ['level', 'framing', 'wallType', 'fire']) {
+        for (const dim of WALL_DIMS) {
             const counts = new Map();
             for (const w of this.walls) {
                 const v = this.wallValue(w, dim);
@@ -194,7 +224,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     scopeLabel() {
         const lv = [...this.filters.level];
         const where = !lv.length ? 'All levels' : lv.length <= 3 ? lv.join(', ') : `${lv.length} levels`;
-        const more = ['framing', 'role', 'wallType', 'fire'].filter(d => this.filters[d].size).map(d => `${DIMENSIONS[d].label}: ${[...this.filters[d]].join(', ')}`);
+        const more = SLICERS.filter(d => d !== 'level' && this.filters[d].size).map(d => `${DIMENSIONS[d].label}: ${[...this.filters[d]].join(', ')}`);
         return [where, ...more].join(' · ');
     }
 
@@ -243,17 +273,18 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         }
         if (this.groups.join() === DEFAULT_GROUPS.join()) params.delete('group'); else params.set('group', this.groups.join());
         if (this.tab === 'breakdown') params.delete('tab'); else params.set('tab', this.tab);
+        if (this.colorBy === 'framing') params.delete('color'); else params.set('color', this.colorBy);
         history.replaceState(null, '', `?${params}${location.hash}`);
     }
 
     // --- Render ------------------------------------------------------------------------------------------------------
 
     render() {
-        this.result = takeoff(this.scope, this.rules, this.overrides, this.settings);
-        this.filteredLines = filterLines(this.lines, this.filters);
+        const lines = this.lines; // first: the walls' framing (wallInfo) that the slicers read
+        this.result = takeoff(this.scope, this.rules, this.overrides, this.settings, this.ctx);
+        this.filteredLines = filterLines(lines, this.filters);
         this.tree = groupLines(this.filteredLines, this.groups, { level: this.levelOrder() });
         this.refreshSelection();
-        this.assignDepthColors();
         const warn = this.missing.length
             ? `<p class="warn">No wall has ${this.missing.map(k => `"${escapeHtml(this.map[k])}"`).join(', ')}. Fix the name in samples/property-map.json.</p>` : '';
         // The table comes first: one toolbar row and one filter row, kept at the top (with the grid's column titles)
@@ -265,13 +296,15 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                     <b class="tk-title">Takeoff</b>
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     ${this.scanHtml()}
+                    ${this.sourceHtml()}
                     <span class="tk-spacer"></span>
                     ${docked ? '<button data-dock title="Give the table most of the screen; click again to bring the model back">⤢ Table</button>' : ''}
-                    <button data-settings class="${this.showSettings ? 'active' : ''}" title="Gauge, stud spacing, order lengths, board and waste">⚙ Settings</button>
+                    <button data-settings class="${this.showSettings ? 'active' : ''}" title="Engineer's criteria, gauge, stud spacing, order lengths, board and waste">⚙ Settings</button>
                     <button data-csv title="Download what this tab shows">Export CSV</button>
                 </div>
                 ${this.showSettings ? this.settingsHtml() : ''}
                 <div class="tk-filters">${this.filtersHtml()}</div>
+                ${this.legendHtml()}
                 ${this.selectionHtml()}
             </div>
             ${warn}
@@ -324,6 +357,32 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             this.settings[el.dataset.setText] = el.value === 'true' ? true : el.value === 'false' ? false : el.value;
             this.save();
         });
+        p.querySelector('[data-color-by]')?.addEventListener('change', (e) => { this.colorBy = e.target.value; this.render(); });
+        p.querySelectorAll('[data-source-filter]').forEach(b => b.onclick = () => { this.filters.source = new Set([b.dataset.sourceFilter]); this.render(); });
+        this.bindCriteria(p);
+        this.bindOverride(p);
+    }
+
+    // Framing source counts for the walls in scope: from the engineer's criteria, manual overrides, out of band.
+    sourceHtml() {
+        const counts = new Map();
+        for (const w of this.scope) { const v = this.wallInfo.get(w.dbId)?.source; if (v) counts.set(v, (counts.get(v) || 0) + 1); }
+        const chip = (src, cls, tip) => (counts.get(src) ? `<button class="tk-badge ${cls}" data-source-filter="${attr(src)}" title="${attr(tip)}">${escapeHtml(src)} ${fmt(counts.get(src))}</button>` : '');
+        return chip(SOURCES.criteria, 'ok', "Walls framed from the engineer's criteria: click to show them")
+            + chip(SOURCES.override, 'manual', 'Walls with framing set by hand (kept by GUID): click to show them')
+            + chip(SOURCES.outOfBand, 'bad', 'No criteria row fits these walls (depth, finish, layers or height): framed with the assembly default; click to show them');
+    }
+
+    // Colors of the model and the grid: by framing type, SSMA stud, finish or layers, with the key.
+    legendHtml() {
+        const map = this.colorMaps[this.colorBy];
+        const counts = new Map();
+        for (const w of this.scope) { const v = this.wallInfo.get(w.dbId)?.[this.colorBy]; if (v != null) counts.set(v, (counts.get(v) || 0) + 1); }
+        const items = [...counts].sort((a, b) => DIMENSIONS[this.colorBy].sort(a[0], b[0]));
+        return `<div class="tk-legend-row"><span class="tk-sl-label">Colors</span>
+            <select data-color-by aria-label="Color the walls by">${Object.entries(COLOR_BY).map(([k, l]) => `<option value="${k}" ${k === this.colorBy ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            ${items.map(([v, n]) => `<span class="tk-key" title="${attr(v)}: ${n} walls"><span class="swatch" style="background:${map.get(v)}"></span>${escapeHtml(v)} <span class="muted">${fmt(n)}</span></span>`).join('')}
+            <span class="tk-key muted"><span class="swatch" style="background:${NOT_OURS}"></span>not ours</span></div>`;
     }
 
     // Openings are read from the wall geometry (about 1 s per wall), once per wall; Demo 6 saves its scans here too.
@@ -344,7 +403,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const s = this.result.settings;
         const opt = (list, cur) => list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('');
         return `<div class="tk-settings">
-            <label>Gauge <select data-set="mils">${opt(GAUGES, s.mils)}</select></label>
+            ${this.criteriaHtml()}
+            <label>Default gauge <select data-set="mils">${opt(GAUGES, s.mils)}</select></label>
             <label>Studs @ <select data-set="studSpacingIn">${opt([12, 16, 24].map(v => [v, `${v}" o.c.`]), s.studSpacingIn)}</select></label>
             <label>Order studs at <select data-set-text="orderLengths">${opt(ORDER_MODES, s.orderLengths)}</select></label>
             <label>Walls over 20' <select data-set-text="splitTallWalls">${opt([['false', 'One-piece studs'], ['true', 'Split into lifts']], String(!!s.splitTallWalls))}</select></label>
@@ -359,17 +419,16 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // then, on the Breakdown, the grouping.
     filtersHtml() {
         const values = this.slicerValues();
-        const swatch = (label) => `<span class="swatch" style="background:${this.framingColors.get(label) || EXCLUDED_COLOR}"></span>`;
         const dropdown = (dim) => {
             const set = this.filters[dim];
             const summary = set.size ? (set.size === 1 ? [...set][0] : `${set.size} selected`) : 'All';
-            const mark = dim === 'framing' ? swatch : () => '';
+            const mark = COLOR_BY[dim] ? (v) => `<span class="swatch" style="background:${this.colorMaps[dim].get(v) || NOT_OURS}"></span>` : () => '';
+            const total = values[dim].reduce((n, x) => n + x.walls, 0) || 1;
             return `<details class="tk-dd ${set.size ? 'on' : ''}" data-dd="${dim}" ${this.openDropdown === dim ? 'open' : ''}>
                 <summary title="${attr(set.size ? [...set].join(', ') : `All ${DIMENSIONS[dim].label.toLowerCase()}s`)}">${DIMENSIONS[dim].label}: <b>${escapeHtml(summary)}</b></summary>
                 <div class="tk-dd-list">${set.size ? `<a href="#" data-dd-clear="${dim}">Show all</a>` : ''}
                 ${values[dim].map(({ value, walls }) => `<label><input type="checkbox" data-check="${dim}" value="${attr(value)}" ${set.has(value) ? 'checked' : ''}>
-                    ${mark(value)}${escapeHtml(value)} <span class="muted">${fmt(walls)}</span></label>`).join('')}
-                ${dim === 'framing' ? `<p class="muted tk-legend">${swatch('')}grey in the model: not ours</p>` : ''}</div></details>`;
+                    ${mark(value)}${escapeHtml(value)} <span class="muted">${fmt(walls)} · ${fmt((walls / total) * 100, 1)}%</span></label>`).join('')}</div></details>`;
         };
         return `<span class="tk-sl-label">Filter</span>${SLICERS.map(dropdown).join('')}
             ${this.filtering ? '<button class="tk-clear" data-clear-filters>Clear</button>' : ''}
@@ -417,7 +476,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     // The model shows the selected row's walls, else the sliced walls (one level alone is the header's section box).
     applyIsolation() {
-        const sliced = ['framing', 'role', 'wallType', 'fire'].some(d => this.filters[d].size) || this.filters.level.size > 1;
+        const sliced = SLICERS.some(d => d !== 'level' && this.filters[d].size) || this.filters.level.size > 1;
         const ids = this.selection?.ids || (sliced ? (this.filters.role.size ? totalsOf(this.filteredLines).ids : this.scope.map(w => w.dbId)) : null);
         if (sameIds(ids, this.isolatedNow)) return;
         this.isolatedNow = ids;
@@ -435,8 +494,96 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     selectionHtml() {
         const sel = this.selection;
         if (!sel) return '';
+        const framed = this.selectedWalls();
         return `<div class="tk-selbar"><span>Showing <b>${fmt(sel.ids.length)}</b> wall${sel.ids.length === 1 ? '' : 's'}: <b>${escapeHtml(sel.label)}</b></span>
-            <button data-clear-selection>Show all</button></div>`;
+            <button data-clear-selection>Show all</button>
+            ${framed.length ? `<button data-override-open class="${this.showOverride ? 'active' : ''}" title="Set the stud, spacing or finish class of these walls by hand">✎ Override framing</button>` : ''}
+            ${this.showOverride && framed.length ? this.overrideHtml(framed) : ''}</div>`;
+    }
+
+    // --- Manual framing overrides, kept by the wall's GUID (externalId), so they carry to the next model version --------
+
+    selectedWalls() {
+        const ids = new Set(this.selection?.ids || []);
+        return this.walls.filter(w => ids.has(w.dbId) && w.externalId && this.wallInfo.has(w.dbId));
+    }
+
+    overrideHtml(walls) {
+        const current = walls.map(w => this.elementOverrides[w.externalId]).filter(Boolean);
+        const same = (k) => (current.length === walls.length && current.every(o => o[k] === current[0][k]) ? current[0][k] ?? '' : '');
+        const studs = [...new Set(walls.map(w => this.wallInfo.get(w.dbId).stud))];
+        const opt = (list, cur, none) => `<option value="">${none}</option>${list.map(([v, l]) => `<option value="${v}" ${String(v) === String(cur) ? 'selected' : ''}>${l}</option>`).join('')}`;
+        const suggest = [...new Set([...SSMA_SUGGEST, ...(this.criteria?.rows || []).map(r => r.stud.name)])].sort();
+        return `<div class="tk-override">
+            <span>Now: <b>${escapeHtml(studs.slice(0, 3).join(', '))}${studs.length > 3 ? ' …' : ''}</b>${current.length ? ` · <span class="warn">${current.length} set by hand</span>` : ''}</span>
+            <label>SSMA stud <input data-ov-stud list="tk-ssma" size="12" placeholder="e.g. 600S162-54" value="${attr(same('stud'))}"></label>
+            <label>@ <select data-ov-spacing>${opt([12, 16, 24].map(v => [v, `${v}" o.c.`]), same('spacingIn'), 'as set')}</select></label>
+            <label>Finish class <select data-ov-finish>${opt(FINISH_CLASSES.map(c => [c, c]), same('finishClass'), 'as the type')}</select></label>
+            <button data-ov-apply>Apply to ${fmt(walls.length)} wall${walls.length === 1 ? '' : 's'}</button>
+            ${current.length ? `<button data-ov-clear>Remove ${fmt(current.length)} override${current.length === 1 ? '' : 's'}</button>` : ''}
+            <span class="warn" data-ov-msg></span>
+            <datalist id="tk-ssma">${suggest.map(n => `<option value="${n}">`).join('')}</datalist>
+            <span class="muted">Kept with each wall's GUID, so it carries to the next model version. A stud set by hand wins over the criteria.</span></div>`;
+    }
+
+    bindOverride(p) {
+        p.querySelector('[data-override-open]')?.addEventListener('click', () => { this.showOverride = !this.showOverride; this.render(); });
+        p.querySelector('[data-ov-apply]')?.addEventListener('click', () => {
+            const stud = p.querySelector('[data-ov-stud]').value.trim().toUpperCase();
+            const spacingIn = Number(p.querySelector('[data-ov-spacing]').value) || undefined;
+            const finishClass = p.querySelector('[data-ov-finish]').value || undefined;
+            const msg = p.querySelector('[data-ov-msg]');
+            if (stud && !parseDesignator(stud)) { msg.textContent = `"${stud}" is not an SSMA designator (e.g. 600S162-54).`; return; }
+            if (!stud && !spacingIn && !finishClass) { msg.textContent = 'Set a stud, a spacing or a finish class.'; return; }
+            for (const w of this.selectedWalls()) this.elementOverrides[w.externalId] = { stud: stud || undefined, spacingIn, finishClass, at: new Date().toISOString() };
+            this.save();
+        });
+        p.querySelector('[data-ov-clear]')?.addEventListener('click', () => {
+            for (const w of this.selectedWalls()) delete this.elementOverrides[w.externalId];
+            this.save();
+        });
+    }
+
+    // --- The engineer's criteria (.xlsx), read in the browser; kept in this browser or on the local server --------------
+
+    criteriaHtml() {
+        const c = this.criteria;
+        const file = `<label class="tk-file" title="The engineer's framing criteria workbook (the KEY_WALL sheet)">${c ? 'Replace' : 'Load'} criteria .xlsx<input type="file" accept=".xlsx" data-criteria-file hidden></label>`;
+        if (!c) {
+            return `<div class="tk-criteria"><b>Engineer's criteria:</b> none loaded, framing from the assemblies. ${file}
+                <span class="muted">With criteria, studs, tracks and spacing follow the stud depth, finish class, layers and height of each wall.</span></div>`;
+        }
+        const pick = (key, list, cur, label) => (list.length > 1 ? `<label>${label} <select data-criteria-${key}>${list.map(v => `<option ${v === cur ? 'selected' : ''}>${escapeHtml(v)}</option>`).join('')}</select></label>` : '');
+        const skipped = c.warnings?.length ? ` · <span class="warn" title="${attr(c.warnings.join('\n'))}">${c.warnings.length} rows skipped</span>` : '';
+        return `<div class="tk-criteria"><b>Engineer's criteria:</b> ${escapeHtml(c.file)} · ${fmt(c.rows.length)} wall rows${skipped}
+            ${pick('group', c.choices.groups, c.group, 'Wall types')} ${pick('building', c.choices.buildings, c.building, 'Building')}
+            ${file} <button data-criteria-clear>Remove</button>
+            <span class="muted">Kept ${CONFIG.mode === 'static' ? 'in this browser' : 'on the local server'}; never published with the site.</span></div>`;
+    }
+
+    bindCriteria(p) {
+        p.querySelector('[data-criteria-file]')?.addEventListener('change', async (e) => {
+            const file = e.target.files?.[0];
+            if (!file) return;
+            try {
+                const found = wallCriteria(await readXlsx(await file.arrayBuffer()));
+                if (!found.rows.length) throw new Error(found.warnings[0] || 'No wall criteria rows found');
+                const choices = criteriaChoices(found.rows);
+                this.criteria = { file: file.name, importedAt: new Date().toISOString(), sheet: found.sheet, rows: found.rows, warnings: found.warnings,
+                    choices, group: choices.groups[0] || '', building: choices.buildings[0] || '' };
+                await this.saveCriteria();
+            } catch (err) {
+                alert(`Could not read the criteria: ${err.message || err}`);
+            }
+        });
+        p.querySelector('[data-criteria-group]')?.addEventListener('change', (e) => { this.criteria.group = e.target.value; this.saveCriteria(); });
+        p.querySelector('[data-criteria-building]')?.addEventListener('change', (e) => { this.criteria.building = e.target.value; this.saveCriteria(); });
+        p.querySelector('[data-criteria-clear]')?.addEventListener('click', () => { this.criteria = null; this.saveCriteria(); });
+    }
+
+    async saveCriteria() {
+        this.render();
+        try { await saveState(CRITERIA_STATE, this.criteria || {}); } catch (err) { console.warn('Criteria not saved:', err.message); }
     }
 
     toggleSelection(key) {
@@ -444,23 +591,24 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.render();
     }
 
-    // Stud sizes keep their color whatever the slicers (the model and the chips use the same colors).
-    assignDepthColors() {
-        const framed = this.walls.map(w => this.asmOf(w)).filter(a => a.scope === 'framed');
-        const depths = [...new Set(framed.map(a => a.studIn))].sort((a, b) => a - b);
-        this.depthColors = new Map(depths.map((d, i) => [d, paletteColor(i)]));
-        this.framingColors = new Map(framed.map(a => [framingLabel(a), this.depthColors.get(a.studIn)]));
-    }
-
+    // A wall type's swatch (Assemblies tab): its framing type's color, grey when not ours, pink when no rule matches.
     colorOf(row) {
-        return row.asm.scope === 'framed' ? this.depthColors.get(row.asm.studIn) : row.asm.scope === 'excluded' ? EXCLUDED_COLOR : REVIEW_COLOR;
+        if (row.asm.scope !== 'framed') return row.asm.scope === 'excluded' ? NOT_OURS : NEEDS_REVIEW;
+        const wall = row.ids.map(id => this.wallInfo.get(id)).find(Boolean);
+        return this.colorMaps.framing.get(wall?.framing) || NOT_OURS;
     }
 
-    // Walls colored by stud size in 3D and on the plan (excluded grey, unmatched red). Gross: no colors.
+    // Walls colored in 3D and on the plan by the Colors choice (framing type, SSMA stud, finish or layers); not ours
+    // grey, unmatched pink. Gross: no colors.
     colorWalls() {
         if (this.tab === 'gross') { this.views.clearColors(); return; }
-        const colors = new Map();
-        for (const row of this.result.rows) row.ids.forEach(id => colors.set(id, this.colorOf(row)));
+        const colors = new Map(), map = this.colorMaps[this.colorBy];
+        for (const row of this.result.rows) {
+            for (const id of row.ids) {
+                if (row.asm.scope !== 'framed') colors.set(id, row.asm.scope === 'excluded' ? NOT_OURS : NEEDS_REVIEW);
+                else colors.set(id, map.get(this.wallInfo.get(id)?.[this.colorBy]) || NOT_OURS);
+            }
+        }
         this.views.setColors(colors);
     }
 
@@ -488,6 +636,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         this.marks = new Map(this.result.schedule.map(e => [`${e.code}|${e.type}|${e.cutIn}`, e.mark]));
         const total = totalsOf(this.filteredLines);
         this.sheathing = total.sheathingSf > 0;
+        this.shareTotal = total[this.shareBy] || 0;
         const rows = [];
         const walk = (groups) => {
             for (const g of groups) {
@@ -498,11 +647,16 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             }
         };
         walk(this.tree);
-        const cols = 6 + (this.sheathing ? 1 : 0);
+        const cols = 11 + (this.sheathing ? 1 : 0);
+        const shareBy = `<select data-share-by aria-label="Share of">${Object.entries(SHARE_BY).map(([k, l]) => `<option value="${k}" ${k === this.shareBy ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         body.innerHTML = `<div class="tk-grid-wrap"><table class="tk-grid">
-            <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th><th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}</tr></thead>
+            <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th>
+                <th title="The wall types in the row">Wall info</th><th title="The SSMA stud of the walls (engineer's criteria, override or assembly)">SSMA stud</th>
+                <th title="Finish class and board">Finish</th><th title="Gypsum layers, side A + side B">Layers</th>
+                <th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}
+                <th class="num tk-share-h">% of ${shareBy}</th></tr></thead>
             <tbody>${rows.join('') || `<tr><td colspan="${cols}" class="muted">No framed walls match these filters.</td></tr>`}</tbody>
-            <tfoot><tr class="total"><td>Total${this.filtering ? ` <span class="muted">(${escapeHtml(this.scopeLabel())})</span>` : ''}</td>${this.numCells(total)}</tr></tfoot>
+            <tfoot><tr class="total"><td>Total${this.filtering ? ` <span class="muted">(${escapeHtml(this.scopeLabel())})</span>` : ''}</td>${this.infoCells(total)}${this.numCells(total)}</tr></tfoot>
             </table></div>
             ${this.result.missing ? `<p class="warn">${this.result.missing} wall(s) have no length or area and are left out.</p>` : ''}
             <p class="note">Click a row to show its walls in 3D and on the plan; ▸ opens it. Net quantities from the framing layout, no waste: the Order list adds ${s.framingWastePct}% framing and ${s.boardWastePct}% board waste and rounds to pieces. ${DISCLAIMER}</p>`;
@@ -512,22 +666,35 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             if (this.open.has(key)) this.open.delete(key); else this.open.add(key);
             this.render();
         });
+        body.querySelector('[data-share-by]').onchange = (e) => { this.shareBy = e.target.value; this.render(); };
+        body.querySelector('[data-share-by]').onclick = (e) => e.stopPropagation();
         body.querySelectorAll('[data-grp]').forEach(tr => tr.onclick = () => this.toggleSelection(`grp:${tr.dataset.grp}`));
         body.querySelectorAll('[data-itm]').forEach(tr => tr.onclick = () => this.toggleSelection(`itm:${tr.dataset.itm}`));
     }
 
+    // Quantities, then the row's share of the total (Walls, Stud LF, Track LF or Board SF) as a number and a bar.
     numCells(t) {
         const n = (v) => (v ? fmt(v) : '<span class="muted">–</span>');
-        return `<td class="num">${fmt(t.walls)}</td><td class="num">${n(t.studs)}</td><td class="num">${n(t.studLf)}</td><td class="num">${n(t.trackLf)}</td><td class="num">${n(t.boardSf)}</td>${this.sheathing ? `<td class="num">${n(t.sheathingSf)}</td>` : ''}`;
+        const pct = this.shareTotal ? (100 * (t[this.shareBy] || 0)) / this.shareTotal : 0;
+        return `<td class="num">${fmt(t.walls)}</td><td class="num">${n(t.studs)}</td><td class="num">${n(t.studLf)}</td><td class="num">${n(t.trackLf)}</td><td class="num">${n(t.boardSf)}</td>${this.sheathing ? `<td class="num">${n(t.sheathingSf)}</td>` : ''}
+            <td class="num tk-share"><span class="tk-share-bar" style="width:${Math.min(100, pct).toFixed(1)}%"></span><span>${pct ? `${fmt(pct, 1)}%` : '–'}</span></td>`;
+    }
+
+    // The wall info of a row: its wall type, SSMA stud, finish and layers when there is one, else how many.
+    infoCells(t) {
+        const one = (list, many) => (!list?.length ? '<span class="muted">–</span>'
+            : list.length === 1 ? escapeHtml(list[0]) : `<span class="muted" title="${attr(list.join('\n'))}">${list.length} ${many}</span>`);
+        return `<td class="tk-info tk-wall">${one(t.info.wallTypes, 'wall types')}</td><td class="tk-info">${one(t.info.studs, 'studs')}</td>
+            <td class="tk-info">${one(t.info.finishes, 'finishes')}</td><td class="tk-info">${one(t.info.layers, 'layer mixes')}</td>`;
     }
 
     groupRow(g) {
         const open = this.open.has(g.key);
-        const swatch = g.dim === 'framing' ? `<span class="swatch" style="background:${this.framingColors.get(g.value) || EXCLUDED_COLOR}"></span>` : '';
+        const swatch = this.colorMaps[g.dim] ? `<span class="swatch" style="background:${this.colorMaps[g.dim].get(g.value) || NOT_OURS}"></span>` : '';
         const sel = this.selection?.key === `grp:${g.key}` ? 'selected' : '';
         return `<tr class="tk-g d${Math.min(g.depth, 3)} clickable ${sel}" data-grp="${attr(g.key)}" title="Show these ${fmt(g.totals.walls)} walls">
             <td style="padding-left:${0.3 + g.depth * 1.1}em"><button class="tk-caret" data-caret="${attr(g.key)}" aria-label="${open ? 'Close' : 'Open'}" aria-expanded="${open}">${open ? '▾' : '▸'}</button>${swatch}${escapeHtml(g.value)}</td>
-            ${this.numCells(g.totals)}</tr>`;
+            ${this.infoCells(g.totals)}${this.numCells(g.totals)}</tr>`;
     }
 
     itemLabel(item, html = true) {
@@ -542,7 +709,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const key = `${g.key}${SEP}#${item.key}`;
         const sel = this.selection?.key === `itm:${key}` ? 'selected' : '';
         return `<tr class="tk-i clickable ${sel}" data-itm="${attr(key)}" title="Show the walls with this member">
-            <td style="padding-left:${1.9 + g.depth * 1.1}em">${this.itemLabel(item)}</td>${this.numCells(item.totals)}</tr>`;
+            <td style="padding-left:${1.9 + g.depth * 1.1}em">${this.itemLabel(item)}</td>${this.infoCells(item.totals)}${this.numCells(item.totals)}</tr>`;
     }
 
     // --- Order list: the material list with waste, each stud and track line with its marked cut-length schedule ---------
@@ -604,7 +771,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const sel = (key, value, options) => `<select data-key="${key}">${options.map(([v, l]) => `<option value="${v}" ${String(v) === String(value) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         const n03 = [0, 1, 2, 3].map(v => [v, v]);
         body.innerHTML = `<p class="muted">Starting assemblies come from samples/takeoff-rules.json (matched on the type name). Change any type here; the takeoff updates at once. Click a name to see those walls.</p>
-            <table class="tk-grid"><thead><tr><th>Wall type</th><th>Scope</th><th>Stud</th><th>Rows</th><th>Layers A / B</th><th>Sheath.</th></tr></thead><tbody data-rows></tbody></table>
+            <table class="tk-grid"><thead><tr><th>Wall type</th><th>Scope</th><th>Stud</th><th>Rows</th><th>Layers A / B</th><th>Sheath.</th><th title="GYP / TILE / SHAFT: picks the engineer's criteria rows">Finish class</th></tr></thead><tbody data-rows></tbody></table>
             <div class="row"><button data-reset-asm ${Object.keys(this.overrides).length ? '' : 'disabled'}>Reset all to the rules file</button>
                 <span class="muted">${Object.keys(this.overrides).length} type(s) changed</span></div>`;
         const tbody = body.querySelector('[data-rows]');
@@ -616,12 +783,13 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 <td>${sel('studIn', a.studIn ?? 3.625, STUDS.map(d => [d, fmtInches(d)]))}</td>
                 <td>${sel('rows', a.rows, [[1, 1], [2, 2]])}</td>
                 <td>${sel('layerA', a.layers[0], n03)} ${sel('layerB', a.layers[1], n03)}</td>
-                <td>${sel('sheathingSides', a.sheathingSides || 0, [[0, 0], [1, 1], [2, 2]])}</td>`;
+                <td>${sel('sheathingSides', a.sheathingSides || 0, [[0, 0], [1, 1], [2, 2]])}</td>
+                <td>${sel('finishClass', a.finishClass || finishClassOf(r.typeName), FINISH_CLASSES.map(c => [c, c]))}</td>`;
             tr.querySelector('[data-show]').onclick = (e) => { e.preventDefault(); this.isolateWalls(r.ids); };
             tr.querySelectorAll('select').forEach(el => el.onchange = () => {
                 const current = assemblyFor(r.typeName, this.rules, this.overrides);
                 const o = { ...this.overrides[r.typeName] };
-                const v = el.dataset.key === 'scope' ? el.value : Number(el.value);
+                const v = ['scope', 'finishClass'].includes(el.dataset.key) ? el.value : Number(el.value);
                 if (el.dataset.key === 'layerA') o.layers = [v, current.layers[1]];
                 else if (el.dataset.key === 'layerB') o.layers = [current.layers[0], v];
                 else o[el.dataset.key] = v;
@@ -709,7 +877,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     async save() {
         this.render();
         try {
-            await saveState(STATE_NAME, { settings: this.settings, overrides: this.overrides, updatedAt: new Date().toISOString() });
+            await saveState(STATE_NAME, { settings: this.settings, overrides: this.overrides, elementOverrides: this.elementOverrides, updatedAt: new Date().toISOString() });
         } catch (err) {
             console.warn('Takeoff settings not saved:', err.message);
         }
@@ -723,8 +891,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Every group and member line (open or not), one column per grouping, net quantities.
             const dims = this.groups.map(d => DIMENSIONS[d].label);
             const lines = [[`Takeoff breakdown (${scope})`, 'net quantities, no waste'], [],
-                [...dims, 'Member line', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF']];
-            const nums = (t) => [t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1)];
+                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Finish', 'Layers', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
+            const all = totalsOf(this.filteredLines);
+            const info = (t) => ['wallTypes', 'studs', 'finishes', 'layers'].map(k => t.info[k].join(' / '));
+            const nums = (t) => [...info(t), t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1),
+                all[this.shareBy] ? ((100 * t[this.shareBy]) / all[this.shareBy]).toFixed(1) : ''];
             const walk = (groups, path) => {
                 for (const g of groups) {
                     const p = [...path, g.value];
@@ -734,7 +905,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 }
             };
             walk(this.tree, []);
-            lines.push(['Total', ...Array(dims.length).fill(''), ...nums(totalsOf(this.filteredLines))], [], [DISCLAIMER]);
+            lines.push(['Total', ...Array(dims.length).fill(''), ...nums(all)], [], [DISCLAIMER]);
             downloadCsv(file, lines);
             return;
         }
