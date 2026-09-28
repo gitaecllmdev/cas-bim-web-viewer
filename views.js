@@ -4,6 +4,7 @@
 // Demos get it as `this.options.views` and call views.* instead of viewer.* for those operations.
 // Viewer3D (setThemingColor, isolate, hide, showAll, select, fitToView, resize, loadDocumentNode):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+// Model (isLoadDone: frame the plan only once its geometry is in): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Section extension (setSectionBox, deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
@@ -30,6 +31,7 @@ export class Views {
             levels: document.getElementById('levels'),
             sheets: document.getElementById('sheets'),
             master: document.getElementById('master'),
+            sheetStatus: document.getElementById('sheet-status'),
             container2d: document.getElementById('viewer2d'),
             layoutButtons: [...document.querySelectorAll('[data-layout]')],
         };
@@ -184,9 +186,16 @@ export class Views {
 
     // Zoom the 2D view to the isolated walls, else the current level's walls, else all walls
     // (fitToView ignores ids that aren't on the sheet, so this frames the plan, not the title block).
+    // Not while the sheet is still loading: openSheet frames it once its geometry is in.
     frame2d() {
         const ids = this.isolated || (this.level ? this.wallsByLevel.get(this.level.name) : [...this.wallsByLevel.values()].flat());
-        if (this.model2d && ids?.length) this.viewer2d.fitToView(ids, this.model2d);
+        if (this.model2d?.isLoadDone() && ids?.length) this.viewer2d.fitToView(ids, this.model2d);
+    }
+
+    setSheetStatus(text, kind = '') {
+        if (!this.el.sheetStatus) return;
+        this.el.sheetStatus.textContent = text;
+        this.el.sheetStatus.className = kind;
     }
 
     // --- 2D pane ---------------------------------------------------------------------------------
@@ -229,7 +238,14 @@ export class Views {
         if (!node || !this.doc) return null;
         if (!this.showing2d) this.setLayout('split', { open: false });
         const viewer = this.ensureViewer2d();
-        const model = await viewer.loadDocumentNode(this.doc, node);
+        this.setSheetStatus('Loading the plan…', 'loading');
+        let model;
+        try {
+            model = await viewer.loadDocumentNode(this.doc, node);
+        } catch (err) {
+            this.setSheetStatus(`The plan didn't load (${err?.message || err}). Pick it again to retry.`, 'error');
+            throw err;
+        }
         for (const [id, options] of this.extensions2d) {
             if (!viewer.getExtension(id)) await viewer.loadExtension(id, options);
         }
@@ -246,11 +262,15 @@ export class Views {
             this.frame2d();
         };
         apply();
-        viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function onLoaded(ev) {
-            if (ev.model !== model) return;
-            viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, onLoaded);
-            apply();
-        });
+        const loaded = () => { if (viewer.model === model) this.setSheetStatus(''); apply(); };
+        if (model.isLoadDone()) loaded();
+        else {
+            viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function onLoaded(ev) {
+                if (ev.model !== model) return;
+                viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, onLoaded);
+                loaded();
+            });
+        }
         this.updateMasterButton();
         this.emit('sheet', model);
         return model;

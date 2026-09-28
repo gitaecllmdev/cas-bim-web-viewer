@@ -2,6 +2,7 @@
 // Viewer API reference: https://aps.autodesk.com/en/docs/viewer/v7/reference/
 // URLs are relative so the same code runs on the local server and on the static review site.
 import { CONFIG } from './config.js';
+import { isMergedState, mergeState } from './state-merge.mjs';
 
 export async function fetchJson(url, options) {
     const resp = await fetch(url, options);
@@ -24,11 +25,12 @@ export async function loadState(name) {
         const shared = await fetchJson(stateServiceUrl(name)).catch(err => { console.warn(`Shared state ${name}:`, err.message); return null; });
         if (shared && Object.keys(shared).length) return shared;
     }
-    try {
-        const saved = localStorage.getItem(stateKey(name));
-        if (saved) return JSON.parse(saved);
-    } catch { /* storage blocked: fall back to the starter data */ }
-    return fetchJson(`samples/state/${name}.json`).catch(() => ({})); // starter data shipped with the site
+    const starter = () => fetchJson(`samples/state/${name}.json`).catch(() => ({})); // starter data shipped with the site
+    let saved = null;
+    try { saved = JSON.parse(localStorage.getItem(stateKey(name)) || 'null'); } catch { /* storage blocked or unreadable */ }
+    if (!saved) return starter();
+    // Scans and the panel index keep growing on the published site: merge them with this browser's copy (state-merge.mjs).
+    return isMergedState(name) ? mergeState(name, await starter(), saved) : saved;
 }
 export async function saveState(name, data) {
     if (CONFIG.mode !== 'static') {

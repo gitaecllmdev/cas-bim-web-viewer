@@ -4683,5 +4683,3519 @@
     ],
     "notes": [],
     "at": "2026-09-27T04:53:21.336Z"
+  },
+  "715ba9fc-f6f7-442b-86be-87f460856a1d-0009a092": {
+    "lengthIn": 276.5437499999993,
+    "heightIn": 1028.9999999999973,
+    "openings": [
+      {
+        "left": 266.89687499999934,
+        "right": 276.5437499999993,
+        "bottom": 0,
+        "top": 131.84062499999965
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:35:59.692Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429fc": {
+    "lengthIn": 108.99999999999999,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:00.736Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c94": {
+    "lengthIn": 108.99999999999999,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:01.777Z"
+  },
+  "6fef491d-aa42-4de7-b3e6-dd364fb54430-00163230": {
+    "lengthIn": 24.999999999999996,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:02.398Z"
+  },
+  "6fef491d-aa42-4de7-b3e6-dd364fb54430-00163231": {
+    "lengthIn": 15,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:02.862Z"
+  },
+  "c863d9c1-4ffa-4f47-825c-eb8aa32d75e0-001d71fa": {
+    "lengthIn": 22,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:03.594Z"
+  },
+  "c863d9c1-4ffa-4f47-825c-eb8aa32d75e0-001d7225": {
+    "lengthIn": 16,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:04.214Z"
+  },
+  "c863d9c1-4ffa-4f47-825c-eb8aa32d75e0-001d7248": {
+    "lengthIn": 17,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 0,
+        "right": 6,
+        "bottom": 133,
+        "top": 154
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:04.919Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fabaf": {
+    "lengthIn": 143,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:05.527Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fabb0": {
+    "lengthIn": 139,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:06.301Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac21": {
+    "lengthIn": 143,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:06.888Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac22": {
+    "lengthIn": 139,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:07.700Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac5a": {
+    "lengthIn": 143,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:08.483Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac5b": {
+    "lengthIn": 139,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:09.483Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac93": {
+    "lengthIn": 143,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:10.258Z"
+  },
+  "6753817d-da74-4ef8-a219-c7f2a4cd2525-001fac94": {
+    "lengthIn": 139,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:11.255Z"
+  },
+  "5d1609a5-0cf0-444a-9115-509233513f91-001fbbdb": {
+    "lengthIn": 47,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:12.188Z"
+  },
+  "5d1609a5-0cf0-444a-9115-509233513f91-001fbbf0": {
+    "lengthIn": 49.99999999999999,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:13.226Z"
+  },
+  "5d1609a5-0cf0-444a-9115-509233513f91-001fbc02": {
+    "lengthIn": 36,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:14.021Z"
+  },
+  "5d1609a5-0cf0-444a-9115-509233513f91-001fbc48": {
+    "lengthIn": 43,
+    "heightIn": 160,
+    "openings": [
+      {
+        "left": 41,
+        "right": 43,
+        "bottom": 131,
+        "top": 154
+      },
+      {
+        "left": 0,
+        "right": 5,
+        "bottom": 154,
+        "top": 160
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:15.125Z"
+  },
+  "5d1609a5-0cf0-444a-9115-509233513f91-001fbc49": {
+    "lengthIn": 35,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:16.102Z"
+  },
+  "921cae3c-b889-4ca8-aa7a-6b3858702e7f-001fdc01": {
+    "lengthIn": 148,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:16.998Z"
+  },
+  "921cae3c-b889-4ca8-aa7a-6b3858702e7f-001fdc02": {
+    "lengthIn": 113,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:17.724Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001fe234": {
+    "lengthIn": 216,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:18.322Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001fe235": {
+    "lengthIn": 120.99999999999999,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:19.046Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001fe34f": {
+    "lengthIn": 211.99999999999997,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:19.692Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001fe350": {
+    "lengthIn": 117,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:20.502Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001feb2e": {
+    "lengthIn": 216,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:21.095Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001feb2f": {
+    "lengthIn": 120.99999999999999,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:21.733Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001feb3c": {
+    "lengthIn": 211.99999999999997,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:22.286Z"
+  },
+  "d26415e6-6c84-41f1-aca3-44e7e954b7b1-001feb3d": {
+    "lengthIn": 117,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-7\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:36:23.161Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff86a": {
+    "lengthIn": 216,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:23.912Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff86b": {
+    "lengthIn": 120,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:24.716Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff878": {
+    "lengthIn": 211.99999999999997,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:25.399Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff879": {
+    "lengthIn": 114.99999999999999,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:26.283Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff8f4": {
+    "lengthIn": 216,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:27.029Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff8f5": {
+    "lengthIn": 120,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:27.878Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff902": {
+    "lengthIn": 211.99999999999997,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:28.572Z"
+  },
+  "c76093c6-f4d4-475f-8606-be2ece4382cd-001ff903": {
+    "lengthIn": 116,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:29.436Z"
+  },
+  "c0f5c8ed-3fb4-4125-b1d2-ad22092f5193-00201191": {
+    "lengthIn": 158,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:30.213Z"
+  },
+  "c0f5c8ed-3fb4-4125-b1d2-ad22092f5193-00201192": {
+    "lengthIn": 147,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:31.138Z"
+  },
+  "d9909760-5396-4778-82d9-59b084915d9c-002014ee": {
+    "lengthIn": 199.99999999999997,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:31.801Z"
+  },
+  "d9909760-5396-4778-82d9-59b084915d9c-002014ef": {
+    "lengthIn": 120.99999999999999,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:32.543Z"
+  },
+  "d9909760-5396-4778-82d9-59b084915d9c-002014fc": {
+    "lengthIn": 196,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:33.167Z"
+  },
+  "d9909760-5396-4778-82d9-59b084915d9c-002014fd": {
+    "lengthIn": 117,
+    "heightIn": 20,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:33.859Z"
+  },
+  "33613765-9390-4261-8dff-b884285836e2-000aa66d": {
+    "lengthIn": 125,
+    "heightIn": 160,
+    "openings": [
+      {
+        "left": 116,
+        "right": 125,
+        "bottom": 0,
+        "top": 154
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:35.037Z"
+  },
+  "1400f7c0-e069-4954-9d8d-4151ef4f675d-000b9a92": {
+    "lengthIn": 389.4102727049602,
+    "heightIn": 160.41743938474775,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:36.687Z"
+  },
+  "1400f7c0-e069-4954-9d8d-4151ef4f675d-000b9ac4": {
+    "lengthIn": 389.4102727049602,
+    "heightIn": 160.41743938474775,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:38.512Z"
+  },
+  "d25651f2-4b77-4502-831b-94c28a909a13-000dc000": {
+    "lengthIn": 45,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:39.346Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101ba8": {
+    "lengthIn": 88,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 23,
+        "right": 61,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:40.313Z"
+  },
+  "9d1ad948-444a-4ed4-9538-52a5b651c05a-00147677": {
+    "lengthIn": 326.4760618563101,
+    "heightIn": 159.6334056395207,
+    "openings": [
+      {
+        "left": 149.33447624342259,
+        "right": 187.44051500898559,
+        "bottom": 0,
+        "top": 85.48111398761431
+      },
+      {
+        "left": 325.4461689167003,
+        "right": 326.4760618563101,
+        "bottom": 0,
+        "top": 154.48394094147164
+      },
+      {
+        "left": 46.3451822824415,
+        "right": 214.2177314388407,
+        "bottom": 154.48394094147164,
+        "top": 159.6334056395207
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:42.395Z"
+  },
+  "962916f8-3216-4507-a3e1-d80b802ae3bd-001e717a": {
+    "lengthIn": 40,
+    "heightIn": 86,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:43.206Z"
+  },
+  "962916f8-3216-4507-a3e1-d80b802ae3bd-001e72d1": {
+    "lengthIn": 40,
+    "heightIn": 86,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:44.065Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-001017a5": {
+    "lengthIn": 52.99999999999999,
+    "heightIn": 179,
+    "openings": [
+      {
+        "left": 0,
+        "right": 3,
+        "bottom": 0,
+        "top": 11
+      },
+      {
+        "left": 11,
+        "right": 52.99999999999999,
+        "bottom": 32,
+        "top": 123.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:44.977Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-001017a7": {
+    "lengthIn": 52,
+    "heightIn": 179,
+    "openings": [
+      {
+        "left": 0,
+        "right": 37,
+        "bottom": 32,
+        "top": 123.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:45.822Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-001017d3": {
+    "lengthIn": 108,
+    "heightIn": 216,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:46.747Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-0010180a": {
+    "lengthIn": 108,
+    "heightIn": 216,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:47.747Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101825": {
+    "lengthIn": 108,
+    "heightIn": 216,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:49.180Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101830": {
+    "lengthIn": 60,
+    "heightIn": 216,
+    "openings": [
+      {
+        "left": 58.99999999999999,
+        "right": 60,
+        "bottom": 154,
+        "top": 169
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:50.372Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101b21": {
+    "lengthIn": 96,
+    "heightIn": 216,
+    "openings": [
+      {
+        "left": 58,
+        "right": 96,
+        "bottom": 0,
+        "top": 216
+      },
+      {
+        "left": 0,
+        "right": 1,
+        "bottom": 160,
+        "top": 170
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:51.806Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101b6c": {
+    "lengthIn": 42,
+    "heightIn": 179,
+    "openings": [
+      {
+        "left": 6,
+        "right": 42,
+        "bottom": 16,
+        "top": 123.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:52.558Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101b6e": {
+    "lengthIn": 92,
+    "heightIn": 216,
+    "openings": [
+      {
+        "left": 64,
+        "right": 92,
+        "bottom": 0,
+        "top": 179
+      },
+      {
+        "left": 0,
+        "right": 1,
+        "bottom": 160,
+        "top": 168
+      },
+      {
+        "left": 85,
+        "right": 92,
+        "bottom": 181,
+        "top": 216
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:54.009Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101ba6": {
+    "lengthIn": 17,
+    "heightIn": 179,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:55.065Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101bde": {
+    "lengthIn": 48,
+    "heightIn": 179,
+    "openings": [
+      {
+        "left": 4,
+        "right": 40,
+        "bottom": 16,
+        "top": 123.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:56.086Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101be4": {
+    "lengthIn": 44,
+    "heightIn": 216,
+    "openings": [
+      {
+        "left": 0,
+        "right": 1,
+        "bottom": 160,
+        "top": 169
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:36:57.190Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c51": {
+    "lengthIn": 38,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:57.820Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c53": {
+    "lengthIn": 146,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:58.733Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c67": {
+    "lengthIn": 26,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:36:59.470Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c69": {
+    "lengthIn": 146,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:00.687Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c7d": {
+    "lengthIn": 26,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:01.354Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c7f": {
+    "lengthIn": 72,
+    "heightIn": 160,
+    "openings": [
+      {
+        "left": 0,
+        "right": 27.999999999999996,
+        "bottom": 0,
+        "top": 160
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:02.195Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101c90": {
+    "lengthIn": 41,
+    "heightIn": 193,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-4\" to 10'-4\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:37:03.091Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a953": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:03.595Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a954": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:04.125Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a955": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:04.666Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a9fa": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:05.161Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a9fb": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:05.673Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a9fc": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:06.184Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a9fe": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:06.696Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020a9ff": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:07.204Z"
+  },
+  "77f484cb-7c54-4741-818c-1c9218a020ed-0020aa00": {
+    "lengthIn": 21,
+    "heightIn": 35,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:07.730Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429fa": {
+    "lengthIn": 86,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:08.576Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c92": {
+    "lengthIn": 86,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:09.567Z"
+  },
+  "6fef491d-aa42-4de7-b3e6-dd364fb54430-0016322b": {
+    "lengthIn": 327.1590271598061,
+    "heightIn": 160.4735734486391,
+    "openings": [
+      {
+        "left": 28.98877455846383,
+        "right": 72.47193639615958,
+        "bottom": 13.459073902143922,
+        "top": 114.91978485676734
+      },
+      {
+        "left": 107.67259121715138,
+        "right": 150.12043967775912,
+        "bottom": 13.459073902143922,
+        "top": 114.91978485676734
+      },
+      {
+        "left": 184.28578112166292,
+        "right": 227.7689429593587,
+        "bottom": 13.459073902143922,
+        "top": 114.91978485676734
+      },
+      {
+        "left": 262.9695977803505,
+        "right": 305.41744624095827,
+        "bottom": 13.459073902143922,
+        "top": 114.91978485676734
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:11.645Z"
+  },
+  "141fa1ed-8af8-4ccd-84d7-032c854e66a1-00174436": {
+    "lengthIn": 274,
+    "heightIn": 246,
+    "openings": [
+      {
+        "left": 16,
+        "right": 58.99999999999999,
+        "bottom": 15,
+        "top": 111.99999999999999
+      },
+      {
+        "left": 86,
+        "right": 129,
+        "bottom": 15,
+        "top": 111.99999999999999
+      },
+      {
+        "left": 145,
+        "right": 188,
+        "bottom": 15,
+        "top": 111.99999999999999
+      },
+      {
+        "left": 214.99999999999997,
+        "right": 258,
+        "bottom": 15,
+        "top": 111.99999999999999
+      },
+      {
+        "left": 21,
+        "right": 43,
+        "bottom": 193.99999999999997,
+        "top": 241.99999999999997
+      },
+      {
+        "left": 73,
+        "right": 95,
+        "bottom": 193.99999999999997,
+        "top": 241.99999999999997
+      },
+      {
+        "left": 179,
+        "right": 201,
+        "bottom": 193.99999999999997,
+        "top": 241.99999999999997
+      },
+      {
+        "left": 231,
+        "right": 253,
+        "bottom": 193.99999999999997,
+        "top": 241.99999999999997
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:14.751Z"
+  },
+  "459d6f50-4382-46bc-ab5a-7e6cd01f820c-0017547c": {
+    "lengthIn": 440.30874221763327,
+    "heightIn": 153.69267417030596,
+    "openings": [
+      {
+        "left": 4.153856058656917,
+        "right": 47.07703533144507,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      },
+      {
+        "left": 67.84631562472966,
+        "right": 110.7694948975178,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      },
+      {
+        "left": 131.5387751908024,
+        "right": 175.8465731498095,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      },
+      {
+        "left": 225.69284585369252,
+        "right": 268.6160251264807,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      },
+      {
+        "left": 289.38530541976525,
+        "right": 332.3084846925534,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      },
+      {
+        "left": 353.07776498583803,
+        "right": 396.0009442586262,
+        "bottom": 29.076992410598425,
+        "top": 130.15415650458343
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:16.565Z"
+  },
+  "97926e32-0494-4448-aec5-d83bb933a11e-0017690a": {
+    "lengthIn": 343.33980038669154,
+    "heightIn": 154.2856065028804,
+    "openings": [
+      {
+        "left": 22.816885468735833,
+        "right": 65.19110133924524,
+        "bottom": 29.335995602660354,
+        "top": 130.38220267849047
+      },
+      {
+        "left": 85.83495009667288,
+        "right": 128.2091659671823,
+        "bottom": 29.335995602660354,
+        "top": 130.38220267849047
+      },
+      {
+        "left": 148.85301472460998,
+        "right": 191.22723059511935,
+        "bottom": 29.335995602660354,
+        "top": 130.38220267849047
+      },
+      {
+        "left": 224.9092996203961,
+        "right": 267.2835154909055,
+        "bottom": 29.335995602660354,
+        "top": 130.38220267849047
+      },
+      {
+        "left": 284.66780918137084,
+        "right": 328.1285434075344,
+        "bottom": 29.335995602660354,
+        "top": 130.38220267849047
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:19.067Z"
+  },
+  "049439b4-5467-47c4-a72e-459e7fd736c2-00101adb": {
+    "lengthIn": 48,
+    "heightIn": 216,
+    "openings": [
+      {
+        "left": 0,
+        "right": 1,
+        "bottom": 160,
+        "top": 168
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:20.004Z"
+  },
+  "9d1ad948-444a-4ed4-9538-52a5b651c05a-001474e6": {
+    "lengthIn": 208.99999999999997,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:21.201Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff87": {
+    "lengthIn": 117,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:22.138Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02a5": {
+    "lengthIn": 117,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:23.091Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0326": {
+    "lengthIn": 117,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:23.944Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0357": {
+    "lengthIn": 117,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:24.843Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc535": {
+    "lengthIn": 99,
+    "heightIn": 120,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:25.729Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc960": {
+    "lengthIn": 96,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:26.329Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000ccaf8": {
+    "lengthIn": 117,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:27.204Z"
+  },
+  "d25651f2-4b77-4502-831b-94c28a909a13-000dbfc7": {
+    "lengthIn": 116,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:28.373Z"
+  },
+  "d25651f2-4b77-4502-831b-94c28a909a13-000dbfff": {
+    "lengthIn": 105,
+    "heightIn": 104,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:29.472Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd680": {
+    "lengthIn": 114.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 73,
+        "right": 111,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:30.671Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd68c": {
+    "lengthIn": 156,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:31.569Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd69b": {
+    "lengthIn": 24,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:32.444Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc46": {
+    "lengthIn": 49.99999999999999,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:33.251Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc53": {
+    "lengthIn": 143,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:34.115Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddb9": {
+    "lengthIn": 51,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:34.909Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddc6": {
+    "lengthIn": 143,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:35.744Z"
+  },
+  "0f2162eb-d522-4ddb-83f7-8a6578693f5e-00138b79": {
+    "lengthIn": 89,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:36.772Z"
+  },
+  "0f2162eb-d522-4ddb-83f7-8a6578693f5e-00138b9d": {
+    "lengthIn": 89,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:37.579Z"
+  },
+  "0f2162eb-d522-4ddb-83f7-8a6578693f5e-00138bc1": {
+    "lengthIn": 92,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:38.571Z"
+  },
+  "0f2162eb-d522-4ddb-83f7-8a6578693f5e-00138bd3": {
+    "lengthIn": 92,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:39.603Z"
+  },
+  "998c17f7-84b4-432b-a4ea-4ccdacb00d15-001399a0": {
+    "lengthIn": 89,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:40.395Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a656": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:41.180Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a91f": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:41.973Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140914": {
+    "lengthIn": 49.99999999999999,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:43.112Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140921": {
+    "lengthIn": 146,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:44.101Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014094d": {
+    "lengthIn": 49.99999999999999,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:45.218Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014095a": {
+    "lengthIn": 146,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:46.248Z"
+  },
+  "a2df1c87-f272-419d-a2ab-ad91c32f9e0f-001420a3": {
+    "lengthIn": 54,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:47.125Z"
+  },
+  "a2df1c87-f272-419d-a2ab-ad91c32f9e0f-001420ab": {
+    "lengthIn": 102,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:47.958Z"
+  },
+  "c4c18351-3da3-4c0e-8f76-523096752445-00142678": {
+    "lengthIn": 96,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:48.509Z"
+  },
+  "c4c18351-3da3-4c0e-8f76-523096752445-0014268a": {
+    "lengthIn": 96,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:49.109Z"
+  },
+  "8479a7a8-b6cd-4302-b8e5-779806b99827-0015e0a7": {
+    "lengthIn": 114,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:49.815Z"
+  },
+  "8479a7a8-b6cd-4302-b8e5-779806b99827-0015e0ad": {
+    "lengthIn": 114,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:50.616Z"
+  },
+  "8479a7a8-b6cd-4302-b8e5-779806b99827-0015e257": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:51.512Z"
+  },
+  "8479a7a8-b6cd-4302-b8e5-779806b99827-0015e261": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:52.140Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8b51": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:37:53.079Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8c9f": {
+    "lengthIn": 120.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 9,
+        "right": 48,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:53.760Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8ca2": {
+    "lengthIn": 120.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 9,
+        "right": 48,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:54.435Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8e13": {
+    "lengthIn": 116,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 73,
+        "right": 111.99999999999999,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:55.267Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8e19": {
+    "lengthIn": 116,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 73,
+        "right": 111.99999999999999,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:56.052Z"
+  },
+  "1533f27f-0a78-47fe-acb5-1c70425d3f5a-001f8f23": {
+    "lengthIn": 105.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 58.99999999999999,
+        "right": 96.99999999999999,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:56.789Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f182": {
+    "lengthIn": 58.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:57.598Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f193": {
+    "lengthIn": 58.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:58.376Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f1b5": {
+    "lengthIn": 58.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 16,
+        "right": 55,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:37:59.636Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f1c6": {
+    "lengthIn": 58.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 16,
+        "right": 55,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:00.891Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f66d": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:01.636Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f67f": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:02.372Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f6a3": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:03.456Z"
+  },
+  "827486d1-b6f6-47d9-9eca-e5379aa26e8e-0021f6b5": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:04.649Z"
+  },
+  "19555c97-12ed-4ef6-b11d-fa320014911c-0022955c": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:05.283Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b72f1": {
+    "lengthIn": 423.4954443833698,
+    "heightIn": 154.48261493229842,
+    "openings": [
+      {
+        "left": 165.1365883759052,
+        "right": 203.75724210897982,
+        "bottom": 0,
+        "top": 85.2317875488543
+      },
+      {
+        "left": 245.0413892029561,
+        "right": 283.66204293603073,
+        "bottom": 0,
+        "top": 85.2317875488543
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:06.706Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b7327": {
+    "lengthIn": 408.1656621764424,
+    "heightIn": 154.0247781797896,
+    "openings": [
+      {
+        "left": 170.71079581593347,
+        "right": 211.78406999721068,
+        "bottom": 0,
+        "top": 88.56424745337901
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:07.958Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b74f8": {
+    "lengthIn": 1073.9345277232137,
+    "heightIn": 134.2418159654017,
+    "openings": [
+      {
+        "left": 218.14295094377778,
+        "right": 258.4154957333983,
+        "bottom": 0,
+        "top": 83.90113497837606
+      },
+      {
+        "left": 520.1870368659315,
+        "right": 560.4595816555521,
+        "bottom": 0,
+        "top": 83.90113497837606
+      },
+      {
+        "left": 916.2003939638666,
+        "right": 953.1168933543521,
+        "bottom": 0,
+        "top": 83.90113497837606
+      }
+    ],
+    "notes": [
+      "Gap across the wall from 10'-10 7/8\" to 11'-2 1/4\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:38:08.742Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b74f9": {
+    "lengthIn": 188,
+    "heightIn": 160,
+    "openings": [
+      {
+        "left": 4,
+        "right": 42,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [
+      "Gap across the wall from 10'-11\" to 13'-4\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:38:10.183Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b75f2": {
+    "lengthIn": 72,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 30,
+        "right": 68,
+        "bottom": 0,
+        "top": 85
+      },
+      {
+        "left": 70,
+        "right": 72,
+        "bottom": 131,
+        "top": 154
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:11.194Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b769d": {
+    "lengthIn": 111.99999999999999,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:12.480Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b7728": {
+    "lengthIn": 630.2698366103473,
+    "heightIn": 153.62827267377213,
+    "openings": [
+      {
+        "left": 193.02013746191886,
+        "right": 232.41200225006554,
+        "bottom": 0,
+        "top": 84.69250929451542
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:13.444Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b77a6": {
+    "lengthIn": 561.2161378637012,
+    "heightIn": 153.54026413252203,
+    "openings": [
+      {
+        "left": 192.36653782120578,
+        "right": 231.1928115098895,
+        "bottom": 0,
+        "top": 84.71186986621905
+      },
+      {
+        "left": 557.6864766192754,
+        "right": 561.2161378637012,
+        "bottom": 0,
+        "top": 95.30085359949643
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:14.433Z"
+  },
+  "be7c41aa-3dbe-41ab-a35e-bc804583677c-001433fb": {
+    "lengthIn": 58,
+    "heightIn": 126.99999999999999,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:15.268Z"
+  },
+  "be7c41aa-3dbe-41ab-a35e-bc804583677c-0014355f": {
+    "lengthIn": 58,
+    "heightIn": 126.99999999999999,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:16.067Z"
+  },
+  "7587b0c1-db93-4407-be70-bee49ca3f935-00165068": {
+    "lengthIn": 68,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:17.057Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b7d59": {
+    "lengthIn": 108.99999999999999,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 11,
+        "right": 87,
+        "bottom": 15,
+        "top": 102.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:18.003Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc732": {
+    "lengthIn": 96,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 0,
+        "right": 4,
+        "bottom": 0,
+        "top": 9
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:18.625Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc761": {
+    "lengthIn": 204,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 8,
+        "right": 84,
+        "bottom": 15,
+        "top": 102.99999999999999
+      },
+      {
+        "left": 108,
+        "right": 184,
+        "bottom": 15,
+        "top": 102.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:19.633Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc78e": {
+    "lengthIn": 86,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 4,
+        "right": 12,
+        "bottom": 129,
+        "top": 134
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:20.246Z"
+  },
+  "ee03061f-d7b4-4e6a-b397-fa44f24a42a7-000d8d2a": {
+    "lengthIn": 60,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 16,
+        "right": 55.99999999999999,
+        "bottom": 15,
+        "top": 102.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:21.240Z"
+  },
+  "ee03061f-d7b4-4e6a-b397-fa44f24a42a7-000d8dc4": {
+    "lengthIn": 63,
+    "heightIn": 144,
+    "openings": [
+      {
+        "left": 19,
+        "right": 58.99999999999999,
+        "bottom": 15,
+        "top": 102.99999999999999
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:21.978Z"
+  },
+  "be7c41aa-3dbe-41ab-a35e-bc804583677c-001431f3": {
+    "lengthIn": 174,
+    "heightIn": 150,
+    "openings": [
+      {
+        "left": 15,
+        "right": 23,
+        "bottom": 135,
+        "top": 140
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:23.137Z"
+  },
+  "be7c41aa-3dbe-41ab-a35e-bc804583677c-001432d8": {
+    "lengthIn": 77,
+    "heightIn": 150,
+    "openings": [
+      {
+        "left": 74,
+        "right": 77,
+        "bottom": 6,
+        "top": 15
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:24.018Z"
+  },
+  "36de279c-6ddc-45ad-b647-1db9bf66c1c8-0014e4a5": {
+    "lengthIn": 15,
+    "heightIn": 68,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:24.465Z"
+  },
+  "36de279c-6ddc-45ad-b647-1db9bf66c1c8-0014e4a6": {
+    "lengthIn": 20,
+    "heightIn": 68,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:25.087Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff86": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:25.901Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff88": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 2,
+        "right": 34,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:26.782Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff89": {
+    "lengthIn": 30,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:27.899Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff8a": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:28.522Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff8c": {
+    "lengthIn": 39,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:29.702Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff8d": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:30.582Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff8e": {
+    "lengthIn": 21,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:31.427Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff8f": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:32.221Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bff91": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:33.145Z"
+  },
+  "88a4e542-5134-43c6-8a51-272693a47893-000bffaf": {
+    "lengthIn": 39,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:33.993Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c009a": {
+    "lengthIn": 54,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 9,
+        "right": 41,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:34.852Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02a4": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:35.612Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02a6": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:36.292Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02a7": {
+    "lengthIn": 30,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:37.171Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02a8": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:37.777Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02aa": {
+    "lengthIn": 39,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:38.558Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02ab": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:39.106Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02ac": {
+    "lengthIn": 21,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:39.932Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02ad": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:40.734Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02af": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:41.381Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c02cd": {
+    "lengthIn": 39,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:42.058Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0325": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:42.727Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0327": {
+    "lengthIn": 54,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 9,
+        "right": 41,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:43.683Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0328": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:44.839Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0329": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:45.452Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c032a": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:46.518Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c032b": {
+    "lengthIn": 39,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:47.620Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c032c": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:48.510Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c032e": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:49.144Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0330": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:50.007Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c034e": {
+    "lengthIn": 39,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:50.825Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0356": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:51.482Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0358": {
+    "lengthIn": 54,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 9,
+        "right": 41,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:38:52.374Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0359": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:53.333Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035a": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:53.806Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035b": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:54.670Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035c": {
+    "lengthIn": 39,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:55.493Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035d": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:56.213Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035f": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:56.705Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c0361": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:57.418Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c037f": {
+    "lengthIn": 39,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:58.124Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc5ca": {
+    "lengthIn": 99,
+    "heightIn": 120,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:58.983Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc95e": {
+    "lengthIn": 24.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:38:59.702Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc961": {
+    "lengthIn": 24.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:00.490Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc963": {
+    "lengthIn": 102,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 30,
+        "right": 74,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:01.363Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc964": {
+    "lengthIn": 44,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:01.990Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc965": {
+    "lengthIn": 26,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:02.498Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc969": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:03.114Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cc987": {
+    "lengthIn": 39,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:03.645Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000ccaf9": {
+    "lengthIn": 24.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:04.089Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000ccafa": {
+    "lengthIn": 30,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:04.672Z"
+  },
+  "d25651f2-4b77-4502-831b-94c28a909a13-000dbfc8": {
+    "lengthIn": 37,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:05.369Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd68a": {
+    "lengthIn": 54,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:06.245Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd68d": {
+    "lengthIn": 27.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:06.977Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd697": {
+    "lengthIn": 44,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:07.733Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dd698": {
+    "lengthIn": 38,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:08.577Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc50": {
+    "lengthIn": 46,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:09.332Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc54": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:10.038Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc5e": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:10.695Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000ddc5f": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:11.403Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddc3": {
+    "lengthIn": 52,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:12.093Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddc7": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:12.896Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddd1": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:13.644Z"
+  },
+  "1e1216bb-7a57-4652-adb5-2002d71ed03d-000dddd2": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:14.373Z"
+  },
+  "ca6ba87f-a3eb-408d-9990-f6081814b705-00127c71": {
+    "lengthIn": 161,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 105,
+        "right": 143,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:15.362Z"
+  },
+  "febae133-11e0-4b9e-a1e1-4273c3caa5f3-0013a2a9": {
+    "lengthIn": 22,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:16.128Z"
+  },
+  "febae133-11e0-4b9e-a1e1-4273c3caa5f3-0013a2bc": {
+    "lengthIn": 22,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:16.827Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a40b": {
+    "lengthIn": 49,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:17.659Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014091e": {
+    "lengthIn": 46,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:18.663Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140922": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:19.582Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014092c": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:20.522Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014092d": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:21.518Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140957": {
+    "lengthIn": 46,
+    "heightIn": 12,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:22.451Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-0014095b": {
+    "lengthIn": 29,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:23.296Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140965": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:24.216Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140966": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:25.150Z"
+  },
+  "a2df1c87-f272-419d-a2ab-ad91c32f9e0f-001420a2": {
+    "lengthIn": 58.99999999999999,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:26.079Z"
+  },
+  "a2df1c87-f272-419d-a2ab-ad91c32f9e0f-001420a6": {
+    "lengthIn": 24.999999999999996,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:26.817Z"
+  },
+  "a2df1c87-f272-419d-a2ab-ad91c32f9e0f-001420b9": {
+    "lengthIn": 36,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:27.576Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142afc": {
+    "lengthIn": 86,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:28.423Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c97": {
+    "lengthIn": 86,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:29.483Z"
+  },
+  "8243bf9b-7747-4ad5-980c-3ac0da9d96ea-00150f76": {
+    "lengthIn": 49,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:30.426Z"
+  },
+  "7587b0c1-db93-4407-be70-bee49ca3f935-00165125": {
+    "lengthIn": 30.999999999999996,
+    "heightIn": 160,
+    "openings": [
+      {
+        "left": 0,
+        "right": 4,
+        "bottom": 96,
+        "top": 160
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:31.190Z"
+  },
+  "19555c97-12ed-4ef6-b11d-fa320014911c-00229558": {
+    "lengthIn": 39,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 2,
+        "right": 34,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:31.685Z"
+  },
+  "41d1ad61-ffd3-4ad3-b736-32555cc804a3-002573fb": {
+    "lengthIn": 87,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 6,
+        "right": 49.99999999999999,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:32.654Z"
+  },
+  "41d1ad61-ffd3-4ad3-b736-32555cc804a3-0025767f": {
+    "lengthIn": 87,
+    "heightIn": 96,
+    "openings": [
+      {
+        "left": 37,
+        "right": 81,
+        "bottom": 0,
+        "top": 84
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:33.549Z"
+  },
+  "45ed4799-d124-4abc-8e2b-9d29089bad28-000b769a": {
+    "lengthIn": 111.99999999999999,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:34.725Z"
+  },
+  "8dd6f36e-c3c3-4f56-8d51-5f14900ffe7e-000cd52c": {
+    "lengthIn": 274,
+    "heightIn": 107,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 7'-8\" to 8'-11\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:39:35.784Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bab": {
+    "lengthIn": 110,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 108,
+        "right": 110,
+        "bottom": 0,
+        "top": 96
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:37.177Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bb2": {
+    "lengthIn": 110,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 108,
+        "right": 110,
+        "bottom": 0,
+        "top": 96
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:38.429Z"
+  },
+  "b6ddae5b-1957-46de-b1ba-3df9cd2268df-0022e0bc": {
+    "lengthIn": 272,
+    "heightIn": 43,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:39.181Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c032d": {
+    "lengthIn": 19,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:40.067Z"
+  },
+  "c2074c86-4f71-4891-b420-05ffb69fa016-000c035e": {
+    "lengthIn": 19,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:40.890Z"
+  },
+  "febae133-11e0-4b9e-a1e1-4273c3caa5f3-0013a2aa": {
+    "lengthIn": 13,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:41.600Z"
+  },
+  "febae133-11e0-4b9e-a1e1-4273c3caa5f3-0013a2bd": {
+    "lengthIn": 13,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:42.289Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a57f": {
+    "lengthIn": 15,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:42.996Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a609": {
+    "lengthIn": 17,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:43.759Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a91d": {
+    "lengthIn": 15,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:44.434Z"
+  },
+  "8c89656c-31b8-4220-bf37-dc8bf480b6a0-0013a91e": {
+    "lengthIn": 17,
+    "heightIn": 96,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:45.152Z"
+  },
+  "962916f8-3216-4507-a3e1-d80b802ae3bd-001e7219": {
+    "lengthIn": 40,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:45.946Z"
+  },
+  "962916f8-3216-4507-a3e1-d80b802ae3bd-001e72d2": {
+    "lengthIn": 40,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:46.734Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bac": {
+    "lengthIn": 279,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:48.365Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bad": {
+    "lengthIn": 113,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 55,
+        "right": 95,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:49.386Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bb3": {
+    "lengthIn": 279,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:50.921Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bb4": {
+    "lengthIn": 125,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 67,
+        "right": 107,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:51.884Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-00141963": {
+    "lengthIn": 126,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:52.870Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-00141964": {
+    "lengthIn": 111.99999999999999,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:54.077Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-00141965": {
+    "lengthIn": 51,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:55.008Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-00141966": {
+    "lengthIn": 122,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 36,
+        "right": 84,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:39:56.053Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-001419ab": {
+    "lengthIn": 126,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:56.981Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-001419ac": {
+    "lengthIn": 111.99999999999999,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:58.112Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-001419ad": {
+    "lengthIn": 51,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:39:59.041Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-001419ae": {
+    "lengthIn": 122,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 36,
+        "right": 84,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:00.193Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429f8": {
+    "lengthIn": 133,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:00.934Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429f9": {
+    "lengthIn": 114,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:01.800Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429fb": {
+    "lengthIn": 114,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 26,
+        "right": 74,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:02.865Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-001429fd": {
+    "lengthIn": 75,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 18,
+        "right": 58,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:04.026Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c90": {
+    "lengthIn": 133,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:04.888Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c91": {
+    "lengthIn": 114,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:06.015Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c93": {
+    "lengthIn": 114,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 26,
+        "right": 74,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:07.124Z"
+  },
+  "e8d0e752-8307-45f3-82e8-e54d42939a03-00142c95": {
+    "lengthIn": 75,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 18,
+        "right": 58,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:08.249Z"
+  },
+  "7176efd2-e2e8-4d92-9e37-7126b6b7d058-00142d54": {
+    "lengthIn": 279,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:10.001Z"
+  },
+  "7176efd2-e2e8-4d92-9e37-7126b6b7d058-00142d76": {
+    "lengthIn": 279,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:11.580Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-00145471": {
+    "lengthIn": 288,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:13.348Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-00145472": {
+    "lengthIn": 288,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:15.171Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-00145473": {
+    "lengthIn": 125,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 18,
+        "right": 58,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:16.315Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-00145474": {
+    "lengthIn": 125,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:17.203Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-001454db": {
+    "lengthIn": 70,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:18.216Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-001454dc": {
+    "lengthIn": 70,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:19.368Z"
+  },
+  "72db8f7f-9817-4cd4-a5f7-032bb4aea8f0-001454dd": {
+    "lengthIn": 125,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 18,
+        "right": 58,
+        "bottom": 0,
+        "top": 88
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:20.468Z"
+  },
+  "71b206f2-cc5b-4687-bf36-3dc7f8d4a6f9-0014e949": {
+    "lengthIn": 6,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:21.046Z"
+  },
+  "cd385e70-9bdd-443f-864f-9b1e057a8a5c-0015a7ee": {
+    "lengthIn": 94,
+    "heightIn": 120,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:21.999Z"
+  },
+  "141fa1ed-8af8-4ccd-84d7-032c854e66a1-001744f7": {
+    "lengthIn": 13.999999999999998,
+    "heightIn": 246,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:22.460Z"
+  },
+  "459d6f50-4382-46bc-ab5a-7e6cd01f820c-00175b2f": {
+    "lengthIn": 12,
+    "heightIn": 160,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:22.970Z"
+  },
+  "97926e32-0494-4448-aec5-d83bb933a11e-00176725": {
+    "lengthIn": 13,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:23.551Z"
+  },
+  "97926e32-0494-4448-aec5-d83bb933a11e-0017673c": {
+    "lengthIn": 6,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:24.003Z"
+  },
+  "97926e32-0494-4448-aec5-d83bb933a11e-00176ae7": {
+    "lengthIn": 10,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:24.401Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-00141967": {
+    "lengthIn": 13,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:25.225Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-001419af": {
+    "lengthIn": 13,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:26.028Z"
+  },
+  "03907ce2-d6bf-41d6-b870-f44df8a9f0d9-00143791": {
+    "lengthIn": 13,
+    "heightIn": 120,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:26.886Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140ba9": {
+    "lengthIn": 72,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 4,
+        "right": 43,
+        "bottom": 0,
+        "top": 85
+      },
+      {
+        "left": 0,
+        "right": 2,
+        "bottom": 132,
+        "top": 154
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:27.831Z"
+  },
+  "67c8725e-6767-456a-a743-b96a80deb581-00140bb0": {
+    "lengthIn": 61.99999999999999,
+    "heightIn": 154,
+    "openings": [
+      {
+        "left": 19,
+        "right": 58,
+        "bottom": 0,
+        "top": 85
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:28.731Z"
+  },
+  "a14624a2-f4a4-4cad-99b9-99008643f6a4-0014187d": {
+    "lengthIn": 65,
+    "heightIn": 154,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:29.723Z"
+  },
+  "c09fde31-338e-4c6c-a363-87a1bb311b56-001637eb": {
+    "lengthIn": 325.009171944657,
+    "heightIn": 21.598710793790495,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:30.395Z"
+  },
+  "c09fde31-338e-4c6c-a363-87a1bb311b56-001637ec": {
+    "lengthIn": 325.009171944657,
+    "heightIn": 21.598710793790495,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:31.066Z"
+  },
+  "61a32cf2-3b05-44a5-a32b-59b97361a46a-0017c5e4": {
+    "lengthIn": 274,
+    "heightIn": 23,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:31.691Z"
+  },
+  "31c2d16b-0daf-4047-8927-ce3d0e3ef29a-001f061f": {
+    "lengthIn": 270,
+    "heightIn": 36,
+    "openings": [
+      {
+        "left": 0,
+        "right": 37,
+        "bottom": 30,
+        "top": 36
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:32.303Z"
+  },
+  "b68f5e86-3059-454a-b0e0-715f2baf5f78-001fb173": {
+    "lengthIn": 214,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:33.043Z"
+  },
+  "b68f5e86-3059-454a-b0e0-715f2baf5f78-001fb17b": {
+    "lengthIn": 325.009171944657,
+    "heightIn": 21.598710793790495,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:33.777Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb7b3": {
+    "lengthIn": 325.009171944657,
+    "heightIn": 21.598710793790495,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:34.526Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb7bb": {
+    "lengthIn": 214,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:35.284Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb7d5": {
+    "lengthIn": 288,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:36.075Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb7d6": {
+    "lengthIn": 214,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:36.915Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb885": {
+    "lengthIn": 161,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:37.565Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb892": {
+    "lengthIn": 229,
+    "heightIn": 22,
+    "openings": [
+      {
+        "left": 0,
+        "right": 229,
+        "bottom": 0,
+        "top": 22
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:38.235Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb89d": {
+    "lengthIn": 193,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:38.718Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb8aa": {
+    "lengthIn": 262,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:39.341Z"
+  },
+  "adabf573-b216-44e0-ac70-8f359d0cf287-001fb914": {
+    "lengthIn": 274,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:39.809Z"
+  },
+  "adabf573-b216-44e0-ac70-8f359d0cf287-001fb920": {
+    "lengthIn": 226,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:40.366Z"
+  },
+  "adabf573-b216-44e0-ac70-8f359d0cf287-001fb92a": {
+    "lengthIn": 187,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:40.806Z"
+  },
+  "adabf573-b216-44e0-ac70-8f359d0cf287-001fb936": {
+    "lengthIn": 196.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:41.506Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fcfb1": {
+    "lengthIn": 155,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:42.235Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fcfb2": {
+    "lengthIn": 161,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:42.927Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fcfcc": {
+    "lengthIn": 155,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:43.642Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd518": {
+    "lengthIn": 226,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:44.194Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd550": {
+    "lengthIn": 187,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:44.716Z"
+  },
+  "36e46a2c-bcc4-43f9-812f-33458b1c8db7-0021f6de": {
+    "lengthIn": 262,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:45.346Z"
+  },
+  "f88d4a45-27f1-40aa-97b1-e0ec10f86856-00233ca3": {
+    "lengthIn": 196.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:45.960Z"
+  },
+  "967fe184-faf1-4a69-9677-0665ebd2a421-001654cb": {
+    "lengthIn": 322.9207316141238,
+    "heightIn": 21.459922037647466,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:46.353Z"
+  },
+  "967fe184-faf1-4a69-9677-0665ebd2a421-001654cc": {
+    "lengthIn": 322.9207316141238,
+    "heightIn": 21.459922037647466,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:46.768Z"
+  },
+  "e5f90b31-9627-4de8-a560-7461b6003b05-0018437a": {
+    "lengthIn": 262,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:47.136Z"
+  },
+  "6484c72e-fea3-4e7d-af23-3fc2c54c0db3-001eb33e": {
+    "lengthIn": 541.8042732993857,
+    "heightIn": 22.079797971448322,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:47.750Z"
+  },
+  "38d9f1b7-34dc-4fca-bd05-66aada0a2382-001ef2b2": {
+    "lengthIn": 214,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:48.198Z"
+  },
+  "38d9f1b7-34dc-4fca-bd05-66aada0a2382-001ef2f1": {
+    "lengthIn": 214,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:48.990Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb884": {
+    "lengthIn": 262,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:49.390Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb891": {
+    "lengthIn": 238,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:49.804Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb89c": {
+    "lengthIn": 202,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:50.168Z"
+  },
+  "bbcbc9b5-6734-4739-8a6c-8cc02c2a73a2-001fb8a9": {
+    "lengthIn": 241.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:50.643Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd127": {
+    "lengthIn": 226,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:51.102Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd154": {
+    "lengthIn": 220,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:51.572Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd74f": {
+    "lengthIn": 184,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:51.920Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd770": {
+    "lengthIn": 262,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:52.306Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd779": {
+    "lengthIn": 220.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:52.704Z"
+  },
+  "d4d4c967-a192-4bd7-9d61-46580928f44f-0020c25f": {
+    "lengthIn": 262,
+    "heightIn": 24.999999999999996,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 2'-0\" to 2'-1\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:53.150Z"
+  },
+  "d4d4c967-a192-4bd7-9d61-46580928f44f-0020c45f": {
+    "lengthIn": 190,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:53.482Z"
+  },
+  "d4d4c967-a192-4bd7-9d61-46580928f44f-0020c480": {
+    "lengthIn": 241.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:53.892Z"
+  },
+  "f3f642fe-8f75-431a-8bc0-32f8924153c4-001f2317": {
+    "lengthIn": 299,
+    "heightIn": 20,
+    "openings": [
+      {
+        "left": 0,
+        "right": 12,
+        "bottom": 0,
+        "top": 11
+      }
+    ],
+    "notes": [
+      "Gap across the wall from 0'-11\" to 1'-8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:54.275Z"
+  },
+  "f3f642fe-8f75-431a-8bc0-32f8924153c4-001f24df": {
+    "lengthIn": 220,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:54.635Z"
+  },
+  "f3f642fe-8f75-431a-8bc0-32f8924153c4-001f24f7": {
+    "lengthIn": 440.30874221763327,
+    "heightIn": 22.15389897950356,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:55.007Z"
+  },
+  "fa0699cd-2ea6-4210-abca-3aec77cf1566-001fcc62": {
+    "lengthIn": 272,
+    "heightIn": 24.999999999999996,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:55.617Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fcfb0": {
+    "lengthIn": 274,
+    "heightIn": 48,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:56.473Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd114": {
+    "lengthIn": 226,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:40:57.035Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd11a": {
+    "lengthIn": 440.0614828622694,
+    "heightIn": 22.141458257221103,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:57.655Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd121": {
+    "lengthIn": 229,
+    "heightIn": 22,
+    "openings": [
+      {
+        "left": 0,
+        "right": 229,
+        "bottom": 0,
+        "top": 22
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:58.335Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd152": {
+    "lengthIn": 439.1960930269812,
+    "heightIn": 22.09791663028836,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:40:58.916Z"
+  },
+  "15ebb97e-2dea-4a54-a982-fbf2eb91b0f2-001fd153": {
+    "lengthIn": 229,
+    "heightIn": 22,
+    "openings": [
+      {
+        "left": 0,
+        "right": 229,
+        "bottom": 0,
+        "top": 22
+      }
+    ],
+    "notes": [],
+    "at": "2026-09-28T01:40:59.741Z"
+  },
+  "525bb0a5-314c-4504-9c05-71eb18250f5b-001fd1ac": {
+    "lengthIn": 184,
+    "heightIn": 23,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:00.267Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd5da": {
+    "lengthIn": 193,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:00.788Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd5f6": {
+    "lengthIn": 190,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:01.302Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd621": {
+    "lengthIn": 193,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:01.804Z"
+  },
+  "40ff175d-8ba4-4d89-aab6-c82ffb7b2f8f-001fd70e": {
+    "lengthIn": 258,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:02.490Z"
+  },
+  "16db3741-dea8-4da9-b119-e964178cf1d7-0020b183": {
+    "lengthIn": 184,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:02.812Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-0023180a": {
+    "lengthIn": 90,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:03.330Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231880": {
+    "lengthIn": 90,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:03.832Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231883": {
+    "lengthIn": 90,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:04.333Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-002318aa": {
+    "lengthIn": 225,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:04.604Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-002318d4": {
+    "lengthIn": 228,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:04.897Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231914": {
+    "lengthIn": 228,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:05.314Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231924": {
+    "lengthIn": 225,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:05.613Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231925": {
+    "lengthIn": 228,
+    "heightIn": 24,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:05.919Z"
+  },
+  "f88d4a45-27f1-40aa-97b1-e0ec10f86856-00233d3a": {
+    "lengthIn": 173,
+    "heightIn": 23,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:06.762Z"
+  },
+  "f88d4a45-27f1-40aa-97b1-e0ec10f86856-00233d3c": {
+    "lengthIn": 173,
+    "heightIn": 23,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:07.541Z"
+  },
+  "f88d4a45-27f1-40aa-97b1-e0ec10f86856-00233d5c": {
+    "lengthIn": 143,
+    "heightIn": 23,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:08.337Z"
+  },
+  "817801dd-655e-443c-9f69-d5f14efae8a3-0019f044": {
+    "lengthIn": 726.5963376623035,
+    "heightIn": 36.32981688311517,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 2'-10\" to 3'-0 3/8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:08.737Z"
+  },
+  "817801dd-655e-443c-9f69-d5f14efae8a3-0019f046": {
+    "lengthIn": 732.4434099998638,
+    "heightIn": 36.62217049999319,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 2'-10 3/8\" to 3'-0 5/8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:09.176Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-0023180b": {
+    "lengthIn": 590.5157834990157,
+    "heightIn": 24.140582344299386,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:09.559Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231881": {
+    "lengthIn": 590.5157834990157,
+    "heightIn": 24.140582344299386,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:09.978Z"
+  },
+  "e0a62805-3ef6-476b-8f15-4c06d417e3a8-00231884": {
+    "lengthIn": 590.5157834990157,
+    "heightIn": 24.140582344299386,
+    "openings": [],
+    "notes": [],
+    "at": "2026-09-28T01:41:10.411Z"
+  },
+  "a6b525a3-ccbe-472f-bfbc-81da2daa5700-001f26e7": {
+    "lengthIn": 332.5380491162738,
+    "heightIn": 22.02933448404338,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:10.872Z"
+  },
+  "a6b525a3-ccbe-472f-bfbc-81da2daa5700-001f26e9": {
+    "lengthIn": 220.99999999999997,
+    "heightIn": 22,
+    "openings": [],
+    "notes": [
+      "Gap across the wall from 1'-9\" to 1'-10\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ],
+    "at": "2026-09-28T01:41:11.387Z"
   }
 }

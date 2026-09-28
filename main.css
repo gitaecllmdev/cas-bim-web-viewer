@@ -88,6 +88,8 @@ body {
 .pane2d-bar button { font: inherit; margin-left: 0.4em; padding: 0.1em 0.6em; cursor: pointer; border: 1px solid #999; background: white; }
 .pane2d-bar button.active { background: #fff4d6; border-color: #c9a227; }
 .pane2d-bar button:disabled { cursor: default; opacity: 0.5; }
+#sheet-status { margin-left: 0.6em; color: #666; }
+#sheet-status.error { color: #b00020; }
 
 #viewer2d {
     position: relative;
