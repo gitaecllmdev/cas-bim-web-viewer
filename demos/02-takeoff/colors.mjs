@@ -23,8 +23,14 @@ export function depthOf(text) {
 }
 
 // value -> hex for one dimension's values (all of the project's values, so the colors don't shift with the slicers).
+const SYSTEM_COLORS = { 'Framed wall': '#1f6fd1', 'Shaft wall': '#ff7f0e', Furring: '#7b3fa0' };
 export function colorMap(dim, values) {
     const list = [...new Set(values)].filter(v => v != null && v !== '');
+    if (dim === 'system') return new Map(list.map(v => [v, SYSTEM_COLORS[v] || NOT_OURS]));
+    if (dim === 'insulation') {
+        const insulated = list.filter(v => v !== 'None').sort((a, b) => String(a).localeCompare(String(b), undefined, { numeric: true }));
+        return new Map([['None', '#b8c2cc'], ...insulated.map((v, i) => [v, PALETTE[(i + 1) % PALETTE.length]])]);
+    }
     if (dim === 'framing') return new Map(list.map(v => [v, Number.isFinite(depthOf(v)) ? depthColor(depthOf(v)) : NOT_OURS]));
     if (dim === 'stud') {
         const byDepth = new Map();

@@ -11,7 +11,7 @@
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
-import { takeoff, assemblyFor, fmtInches, ROLES } from './calc.mjs';
+import { takeoff, assemblyFor, fmtInches, ROLES, INSULATIONS } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
 import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
 import { readXlsx } from './xlsx.mjs';
@@ -37,14 +37,14 @@ const STUDS = [0.875, 1.625, 2.5, 3.625, 4, 6, 8];
 // The engineer's criteria: its own state, left out of the published site (scripts/build-site.js copies named states only).
 const CRITERIA_STATE = 'takeoff-criteria';
 // Slicers and their link parameters (level: the header's ?level=, or lv=... for several levels).
-const SLICERS = ['level', 'framing', 'stud', 'role', 'finish', 'layers', 'wallType', 'fire', 'source'];
-const PARAM = { level: 'lv', framing: 'framing', stud: 'stud', role: 'role', finish: 'finish', layers: 'layers', wallType: 'type', fire: 'fire', source: 'source' };
-const WALL_DIMS = ['level', 'framing', 'stud', 'finish', 'layers', 'wallType', 'fire']; // role and source are per member line
+const SLICERS = ['level', 'system', 'framing', 'stud', 'role', 'finish', 'layers', 'insulation', 'wallType', 'fire', 'source'];
+const PARAM = { level: 'lv', system: 'system', framing: 'framing', stud: 'stud', role: 'role', finish: 'finish', layers: 'layers', insulation: 'insulation', wallType: 'type', fire: 'fire', source: 'source' };
+const WALL_DIMS = ['level', 'system', 'framing', 'stud', 'finish', 'layers', 'insulation', 'wallType', 'fire']; // role and source are per member line
 // Short names and badge styles of the framing sources (criteria.mjs SOURCES).
 const SOURCE_TAG = { [SOURCES.override]: ['Manual', 'manual'], [SOURCES.criteria]: ['Criteria', 'ok'], [SOURCES.placeholder]: ['Placeholder', 'ph'],
     [SOURCES.gap]: ['Placeholder, not in criteria', 'gap'], [SOURCES.outOfRange]: ['Out of range', 'bad'], [SOURCES.assembly]: ['Assembly', 'ph'] };
-const COLOR_BY = { framing: 'Framing type', stud: 'SSMA stud', finish: 'Finish', layers: 'Layers' };
-const SHARE_BY = { studLf: 'Stud LF', trackLf: 'Track LF', boardSf: 'Board SF', walls: 'Walls' };
+const COLOR_BY = { framing: 'Framing type', system: 'Wall system', stud: 'SSMA stud', finish: 'Finish', layers: 'Layers', insulation: 'Insulation' };
+const SHARE_BY = { studLf: 'Stud LF', trackLf: 'Track LF', boardSf: 'Board SF', insulationSf: 'Insulation SF', walls: 'Walls' };
 // Suggestions for a manual stud override (any SSMA designator can be typed).
 const SSMA_SUGGEST = ['162S125-18', '250S125-18', '250S162-33', '362S125-18', '362S162-33', '362S162-43', '362S162-54', '362S200-43', '362S200-54',
     '400S162-33', '400S162-43', '400S200-54', '600S162-33', '600S162-43', '600S162-54', '600S200-54', '600S250-68', '800S162-43', '800S200-54'];
@@ -137,7 +137,9 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             };
             const lf = TO_FT[this.units.length] ?? 1, sf = TO_SF[this.units.area] ?? 1;
             // Revit's wall height (Unconnected Height) gives the real stud length; area ÷ length reads low when a wall has openings.
-            const extra = new Map((await getBulkProperties(model, walls.map(w => w.dbId), ['Unconnected Height', 'Base Offset'])).map(r => [r.dbId, r]));
+            // Structural Material: the only layer material the Revit export carries in this model (the "Structure" layer list
+            // comes through empty); a 1" liner there makes a shaft wall (criteria.mjs wallSystem). R: Revit's thermal resistance.
+            const extra = new Map((await getBulkProperties(model, walls.map(w => w.dbId), ['Unconnected Height', 'Base Offset', 'Structural Material', 'Thermal Resistance (R)', 'Function'])).map(r => [r.dbId, r]));
             const scans = await loadScans();
             // Level elevations (ft): a wall's span on its base level runs from its base to the next story up (8 ft or more
             // above, as the header's level section box), so a wall through several levels is counted there only (calc.mjs).
@@ -149,9 +151,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             };
             this.walls = walls.map(w => {
                 const baseOffsetFt = Number(propValue(extra.get(w.dbId), 'Base Offset')) * lf || 0;
+                const p = (name) => propValue(extra.get(w.dbId), name);
                 return { ...w, length: Number(w.length) * lf, area: Number(w.area) * sf,
-                    heightFt: Number(propValue(extra.get(w.dbId), 'Unconnected Height')) * lf || undefined,
-                    baseOffsetFt, levelSpanFt: spanOf(w.level, baseOffsetFt), scan: scans[w.externalId] };
+                    heightFt: Number(p('Unconnected Height')) * lf || undefined,
+                    baseOffsetFt, levelSpanFt: spanOf(w.level, baseOffsetFt), scan: scans[w.externalId],
+                    materials: [p('Structural Material')].filter(m => m && !/^<By Category>$/.test(m)), rValue: Number(p('Thermal Resistance (R)')) || null, function: p('Function') || '' };
             });
             this.scanStamp = 0;
             // Several levels from the link (lv=...), else the header's level.
@@ -672,13 +676,13 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             }
         };
         walk(this.tree);
-        const cols = 13 + (this.sheathing ? 1 : 0);
+        const cols = 14 + (this.sheathing ? 1 : 0);
         const shareBy = `<select data-share-by aria-label="Share of">${Object.entries(SHARE_BY).map(([k, l]) => `<option value="${k}" ${k === this.shareBy ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         body.innerHTML = `<div class="tk-grid-wrap"><table class="tk-grid">
             <thead><tr><th>${this.groups.map(d => DIMENSIONS[d].label).join(' ▸ ')}</th>
                 <th title="The wall types in the row">Wall info</th><th title="The SSMA stud of the walls">SSMA stud</th><th title="Where the framing of the row comes from, with wall counts: engineer criteria, manual override, SSMA placeholder, out of range">Source</th>
                 <th title="Finish class and board">Finish</th><th title="Gypsum layers, side A + side B">Layers</th><th class="num" title="Stud length: for a group, its walls' full-height studs (a range when they differ); for a stud, jamb or cripple line, its cut length. ↥ = walls through several levels, counted on their base level only (floor to floor)">Stud height</th>
-                <th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}
+                <th class="num">Walls</th><th class="num">Studs</th><th class="num">Stud LF</th><th class="num">Track LF</th><th class="num" title="Gypsum board and shaftliner">Board SF</th>${this.sheathing ? '<th class="num">Sheathing SF</th>' : ''}<th class="num" title="Cavity insulation, wall area on the counted height">Insulation SF</th>
                 <th class="num tk-share-h">% of ${shareBy}</th></tr></thead>
             <tbody>${rows.join('') || `<tr><td colspan="${cols}" class="muted">No framed walls match these filters.</td></tr>`}</tbody>
             <tfoot><tr class="total"><td>Total${this.filtering ? ` <span class="muted">(${escapeHtml(this.scopeLabel())})</span>` : ''}</td>${this.infoCells(total)}${this.numCells(total)}</tr></tfoot>
@@ -701,7 +705,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     numCells(t) {
         const n = (v) => (v ? fmt(v) : '<span class="muted">–</span>');
         const pct = this.shareTotal ? (100 * (t[this.shareBy] || 0)) / this.shareTotal : 0;
-        return `<td class="num">${fmt(t.walls)}</td><td class="num">${n(t.studs)}</td><td class="num">${n(t.studLf)}</td><td class="num">${n(t.trackLf)}</td><td class="num">${n(t.boardSf)}</td>${this.sheathing ? `<td class="num">${n(t.sheathingSf)}</td>` : ''}
+        return `<td class="num">${fmt(t.walls)}</td><td class="num">${n(t.studs)}</td><td class="num">${n(t.studLf)}</td><td class="num">${n(t.trackLf)}</td><td class="num">${n(t.boardSf)}</td>${this.sheathing ? `<td class="num">${n(t.sheathingSf)}</td>` : ''}<td class="num">${n(t.insulationSf)}</td>
             <td class="num tk-share"><span class="tk-share-bar" style="width:${Math.min(100, pct).toFixed(1)}%"></span><span>${pct ? `${fmt(pct, 1)}%` : '–'}</span></td>`;
     }
 
@@ -807,12 +811,14 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const sel = (key, value, options) => `<select data-key="${key}">${options.map(([v, l]) => `<option value="${v}" ${String(v) === String(value) ? 'selected' : ''}>${l}</option>`).join('')}</select>`;
         const n03 = [0, 1, 2, 3].map(v => [v, v]);
         body.innerHTML = `<p class="muted">Starting assemblies come from samples/takeoff-rules.json (matched on the type name). Change any type here; the takeoff updates at once. Click a name to see those walls.</p>
-            <table class="tk-grid"><thead><tr><th>Wall type</th><th>Scope</th><th>Stud</th><th>Rows</th><th>Layers A / B</th><th>Sheath.</th><th title="GYP / TILE / SHAFT: picks the engineer's criteria rows">Finish class</th></tr></thead><tbody data-rows></tbody></table>
+            <table class="tk-grid"><thead><tr><th>Wall type</th><th>Scope</th><th>Stud</th><th>Rows</th><th>Layers A / B</th><th>Sheath.</th><th title="GYP / TILE / SHAFT: picks the engineer's criteria rows; SHAFT = shaft wall (C-H studs, J track, 1&quot; shaftliner)">Finish class</th>
+            <th title="Shaft wall, framed wall or furring, and why">Wall system</th><th title="Cavity insulation (from the type name unless set here)">Insulation</th><th class="num" title="Revit's thermal resistance of the type: a hint only">Revit R</th></tr></thead><tbody data-rows></tbody></table>
             <div class="row"><button data-reset-asm ${Object.keys(this.overrides).length ? '' : 'disabled'}>Reset all to the rules file</button>
                 <span class="muted">${Object.keys(this.overrides).length} type(s) changed</span></div>`;
         const tbody = body.querySelector('[data-rows]');
         for (const r of rows) {
             const a = r.asm, changed = !!this.overrides[r.typeName];
+            const first = this.walls.find(w => w.dbId === r.ids[0]), info = this.wallInfo.get(r.ids[0]);
             const tr = document.createElement('tr');
             tr.innerHTML = `<td><span class="swatch" style="background:${this.colorOf(r)}"></span><a href="#" data-show>${escapeHtml(r.typeName)}</a>${changed ? ' <b title="changed here">*</b>' : ''}</td>
                 <td>${sel('scope', a.scope === 'review' ? 'excluded' : a.scope, [['framed', 'Framed'], ['excluded', 'Not ours']])}</td>
@@ -820,12 +826,15 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
                 <td>${sel('rows', a.rows, [[1, 1], [2, 2]])}</td>
                 <td>${sel('layerA', a.layers[0], n03)} ${sel('layerB', a.layers[1], n03)}</td>
                 <td>${sel('sheathingSides', a.sheathingSides || 0, [[0, 0], [1, 1], [2, 2]])}</td>
-                <td>${sel('finishClass', a.finishClass || finishClassOf(r.typeName), FINISH_CLASSES.map(c => [c, c]))}</td>`;
+                <td>${sel('finishClass', a.finishClass || finishClassOf(r.typeName, first?.materials), FINISH_CLASSES.map(c => [c, c]))}</td>
+                <td>${info ? `${escapeHtml(info.system)}<br><span class="muted">${escapeHtml(info.systemWhy)}</span>` : '<span class="muted">–</span>'}</td>
+                <td>${sel('insulation', a.insulation || 'none', INSULATIONS.map(i => [i, i]))}</td>
+                <td class="num muted">${first?.rValue ? fmt(first.rValue, 1) : '–'}</td>`;
             tr.querySelector('[data-show]').onclick = (e) => { e.preventDefault(); this.isolateWalls(r.ids); };
             tr.querySelectorAll('select').forEach(el => el.onchange = () => {
                 const current = assemblyFor(r.typeName, this.rules, this.overrides);
                 const o = { ...this.overrides[r.typeName] };
-                const v = ['scope', 'finishClass'].includes(el.dataset.key) ? el.value : Number(el.value);
+                const v = ['scope', 'finishClass', 'insulation'].includes(el.dataset.key) ? el.value : Number(el.value);
                 if (el.dataset.key === 'layerA') o.layers = [v, current.layers[1]];
                 else if (el.dataset.key === 'layerB') o.layers = [current.layers[0], v];
                 else o[el.dataset.key] = v;
@@ -903,8 +912,8 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
     // Walls only (the report page adds the saved opening scans and the takeoff settings itself).
     saveSnapshot(model) {
         if (CONFIG.mode === 'static') return;
-        const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt }) =>
-            ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt }));
+        const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt, materials, rValue, function: fn }) =>
+            ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt, materials, rValue, function: fn }));
         const project = document.getElementById('models')?.selectedOptions[0]?.text || model.getDocumentNode()?.getDocument()?.getRoot()?.name?.() || 'Project';
         saveState(SNAPSHOT_STATE, { project, urn: location.hash.slice(1), savedAt: new Date().toISOString(), walls })
             .catch(err => console.warn('Takeoff snapshot not saved:', err.message));
@@ -927,11 +936,11 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             // Every group and member line (open or not), one column per grouping, net quantities.
             const dims = this.groups.map(d => DIMENSIONS[d].label);
             const lines = [[`Takeoff breakdown (${scope})`, 'net quantities, no waste'], [],
-                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Source (walls)', 'Finish', 'Layers', 'Stud height (in)', 'Walls counted on base level only', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', `% of ${SHARE_BY[this.shareBy]}`]];
+                [...dims, 'Member line', 'Wall info', 'SSMA stud', 'Source (walls)', 'Finish', 'Layers', 'Stud height (in)', 'Walls counted on base level only', 'Walls', 'Studs (pcs)', 'Stud LF', 'Track LF', 'Board SF', 'Sheathing SF', 'Insulation SF', `% of ${SHARE_BY[this.shareBy]}`]];
             const all = totalsOf(this.filteredLines);
             const info = (t) => [t.info.wallTypes.join(' / '), t.info.studs.join(' / '), t.info.sources.map(x => `${x.source} ${x.walls}`).join(' / '), t.info.finishes.join(' / '), t.info.layers.join(' / '),
                 !t.info.studHeight ? '' : t.info.studHeight.min === t.info.studHeight.max ? t.info.studHeight.max : `${t.info.studHeight.min} - ${t.info.studHeight.max}`, t.info.capped || ''];
-            const nums = (t) => [...info(t), t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1),
+            const nums = (t) => [...info(t), t.walls, t.studs, t.studLf.toFixed(1), t.trackLf.toFixed(1), t.boardSf.toFixed(1), t.sheathingSf.toFixed(1), t.insulationSf.toFixed(1),
                 all[this.shareBy] ? ((100 * t[this.shareBy]) / all[this.shareBy]).toFixed(1) : ''];
             const walk = (groups, path) => {
                 for (const g of groups) {

@@ -28,12 +28,24 @@ export function roleCode(role, member = 'stud') {
 const depthCode = (studIn) => String(Math.floor(studIn * 100 + 1e-6)).padStart(3, '0');
 
 // The assembly for a wall type: first matching rule, then per-type overrides (from the Assemblies tab).
+// insulation: the cavity insulation (none, batt, mineral wool, spray foam, insulated panel), from the rule or the
+// Assemblies tab, else from the type name ("insul..." -> batt; "insulated panel"); linerLayers: 1" shaftliner layers
+// of a shaft wall (default 1).
+export const INSULATIONS = ['none', 'batt', 'mineral wool', 'spray foam', 'insulated panel'];
 export function assemblyFor(typeName, rules, overrides = {}) {
     const rule = rules.assemblies.find(a => new RegExp(a.match, 'i').test(typeName || ''));
     const base = rule
         ? { scope: 'framed', rows: 1, layers: [0, 0], track: true, sheathingSides: 0, member: 'stud', ...rule }
         : { scope: 'review', label: 'No rule matches: set the assembly in the Assemblies tab', rows: 1, layers: [0, 0], track: true, sheathingSides: 0, member: 'stud' };
-    return { ...base, ...overrides[typeName] };
+    const asm = { ...base, ...overrides[typeName] };
+    asm.insulation ??= /insulated panel/i.test(typeName || '') ? 'insulated panel' : /insul|batt|mineral wool|acoustic|sound/i.test(typeName || '') ? 'batt' : 'none';
+    return asm;
+}
+
+// "6\" batt", "3 5/8\" mineral wool", "insulated panel": the insulation of a wall, or '' for none.
+export function insulationLabel(asm, studIn) {
+    if (!asm.insulation || asm.insulation === 'none' || asm.scope !== 'framed') return '';
+    return asm.insulation === 'insulated panel' ? 'Insulated panel' : `${fmtInches(studIn)} ${asm.insulation}`;
 }
 
 // 5/8" Type X for fire-rated walls, else 5/8" regular (a rule's "board" wins).
@@ -82,7 +94,7 @@ export function wallQuantities(wall, asm, settings, ctx = {}) {
     const height = capped ? wall.levelSpanFt : fullHeight;
     const area = capped ? fullArea * (height / fullHeight) : fullArea;
     const q = { length, area, height, fullHeight, capped, lifts: 1, members: [], studs: 0, studLf: 0, trackLf: 0, openings: 0, scanned: !!wall.scan,
-        boardSf: 0, finishSf: 0, sheathingSf: 0, layers: 0, spec: null };
+        boardSf: 0, finishSf: 0, sheathingSf: 0, layers: 0, linerSf: 0, linerPanels: 0, insulationSf: 0, insulation: '', spec: null };
     if (asm.scope !== 'framed') return q;
     const scan = wall.scan;
     const heightIn = capped ? height * 12 : scan?.heightIn || height * 12;
@@ -121,6 +133,14 @@ export function wallQuantities(wall, asm, settings, ctx = {}) {
     q.boardSf = area * q.layers;
     q.finishSf = area * asm.layers.filter(n => n > 0).length; // face layer of each boarded side is taped and finished
     q.sheathingSf = area * (asm.sheathingSides || 0);
+    // A shaft wall's 1" shaftliner (24" wide panels, full height, set in the J track); cavity insulation (one side).
+    if (spec.finishClass === 'SHAFT') {
+        const layers = asm.linerLayers ?? 1;
+        q.linerSf = area * layers;
+        q.linerPanels = Math.ceil((scan?.lengthIn || length * 12) / 24 - 1e-6) * layers;
+    }
+    q.insulation = insulationLabel(asm, spec.studIn);
+    if (q.insulation) q.insulationSf = area;
     return q;
 }
 
@@ -132,6 +152,8 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}, ctx
     const types = new Map();
     const framing = new Map(); // member type (e.g. 362S162-33) -> { kind, depth, member, entries: Map(code|length -> { qty, ids }) }
     const board = new Map(); // board type -> { sf, ids }
+    const liner = { sf: 0, panels: 0, ids: new Set() }; // 1" shaftliner of shaft walls
+    const insulation = new Map(); // "6\" batt" -> { sf, ids }
     let finishSf = 0, sheathingSf = 0, screwSf = 0, missing = 0, framedWalls = 0, scannedWalls = 0;
 
     for (const wall of walls) {
@@ -139,14 +161,14 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}, ctx
         const asm = assemblyFor(typeName, rules, overrides);
         const q = wallQuantities(wall, asm, settings, ctx);
         if (!types.has(typeName)) {
-            types.set(typeName, { typeName, asm, ids: [], count: 0, length: 0, area: 0, studs: 0, studLf: 0, trackLf: 0, openings: 0,
+            types.set(typeName, { typeName, asm, ids: [], count: 0, length: 0, area: 0, studs: 0, studLf: 0, trackLf: 0, openings: 0, linerSf: 0, insulationSf: 0,
                 boardSf: 0, finishSf: 0, sheathingSf: 0, missing: 0, board: boardFor(wall, asm) });
         }
         const t = types.get(typeName);
         t.ids.push(wall.dbId);
         t.count++;
         if (q.missing) { t.missing++; missing++; continue; }
-        for (const k of ['length', 'area', 'studs', 'studLf', 'trackLf', 'openings', 'boardSf', 'finishSf', 'sheathingSf']) t[k] += q[k];
+        for (const k of ['length', 'area', 'studs', 'studLf', 'trackLf', 'openings', 'boardSf', 'finishSf', 'sheathingSf', 'linerSf', 'insulationSf']) t[k] += q[k] || 0;
         if (asm.scope !== 'framed') continue;
         framedWalls++;
         if (q.scanned) scannedWalls++;
@@ -163,6 +185,12 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}, ctx
             if (!board.has(boardType)) board.set(boardType, { sf: 0, ids: new Set() });
             board.get(boardType).sf += q.boardSf;
             board.get(boardType).ids.add(wall.dbId);
+        }
+        if (q.linerSf) { liner.sf += q.linerSf; liner.panels += q.linerPanels; liner.ids.add(wall.dbId); }
+        if (q.insulationSf) {
+            if (!insulation.has(q.insulation)) insulation.set(q.insulation, { sf: 0, ids: new Set() });
+            insulation.get(q.insulation).sf += q.insulationSf;
+            insulation.get(q.insulation).ids.add(wall.dbId);
         }
         finishSf += q.finishSf;
         sheathingSf += q.sheathingSf;
@@ -213,6 +241,14 @@ export function takeoff(walls, rules, overrides = {}, settingsOverride = {}, ctx
     for (const type of [...board.keys()].sort()) {
         const sf = board.get(type).sf * bw;
         materials.push({ group: 'Board', item: `${type} gypsum board, ${settings.sheet.label}`, qty: Math.ceil(sf / settings.sheet.sf), unit: 'sheets', extra: `${Math.round(sf).toLocaleString()} SF`, ids: [...board.get(type).ids] });
+    }
+    if (liner.sf) {
+        materials.push({ group: 'Board', item: '1" shaftliner panels, 24" wide, full height (shaft walls)', qty: Math.ceil(liner.panels * bw), unit: 'panels',
+            extra: `${Math.round(liner.sf * bw).toLocaleString()} SF`, ids: [...liner.ids] });
+    }
+    for (const label of [...insulation.keys()].sort()) {
+        const e = insulation.get(label);
+        materials.push({ group: 'Insulation', item: `${label} insulation`, qty: Math.ceil(e.sf * bw), unit: 'SF', ids: [...e.ids] });
     }
     if (sheathingSf) {
         const sf = sheathingSf * bw;

@@ -150,9 +150,27 @@ export function pickOpening(rows, { kind, depthIn, finishClass, wallHeightIn, ab
         .sort((a, b) => a.maxWallIn - b.maxWallIn || a.maxAboveIn - b.maxAboveIn)[0] || null;
 }
 
-// "SHAFT" for shaft walls, "TILE" when the type says tile, else "GYP" (the Assemblies tab or an override can change it).
-export function finishClassOf(typeName) {
-    return /shaft/i.test(typeName || '') ? 'SHAFT' : /tile/i.test(typeName || '') ? 'TILE' : 'GYP';
+// Wall system: a shaft wall (C-H studs in J track, with a 1" shaftliner panel) or a standard framed wall (or
+// furring), and why. First that applies: a finish class set by hand (manual override, or the Assemblies tab / a
+// rule: SHAFT = shaft wall); a 1" liner (shaftliner) in the wall's materials (wall.materials: the Revit structural
+// material, or every layer's material when the model or a Revit export carries them); the type name (shaft, liner);
+// else a standard framed wall (TILE when the type name says tile). Returns { system, why, finishClass }.
+export const SYSTEMS = { shaft: 'Shaft wall', framed: 'Framed wall', furring: 'Furring' };
+const LINER = /shaft\s*liner|\b1(?:"|\s*in(?:ch)?)?\s*(?:gyp(?:sum)?\s*)?liner|liner\s*panel|core\s*board/i;
+export function wallSystem(wall, asm = {}, override = null) {
+    const set = override?.finishClass ? ['set by hand', override.finishClass] : asm.finishClass ? ['set in Assemblies', asm.finishClass] : null;
+    if (asm.member === 'furring channel') return { system: SYSTEMS.furring, why: 'furring assembly', finishClass: set?.[1] || 'GYP' };
+    if (set) return { system: set[1] === 'SHAFT' ? SYSTEMS.shaft : SYSTEMS.framed, why: set[0], finishClass: set[1] };
+    const liner = (wall.materials || []).find(m => LINER.test(m || ''));
+    if (liner) return { system: SYSTEMS.shaft, why: `1" liner in the materials (${liner})`, finishClass: 'SHAFT' };
+    if (/shaft|liner/i.test(wall.wallType || '')) return { system: SYSTEMS.shaft, why: 'type name says shaft', finishClass: 'SHAFT' };
+    const tile = /tile/i.test(wall.wallType || '');
+    return { system: SYSTEMS.framed, why: tile ? 'type name says tile' : 'standard (no shaft name or liner)', finishClass: tile ? 'TILE' : 'GYP' };
+}
+
+// "SHAFT", "TILE" or "GYP" for a wall type name alone (the Assemblies tab default).
+export function finishClassOf(typeName, materials = []) {
+    return wallSystem({ wallType: typeName, materials }).finishClass;
 }
 
 const depthCode = (depthIn) => String(Math.floor(depthIn * 100 + 1e-6)).padStart(3, '0');
@@ -163,11 +181,13 @@ const depthCode = (depthIn) => String(Math.floor(depthIn * 100 + 1e-6)).padStart
 //   opts: { criteria: { rows, group, building } | null, override: { stud, spacingIn, finishClass } kept by the wall's
 //   GUID, placeholder: rules.placeholder }.
 //   heightIn: the height being framed (calc.mjs: floor to floor for a wall counted on its base level only).
+// Also { system, systemWhy }: shaft wall, framed wall or furring, and why (wallSystem).
 export function resolveFraming(wall, asm, settings, { criteria = null, override = null, placeholder = null, heightIn: framedIn = null } = {}) {
     const heightIn = framedIn || wall.scan?.heightIn || (wall.heightFt > 0 ? wall.heightFt * 12 : (wall.area / wall.length) * 12);
-    const finishClass = override?.finishClass || asm.finishClass || finishClassOf(wall.wallType);
+    const sys = wallSystem(wall, asm, override);
+    const finishClass = sys.finishClass;
     const base = { studIn: asm.studIn, flangeIn: 1.625, mils: asm.mils || settings.mils, spacingIn: asm.spacingIn || settings.studSpacingIn,
-        rows: asm.rows || 1, finishClass, heightIn, key: '' };
+        rows: asm.rows || 1, finishClass, heightIn, key: '', system: sys.system, systemWhy: sys.why };
     const named = (spec) => ({ ...spec, studName: spec.studName || memberType(spec.studIn, 'stud', spec.mils, asm.member),
         trackName: spec.trackName || memberType(spec.studIn, 'track', spec.mils, asm.member) });
     const fromStud = (d, extra) => named({ ...base, studIn: d.depthIn, flangeIn: d.flangeIn || base.flangeIn, mils: d.mils, rows: base.rows * d.qty, studName: d.name, ...extra });
@@ -183,16 +203,19 @@ export function resolveFraming(wall, asm, settings, { criteria = null, override 
         if (row) return fromStud(row.stud, { spacingIn: row.spacingIn || base.spacingIn, trackName: row.bottomTrack, topTrackName: row.topTrack, source: SOURCES.criteria, key: row.key });
     }
     const ph = placeholderStud(placeholder, asm.studIn, finishClass, heightIn);
-    if (ph) return fromStud(ph, { source: criteria?.rows?.length ? SOURCES.gap : SOURCES.placeholder, key: 'placeholder' });
+    if (ph) return fromStud(ph.stud, { trackName: ph.track || null, topTrackName: ph.track || null, source: criteria?.rows?.length ? SOURCES.gap : SOURCES.placeholder, key: 'placeholder' });
     return named({ ...base, source: SOURCES.outOfRange });
 }
 
+// The placeholder stud for a depth and height: { stud: designator, track } or null. Shaft walls take the shaft rows
+// (C-H studs, J track) when there is one for their depth, else the standard rows.
 function placeholderStud(placeholder, depthIn, finishClass, heightIn) {
-    if (!placeholder?.walls?.length) return null;
-    const need = heightIn * (finishClass === 'TILE' ? placeholder.tileHeightFactor || 1 : 1);
-    const row = placeholder.walls.filter(r => Math.abs(r.depthIn - depthIn) < 0.02).sort((a, b) => a.maxHeightFt - b.maxHeightFt)
+    const pick = (rows, need) => (rows || []).filter(r => Math.abs(r.depthIn - depthIn) < 0.02).sort((a, b) => a.maxHeightFt - b.maxHeightFt)
         .find(r => need <= r.maxHeightFt * 12 + 0.5);
-    return row ? parseDesignator(row.stud) : null;
+    const shaft = finishClass === 'SHAFT' ? pick(placeholder?.shaftWalls, heightIn) : null;
+    if (shaft) return { stud: parseDesignator(shaft.stud), track: parseDesignator(shaft.track)?.name };
+    const row = pick(placeholder?.walls, heightIn * (finishClass === 'TILE' ? placeholder.tileHeightFactor || 1 : 1));
+    return row ? { stud: parseDesignator(row.stud) } : null;
 }
 
 // The framing of one opening: { head, jamb, sill: [{ qty, name }] | null, source, key, alt }.

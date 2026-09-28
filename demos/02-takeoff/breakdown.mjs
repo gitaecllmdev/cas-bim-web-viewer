@@ -6,19 +6,21 @@
 import { assemblyFor, boardFor, wallQuantities, fmtInches } from './calc.mjs';
 
 const NOT_SET = 'Not set';
-const ROLE_NAMES = { ST: 'Studs', JB: 'Jamb studs', CR: 'Cripples', TR: 'Track', HD: 'Head track', SL: 'Sill track', FC: 'Furring', BD: 'Board' };
+const ROLE_NAMES = { ST: 'Studs', JB: 'Jamb studs', CR: 'Cripples', TR: 'Track', HD: 'Head track', SL: 'Sill track', FC: 'Furring', BD: 'Board', LN: 'Shaftliner', IN: 'Insulation' };
 const ROLE_ORDER = Object.keys(ROLE_NAMES);
 const byName = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
 
 // What the grid can group and slice by: the label, the value of a line, and the sort order of the values.
 export const DIMENSIONS = {
     level: { label: 'Level', value: l => l.level, sort: byName },
+    system: { label: 'Wall system', value: l => l.system, sort: byName },
     framing: { label: 'Framing type', value: l => l.framing, sort: (a, b) => depthOf(a) - depthOf(b) || byName(a, b) },
     stud: { label: 'SSMA stud', value: l => l.stud, sort: byName },
     member: { label: 'Member', value: l => l.member, sort: (a, b) => memberRank(a) - memberRank(b) || byName(a, b) },
     role: { label: 'Role', value: l => l.role, sort: (a, b) => ROLE_ORDER.indexOf(codeOf(a)) - ROLE_ORDER.indexOf(codeOf(b)) },
     finish: { label: 'Finish', value: l => l.finish, sort: byName },
     layers: { label: 'Layers', value: l => l.layers, sort: byName },
+    insulation: { label: 'Insulation', value: l => l.insulation, sort: byName },
     wallType: { label: 'Wall type', value: l => l.wallType, sort: byName },
     fire: { label: 'Fire rating', value: l => l.fire, sort: byName },
     source: { label: 'Framing source', value: l => l.source, sort: byName },
@@ -26,7 +28,7 @@ export const DIMENSIONS = {
 export const DEFAULT_GROUPS = ['level', 'framing', 'member'];
 
 const depthOf = (label) => { const m = /^(\d+)(?: (\d+)\/(\d+))?"|^(\d+)\/(\d+)"/.exec(label || ''); if (!m) return Infinity; return m[4] ? m[4] / m[5] : Number(m[1]) + (m[2] ? m[2] / m[3] : 0); };
-const memberRank = (name) => (/gypsum|sheathing/i.test(name) ? 2 : /T\d/.test(name) ? 1 : 0); // studs, then track, then board
+const memberRank = (name) => (/insulation|insulated/i.test(name) ? 3 : /gypsum|sheathing|shaftliner/i.test(name) ? 2 : /T\d|JR/.test(name) ? 1 : 0); // studs, track, board, insulation
 const codeOf = (roleName) => Object.keys(ROLE_NAMES).find(k => ROLE_NAMES[k] === roleName) || 'ZZ';
 
 // "3 5/8" framing", "7/8" furring": the framing type (stud depth) of a wall.
@@ -54,6 +56,7 @@ export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}
         const base = { wall: w.dbId, level: w.level ?? NOT_SET, wallType: w.wallType ?? NOT_SET, fire: w.fireRating || 'Not rated',
             framing: framingLabel({ studIn: spec.studIn, member: asm.member }), stud: spec.studName, finish: finishLabel(w, asm, spec.finishClass),
             layers: layersLabel(asm), source: spec.source, wallSource: spec.source, key: spec.key,
+            system: spec.system, systemWhy: spec.systemWhy, insulation: q.insulation || 'None',
             capped: q.capped, fullHeightFt: q.fullHeight }; // capped: counted on its base level only (calc.mjs)
         for (const m of q.members) {
             const code = m.code;
@@ -63,6 +66,8 @@ export function takeoffLines(walls, rules, overrides = {}, settingsOverride = {}
         }
         if (q.boardSf) lines.push({ ...base, member: `${boardFor(w, asm)} gypsum board`, role: ROLE_NAMES.BD, code: 'BD', kind: 'board', cutIn: 0, pcs: 0, lf: 0, sf: q.boardSf });
         if (q.sheathingSf) lines.push({ ...base, member: 'Exterior sheathing', role: ROLE_NAMES.BD, code: 'BD', kind: 'board', cutIn: 0, pcs: 0, lf: 0, sf: q.sheathingSf });
+        if (q.linerSf) lines.push({ ...base, member: '1" shaftliner', role: ROLE_NAMES.LN, code: 'LN', kind: 'board', cutIn: 0, pcs: 0, lf: 0, sf: q.linerSf, panels: q.linerPanels });
+        if (q.insulationSf) lines.push({ ...base, member: `${q.insulation} insulation`, role: ROLE_NAMES.IN, code: 'IN', kind: 'insulation', cutIn: 0, pcs: 0, lf: 0, sf: q.insulationSf });
     }
     return lines;
 }
@@ -97,7 +102,7 @@ export function facets(lines, filters = {}, dims = Object.keys(DIMENSIONS)) {
 // the stud height range (each wall's full-height stud) and how many walls were counted on their base level only).
 export function totalsOf(lines) {
     const ids = new Set();
-    const t = { walls: 0, studs: 0, studLf: 0, trackLf: 0, boardSf: 0, sheathingSf: 0, ids: [] };
+    const t = { walls: 0, studs: 0, studLf: 0, trackLf: 0, boardSf: 0, sheathingSf: 0, insulationSf: 0, ids: [] };
     const info = { wallTypes: new Set(), studs: new Set(), finishes: new Set(), layers: new Set() };
     const sources = new Map(); // source -> walls
     const studHeight = new Map(), capped = new Set(); // wall -> its full-height stud (the longest ST / FC piece)
@@ -109,7 +114,8 @@ export function totalsOf(lines) {
         if (!sources.has(l.source)) sources.set(l.source, new Set());
         sources.get(l.source).add(l.wall);
         if (l.kind === 'stud') { t.studs += l.pcs; t.studLf += l.lf; } else if (l.kind === 'track') t.trackLf += l.lf;
-        else if (l.member === 'Exterior sheathing') t.sheathingSf += l.sf; else t.boardSf += l.sf;
+        else if (l.kind === 'insulation') t.insulationSf += l.sf;
+        else if (l.member === 'Exterior sheathing') t.sheathingSf += l.sf; else t.boardSf += l.sf; // board SF includes the shaftliner
     }
     t.walls = ids.size;
     t.ids = [...ids];
