@@ -8,7 +8,7 @@ import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escap
 import { readXlsx } from '../common/xlsx.mjs';
 import {
     STAGE_NAMES, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
-    stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, fmtDay, addDays, dayMs, monthName,
+    stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 
@@ -31,7 +31,9 @@ const COLOR_MODES = { actual: 'Installed (tracked)', planned: 'Planned on the da
 const COMPARE = { behind: { color: '#d62728', label: 'Behind the plan' }, even: { color: '#59a14f', label: 'On plan' }, ahead: { color: '#1f77b4', label: 'Ahead of the plan' } };
 const OTHER = '#8c96a0'; // activities not linked to an install stage (layout, inspections, milestones)
 const NOT_YET = '#c9ced6'; // a selected activity's walls not at its stage yet
-const SHOW = { all: 'All activities', linked: 'Linked to walls', open: 'Not complete', behind: 'Model behind P6', critical: 'Critical (float ≤ 0)' };
+const SHOW = { all: 'All activities', active: 'In progress', open: 'Not complete', linked: 'Linked to walls', behind: 'Model behind P6', critical: 'Critical (float ≤ 0)' };
+// WBS groups: finished ones folded (the default, so the work in progress is near the top), all open, or all folded.
+const FOLD = { done: 'Fold finished groups', none: 'Open all groups', all: 'Fold all groups' };
 const localToday = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in the viewer's time zone
 
 class ProgressExtension extends Autodesk.Viewing.Extension {
@@ -44,7 +46,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const params = new URLSearchParams(location.search);
         this.tab = TABS[params.get('tab')] ? params.get('tab') : 'stages';
         this.colorMode = 'actual';
-        this.gantt = { scale: 'week', show: 'all', links: 'selected', collapsed: new Set() };
+        this.gantt = { scale: 'week', show: 'all', links: 'selected', fold: 'done', collapsed: new Set() };
         this.selectedAct = null;
         this.panel.innerHTML = `<div class="demo-panel"><h2>Install Progress Tracker</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
         this.onSelection = () => this.updateSelection();
@@ -114,6 +116,13 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.cursor = this.span ? (start < this.span[0] ? this.span[0] : start > this.span[1] ? this.span[1] : start) : start;
         this.calMonth = this.cursor.slice(0, 7);
         this.scrolled = false;
+        this.gantt.collapsed = this.foldSet(this.gantt.fold);
+    }
+
+    foldSet(mode) {
+        if (mode === 'done') return new Set(completeGroups(this.linked, this.schedule));
+        if (mode === 'all') return new Set(this.schedule.wbs.filter(w => w.parent || !this.schedule.wbs.some(c => c.parent === w.id)).map(w => w.id));
+        return new Set();
     }
 
     get linked() {
@@ -521,6 +530,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const level = this.views.level?.name;
         return this.linked.filter(a => {
             if (level && a.level !== level && !(a.type === 'start' || a.type === 'finish')) return false;
+            if (show === 'active') return a.status === 'active';
             if (show === 'linked') return !!(a.level && a.stage);
             if (show === 'open') return a.status !== 'complete';
             if (show === 'critical') return a.status !== 'complete' && a.float != null && a.float <= 0;
@@ -569,7 +579,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                 <label class="tk-sl-label">Show</label><select data-show>${Object.entries(SHOW).map(([k, l]) => `<option value="${k}" ${k === this.gantt.show ? 'selected' : ''}>${l}</option>`).join('')}</select>
                 <label class="tk-sl-label">Links</label><select data-linkmode>${[['selected', 'Of the selected activity'], ['all', 'All'], ['none', 'None']].map(([k, l]) => `<option value="${k}" ${k === this.gantt.links ? 'selected' : ''}>${l}</option>`).join('')}</select>
                 <button data-today>Today</button>
-                <button data-fold title="Fold or unfold every WBS group">${this.gantt.collapsed.size ? 'Unfold all' : 'Fold levels'}</button>
+                <select data-fold title="Fold WBS groups (click a group's row to fold or open just that one)">${Object.entries(FOLD).map(([k, l]) => `<option value="${k}" ${k === this.gantt.fold ? 'selected' : ''}>${l}</option>`).join('')}</select>
                 <span class="muted">${level ? `Level ${escapeHtml(level)} · <a href="#" data-all-levels>all levels</a>` : 'All levels'} · click an activity for its walls</span>
                 <span class="tk-spacer"></span>
                 <span class="pg-key"><i class="k-bl"></i>planned <i class="k-bar"></i>current <i class="k-done"></i>P6 % done <i class="k-model"></i>model % <i class="k-crit"></i>critical <b>◆</b> milestone</span>
@@ -581,8 +591,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         body.querySelector('[data-show]').onchange = (e) => { this.gantt.show = e.target.value; this.renderBody(); };
         body.querySelector('[data-linkmode]').onchange = (e) => { this.gantt.links = e.target.value; this.renderBody(); };
         body.querySelector('[data-today]').onclick = () => this.scrollGanttTo(localToday(), { always: true });
-        body.querySelector('[data-fold]').onclick = () => {
-            this.gantt.collapsed = this.gantt.collapsed.size ? new Set() : new Set(this.schedule.wbs.filter(w => w.parent).map(w => w.id));
+        body.querySelector('[data-fold]').onchange = (e) => {
+            this.gantt.fold = e.target.value;
+            this.gantt.collapsed = this.foldSet(this.gantt.fold);
             this.renderBody();
         };
         const all = body.querySelector('[data-all-levels]');
@@ -597,7 +608,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.renderDetails(body.querySelector('[data-details]'));
         this.fitGantt();
         if (keep) { g.scrollLeft = keep[0]; g.scrollTop = keep[1]; }
-        else if (!this.scrolled) { this.scrollGanttTo(this.schedule.project.dataDate || localToday(), { always: true }); this.scrolled = true; }
+        else if (!this.scrolled) {
+            // First view: the data date a third of the way across, and the first work in progress (with its group) at the top.
+            this.scrollGanttTo(this.schedule.project.dataDate || localToday(), { always: true });
+            let row = g.querySelector('.pg-g-row.st-active');
+            while (row && !row.classList.contains('wbs')) row = row.previousElementSibling;
+            if (row) g.scrollTop = row.offsetTop;
+            this.scrolled = true;
+        }
         if (this.reveal) { this.reveal = false; this.revealSelected(g); }
     }
 

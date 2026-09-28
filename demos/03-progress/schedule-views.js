@@ -59,9 +59,10 @@ export function ganttHtml(g) {
     const rows = g.rows.map((r) => {
         if (r.kind === 'wbs') {
             const a = x(r.start), b = x(r.finish) + ppd;
-            return `<div class="pg-g-row wbs" data-wbs="${escapeHtml(r.id)}">
-                <div class="pg-g-cells"><span class="pg-g-name" style="padding-left:${r.depth * 12}px" title="${escapeHtml(r.name)}"><b class="pg-tw">${r.collapsed ? '▸' : '▾'}</b>${escapeHtml(r.name)} <span class="muted">(${r.count})</span></span>
-                    <span class="c-date">${fmtDay(r.start)}</span><span class="c-date">${fmtDay(r.finish)}</span><span class="c-dur"></span><span></span><span></span></div>
+            const state = r.complete ? '<span class="pg-done" title="Every activity in this group is complete">✓ complete</span>' : r.active ? '<span class="pg-wip" title="Work in progress">in progress</span>' : '';
+            return `<div class="pg-g-row wbs${r.complete ? ' done' : ''}" data-wbs="${escapeHtml(r.id)}" title="${r.collapsed ? 'Click to open' : 'Click to fold'}">
+                <div class="pg-g-cells"><span class="pg-g-name" style="padding-left:${r.depth * 12}px"><b class="pg-tw">${r.collapsed ? '▸' : '▾'}</b>${escapeHtml(r.name)} <span class="muted">(${r.count})</span> ${state}</span>
+                    <span class="c-date">${fmtDay(r.start)}</span><span class="c-date">${fmtDay(r.finish)}</span><span class="c-dur"></span><span class="num">${pctText(r.pct)}</span><span></span></div>
                 <div class="pg-g-track"><b class="pg-sum" style="left:${a}px;width:${Math.max(2, b - a)}px"></b></div></div>`;
         }
         const a = r.a, color = g.colorOf(a), m = g.modelOf(a), c = g.cmpOf(a);
@@ -75,7 +76,7 @@ export function ganttHtml(g) {
                 ${a.pct ? `<s style="width:${a.pct}%"></s>` : ''}${m ? `<u style="left:${m.pct}%" class="${c?.state || ''}"></u>` : ''}</b>`;
         const planned = !ms && a.plannedStart && (a.plannedStart !== a.start || a.plannedFinish !== a.finish) ? `<i class="pg-bl" style="left:${ps}px;width:${Math.max(3, pe - ps)}px"></i>` : '';
         const label = g.scale === 'day' || e - s > 70 ? '' : `<span class="pg-lbl" style="left:${(ms ? e + 4 : e + 4)}px">${escapeHtml(a.stage || '')}</span>`;
-        return `<div class="pg-g-row act ${a.id === g.selectedId ? 'sel' : ''} ${crit ? 'crit' : ''}" data-act="${escapeHtml(a.id)}" title="${escapeHtml(tip)}">
+        return `<div class="pg-g-row act st-${a.status} ${a.id === g.selectedId ? 'sel' : ''} ${crit ? 'crit' : ''}" data-act="${escapeHtml(a.id)}" title="${escapeHtml(tip)}">
             <div class="pg-g-cells"><span>${escapeHtml(a.id)}</span>
                 <span class="pg-g-name" style="padding-left:${r.depth * 12}px"><i class="swatch" style="background:${color}"></i>${escapeHtml(a.name)}</span>
                 <span class="c-date ${a.actualStart ? 'act' : ''}">${fmtDay(a.start)}${a.actualStart ? ' A' : ''}</span><span class="c-date ${a.actualFinish ? 'act' : ''}">${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}</span>

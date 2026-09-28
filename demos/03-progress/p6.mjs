@@ -444,7 +444,8 @@ export function scheduleSpan(activities) {
 }
 
 // Gantt rows: the WBS tree (only branches with activities shown), each branch's activities by start date.
-// keep(a) filters activities; collapsed = Set of WBS ids. WBS rows carry the span of what is under them.
+// keep(a) filters activities; collapsed = Set of WBS ids. WBS rows carry the span of what is under them, whether it
+// is all complete, and its P6 % (weighted by working days; milestones count as one day).
 export function ganttRows(linked, schedule, { keep = () => true, collapsed = new Set() } = {}) {
     const acts = linked.filter(keep);
     const kids = new Map(), under = new Map();
@@ -458,7 +459,12 @@ export function ganttRows(linked, schedule, { keep = () => true, collapsed = new
             const items = all(w);
             if (!items.length) continue;
             const starts = items.map(a => a.start).sort(), ends = items.map(a => a.finish).sort();
-            rows.push({ kind: 'wbs', id: w.id, name: w.name, code: w.code, depth, start: starts[0], finish: ends.at(-1), count: items.length, collapsed: collapsed.has(w.id) });
+            const weight = (a) => Math.max(1, a.dur || 0), total = items.reduce((s, a) => s + weight(a), 0);
+            rows.push({
+                kind: 'wbs', id: w.id, name: w.name, code: w.code, depth, start: starts[0], finish: ends.at(-1), count: items.length, collapsed: collapsed.has(w.id),
+                complete: items.every(a => a.status === 'complete'), active: items.some(a => a.status === 'active'),
+                pct: Math.round(items.reduce((s, a) => s + a.pct * weight(a), 0) / total),
+            });
             if (collapsed.has(w.id)) continue;
             for (const a of (under.get(w.id) || []).sort(byStart)) rows.push({ kind: 'act', a, depth: depth + 1 });
             walk(w.id, depth + 1);
@@ -469,3 +475,6 @@ export function ganttRows(linked, schedule, { keep = () => true, collapsed = new
     walk(null, 0);
     return rows;
 }
+
+// WBS groups whose activities are all complete (to fold them, so the open work is near the top).
+export const completeGroups = (linked, schedule) => ganttRows(linked, schedule).filter(r => r.kind === 'wbs' && r.complete).map(r => r.id);

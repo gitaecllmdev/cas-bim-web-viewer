@@ -371,6 +371,11 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg-g-cells .act { color: #1e6b31; }
 .pg-g-name .swatch { width: 0.8em; height: 0.8em; margin-right: 0.35em; }
 .pg-tw { display: inline-block; width: 1em; color: #4a5866; }
+.pg-done, .pg-wip { margin-left: 0.3em; padding: 0 0.35em; border-radius: 3px; font-size: 0.92em; font-weight: 600; }
+.pg-done { background: #e6f4ea; color: #1e6b31; }
+.pg-wip { background: #fff3d6; color: #7a4a00; }
+.pg-g-row.wbs.done .pg-sum { background: #9aa7b4; }
+.pg-g-row.wbs.done .pg-sum::before, .pg-g-row.wbs.done .pg-sum::after { border-top-color: #9aa7b4; }
 .pg-g-track { position: relative; flex: 0 0 var(--track); z-index: 1; }
 .pg-bar { position: absolute; top: 5px; height: 11px; border-radius: 2px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18); }
 .pg-bar s { position: absolute; left: 0; top: 0; bottom: 0; background: rgba(0, 0, 0, 0.32); text-decoration: none; }
