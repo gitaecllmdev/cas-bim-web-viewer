@@ -6,8 +6,9 @@
     <meta name="robots" content="noindex, nofollow">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Takeoff · CAS BIM Web Viewer</title>
-    <!-- The takeoff link: the 3D takeoff with the model and plan on top and the tables underneath (?level=... kept).
-         Without the viewer service (or with ?report=1) it opens the takeoff report instead. -->
+    <!-- The takeoff link: the 3D takeoff with the model and plan on top and the tables underneath. Its view is kept
+         (?level=, the slicers, group=, tab=), so a link opens the same view. Without the viewer service (or with
+         ?report=1) it opens the takeoff report instead. -->
     <script type="module">
         import { CONFIG } from './config.js';
         const params = new URLSearchParams(location.search);
@@ -15,8 +16,10 @@
             params.delete('report');
             location.replace(`takeoff-report.html${params.toString() ? `?${params}` : ''}`);
         } else {
-            const to = new URLSearchParams({ demo: '02-takeoff', layout: 'split', dock: 'bottom' });
-            if (params.get('level')) to.set('level', params.get('level'));
+            const to = new URLSearchParams(params);
+            to.set('demo', '02-takeoff');
+            to.set('layout', params.get('layout') || 'split');
+            to.set('dock', 'bottom');
             location.replace(`index.html?${to}`);
         }
     </script>

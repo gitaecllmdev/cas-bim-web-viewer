@@ -34,6 +34,7 @@ if (offline) {
         + '<div class="offline-links"><a href="panels.html">Panel shops</a><a href="takeoff.html">Takeoff</a><a href="home.html" class="secondary">Home</a></div>');
 } else {
     const views = new Views(viewer);
+    setupDockSplit(views);
     viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true });
     views.use2d(TOOLS_EXTENSION_ID, { views, is3d: false });
     onModelReady(viewer, (model) => views.setModel(model).catch(err => console.error(err)));
@@ -90,6 +91,45 @@ async function onModelSelected(urn) {
         showNotification(`Could not load model: ${err.message || JSON.stringify(err)}`);
         console.error(err);
     }
+}
+
+// ?dock=bottom: drag the bar between the viewers and the tables (arrow keys too; double-click resets). The split is a
+// per-browser convenience, kept in localStorage.
+function setupDockSplit(views) {
+    const bar = document.getElementById('dock-split'), main = document.getElementById('main'), pane = document.getElementById('views');
+    if (!bar || !document.body.classList.contains('dock-bottom')) return;
+    const KEY = 'drywall-demos:dock-split', DEFAULT = 56;
+    let pct = DEFAULT, frame = 0;
+    const set = (value, save) => {
+        pct = Math.min(85, Math.max(15, value));
+        pane.style.flexBasis = `${pct}%`;
+        if (!frame) frame = requestAnimationFrame(() => { frame = 0; views.resize(); });
+        if (save) { try { localStorage.setItem(KEY, String(pct)); } catch { /* storage blocked: not remembered */ } }
+    };
+    try { const saved = Number(localStorage.getItem(KEY)); if (saved) set(saved, false); } catch { /* storage blocked */ }
+    const fromPointer = (ev) => { const r = main.getBoundingClientRect(); return ((ev.clientY - r.top) / r.height) * 100; };
+    bar.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        bar.setPointerCapture(e.pointerId);
+        document.body.classList.add('dragging-split');
+        const move = (ev) => set(fromPointer(ev), false);
+        const up = () => {
+            bar.removeEventListener('pointermove', move);
+            bar.removeEventListener('pointerup', up);
+            bar.removeEventListener('pointercancel', up);
+            document.body.classList.remove('dragging-split');
+            set(pct, true);
+        };
+        bar.addEventListener('pointermove', move);
+        bar.addEventListener('pointerup', up);
+        bar.addEventListener('pointercancel', up);
+    });
+    bar.addEventListener('dblclick', () => set(DEFAULT, true));
+    bar.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
+        e.preventDefault();
+        set(pct + (e.key === 'ArrowUp' ? -5 : 5), true);
+    });
 }
 
 function showNotification(message) {

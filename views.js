@@ -213,8 +213,13 @@ export class Views {
         history.replaceState(null, '', `?${params}${location.hash}`);
         if (this.showing2d) this.ensureViewer2d();
         // Containers changed size; let both viewers re-measure their canvases.
-        requestAnimationFrame(() => [this.viewer3d, this.viewer2d].forEach(v => v?.resize()));
+        requestAnimationFrame(() => this.resize());
         if (open && this.showing2d && !this.model2d) this.openSheet(this.planFor(this.level?.name));
+    }
+
+    // After the containers change size (layout, the dock-bottom split bar): both viewers re-measure their canvases.
+    resize() {
+        [this.viewer3d, this.viewer2d].forEach(v => v?.resize());
     }
 
     ensureViewer2d() {
