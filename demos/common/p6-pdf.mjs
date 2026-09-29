@@ -144,9 +144,12 @@ export function tableFromPages(pages, { file = '' } = {}) {
     return { file, pages: pages.length, dataDate, columns: [...columns, { key: 'wbs', label: 'WBS' }, { key: 'kind', label: 'Row Type' }, { key: 'page', label: 'Source Page' }, ...(splitIds ? [{ key: 'note', label: 'Review Note' }, { key: 'raw', label: 'Original ID / Name Text' }] : [])], rows, warnings };
 }
 export function cellValue(row, key) { return ['wbs', 'kind', 'page'].includes(key) ? row[key] : row.cells[key] || ''; }
-export function exportRows(document, keys, { includeSummary = true } = {}) {
+// Checked rows (include !== false), optionally without summary rows, and optionally only those in `only` (a Set of
+// rows, e.g. the ones the converter's keywords show).
+export function exportRows(document, keys, { includeSummary = true, only = null } = {}) {
     if (!keys.length) throw new Error('Select at least one export column.');
-    return [keys.map(k => document.columns.find(c => c.key === k)?.label || k), ...document.rows.filter(r => r.include !== false && (includeSummary || r.kind === 'Activity')).map(r => keys.map(k => cellValue(r, k)))];
+    const rows = document.rows.filter(r => r.include !== false && (includeSummary || r.kind === 'Activity') && (!only || only.has(r)));
+    return [keys.map(k => document.columns.find(c => c.key === k)?.label || k), ...rows.map(r => keys.map(k => cellValue(r, k)))];
 }
 export function scheduleRows(document) {
     const selected = document.rows.filter(r => r.include !== false && r.kind === 'Activity');

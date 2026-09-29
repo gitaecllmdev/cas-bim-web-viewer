@@ -34,13 +34,26 @@ function shown() {
     return { rows: base.map((x, i) => ({ ...x, hits: hits[i] })).filter(x => x.hits), base, kws };
 }
 const selectedRows = () => data.rows.filter(r => r.include !== false && ($('summaries').checked || r.kind === 'Activity'));
+// Download scope: every checked row, or only the checked rows the keywords show ("Filtered only").
+const scope = () => document.querySelector('input[name=scope]:checked').value;
+function exportSet(view = shown()) {
+    return scope() === 'filtered' && view.kws.length ? new Set(view.rows.map(x => x.r)) : null;
+}
+const exportedRows = (view) => { const only = exportSet(view); return selectedRows().filter(r => !only || only.has(r)); };
 
 function updateCounts(view) {
-    const checked = selectedRows().length, total = baseRows().length;
-    $('export-summary').textContent = `${checked.toLocaleString()} rows × ${keys.length} columns will be exported. Excel includes Metadata and Warnings sheets. Dates and IDs are preserved as text.`;
+    const checked = selectedRows().length, total = baseRows().length, filtering = view.kws.length > 0;
+    const inView = new Set(view.rows.map(x => x.r)), filtered = selectedRows().filter(r => inView.has(r)).length;
+    // Filtered only needs keywords; without them the download is every checked row.
+    document.querySelector('input[name=scope][value=filtered]').disabled = !filtering;
+    if (!filtering && scope() === 'filtered') document.querySelector('input[name=scope][value=all]').checked = true;
+    const only = exportSet(view), out = only ? filtered : checked;
+    $('scope-all').textContent = `All checked (${checked.toLocaleString()})`;
+    $('scope-filtered').textContent = filtering ? `Filtered only (${filtered.toLocaleString()})` : 'Filtered only';
+    $('export-summary').textContent = `${out.toLocaleString()} rows × ${keys.length} of ${data.columns.length} columns will be downloaded${only ? ' (filtered by your keywords)' : ''}. Uncheck a column header to leave it out. Excel includes Metadata and Warnings sheets; dates and IDs are kept as text.`;
     $('checked-count').textContent = `${checked.toLocaleString()} of ${total.toLocaleString()} rows checked for export`;
-    $('excel').disabled = $('csv').disabled = !keys.length || !checked;
-    const n = view.rows.length, filtering = view.kws.length > 0;
+    $('excel').disabled = $('csv').disabled = !keys.length || !out;
+    const n = view.rows.length;
     for (const [id, label] of [['check-shown', '✓ Check shown'], ['uncheck-shown', '✗ Uncheck shown'], ['only-shown', 'Only shown']]) {
         $(id).textContent = filtering ? `${label} (${n.toLocaleString()})` : label;
         $(id).disabled = !filtering || !n;
@@ -72,9 +85,17 @@ function addKeywords(list) {
     refresh();
 }
 
+// Export columns: the column header checkboxes and the "Choose export columns" list are the same setting.
+function setColumn(key, on) {
+    const want = new Set(keys);
+    if (on) want.add(key); else want.delete(key);
+    keys = data.columns.map(c => c.key).filter(k => want.has(k));
+    renderColumns();
+    refresh();
+}
 function renderColumns() {
     $('columns').innerHTML = data.columns.map(c => `<label><input type="checkbox" data-key="${esc(c.key)}" ${keys.includes(c.key) ? 'checked' : ''}> ${esc(c.label)}</label>`).join('');
-    $('columns').querySelectorAll('input').forEach(input => input.onchange = () => { keys = data.columns.map(c => c.key).filter(k => $('columns').querySelector(`[data-key="${k}"]`).checked); refresh(); });
+    $('columns').querySelectorAll('input').forEach(input => input.onchange = () => setColumn(input.dataset.key, input.checked));
 }
 
 function refresh() {
@@ -83,12 +104,13 @@ function refresh() {
     const pages = Math.max(1, Math.ceil(view.rows.length / pageSize)); page = Math.min(page, pages - 1);
     const matched = view.kws.length > 0;
     const label = (k) => esc(data.columns.find(c => c.key === k).label);
-    $('preview').innerHTML = `<thead><tr><th>Include</th>${matched ? '<th>Matched</th>' : ''}${keys.map(k => `<th>${label(k)}</th>`).join('')}</tr></thead><tbody>${
+    const cols = data.columns.map(c => c.key), off = (k) => (keys.includes(k) ? '' : ' off');
+    $('preview').innerHTML = `<thead><tr><th>Include</th>${matched ? '<th>Matched</th>' : ''}${cols.map(k => `<th class="${off(k)}"><label title="Uncheck to leave this column out of the download"><input type="checkbox" data-col="${esc(k)}" ${keys.includes(k) ? 'checked' : ''}> ${label(k)}</label></th>`).join('')}</tr></thead><tbody>${
         view.rows.slice(page * pageSize, (page + 1) * pageSize).map(({ r, index, hits }) => `<tr class="${r.kind === 'Summary' ? 'summary' : ''} ${r.include === false ? 'excluded' : ''}">
             <td><input type="checkbox" data-row="${index}" aria-label="Include row ${index + 1}" ${r.include !== false ? 'checked' : ''}></td>
             ${matched ? `<td class="hits">${hits.map(h => `<span class="chip mini">${esc(h)}</span>`).join('')}</td>` : ''}
-            ${keys.map(k => ['page', 'kind'].includes(k) ? `<td class="readonly">${esc(cellValue(r, k))}</td>`
-                : `<td class="${k}"><input type="text" data-edit="${index}" data-key="${k}" aria-label="Row ${index + 1} ${label(k)}" value="${esc(cellValue(r, k))}" title="${esc(cellValue(r, k))}"></td>`).join('')}</tr>`).join('')
+            ${cols.map(k => ['page', 'kind'].includes(k) ? `<td class="readonly${off(k)}">${esc(cellValue(r, k))}</td>`
+                : `<td class="${k}${off(k)}"><input type="text" data-edit="${index}" data-key="${k}" aria-label="Row ${index + 1} ${label(k)}" value="${esc(cellValue(r, k))}" title="${esc(cellValue(r, k))}"></td>`).join('')}</tr>`).join('')
     }</tbody>`;
     $('preview').querySelectorAll('[data-edit]').forEach(input => input.oninput = () => {
         const row = data.rows[+input.dataset.edit], k = input.dataset.key;
@@ -96,6 +118,7 @@ function refresh() {
         texts.delete(row); dirty = true;
     });
     $('preview').querySelectorAll('[data-row]').forEach(input => input.onchange = () => { data.rows[+input.dataset.row].include = input.checked; dirty = true; refresh(); });
+    $('preview').querySelectorAll('[data-col]').forEach(input => input.onchange = () => { setColumn(input.dataset.col, input.checked); });
     $('page-label').textContent = `Page ${page + 1} of ${pages} · ${view.rows.length.toLocaleString()} ${view.rows.length === 1 ? 'row' : 'rows'}${matched ? ` match${view.rows.length === 1 ? 'es' : ''} ${$('kw-all').checked ? 'every one of ' : ''}${view.kws.length} keyword${view.kws.length === 1 ? '' : 's'}` : ''}`;
     $('prev').disabled = page === 0; $('next').disabled = page + 1 >= pages;
     updateCounts(view);
@@ -134,6 +157,7 @@ $('uncheck-shown').onclick = () => setInclude(shown().rows.map(x => x.r), false)
 $('only-shown').onclick = () => { const keep = new Set(shown().rows.map(x => x.r)); for (const r of data.rows) r.include = keep.has(r); dirty = true; refresh(); };
 
 $('summaries').onchange = () => { page = 0; refresh(); };
+document.querySelectorAll('input[name=scope]').forEach(r => r.onchange = () => refresh());
 $('prev').onclick = () => { page--; refresh(); };
 $('next').onclick = () => { page++; refresh(); };
 $('all-columns').onclick = () => { keys = data.columns.map(c => c.key); renderColumns(); refresh(); };
@@ -142,13 +166,15 @@ $('no-columns').onclick = () => { keys = []; renderColumns(); refresh(); };
 function download(bytes, extension, type) {
     const url = URL.createObjectURL(new Blob([bytes], { type })), a = document.createElement('a');
     a.href = url; a.download = data.file.replace(/\.pdf$/i, '') + '-converted.' + extension; a.click(); setTimeout(() => URL.revokeObjectURL(url), 30000);
-    status(`Downloaded ${extension.toUpperCase()} with ${selectedRows().length.toLocaleString()} rows and ${keys.length} selected columns.`);
+    status(`Downloaded ${extension.toUpperCase()} with ${exportedRows(shown()).length.toLocaleString()} rows and ${keys.length} of ${data.columns.length} columns${exportSet() ? ' (filtered by keywords)' : ''}.`);
 }
-$('csv').onclick = () => { try { download(csvText(exportRows(data, keys, { includeSummary: $('summaries').checked })), 'csv', 'text/csv;charset=utf-8'); } catch (e) { status(e.message, true); } };
+const rowsToDownload = () => exportRows(data, keys, { includeSummary: $('summaries').checked, only: exportSet() });
+$('csv').onclick = () => { try { download(csvText(rowsToDownload()), 'csv', 'text/csv;charset=utf-8'); } catch (e) { status(e.message, true); } };
 $('excel').onclick = () => { try {
     download(xlsxBytes([
-        { name: 'Schedule', rows: exportRows(data, keys, { includeSummary: $('summaries').checked }) },
-        { name: 'Metadata', rows: [['Field', 'Value'], ['Source file', data.file], ['Pages', data.pages], ['Data date', data.dataDate], ['Exported rows', selectedRows().length],
+        { name: 'Schedule', rows: rowsToDownload() },
+        { name: 'Metadata', rows: [['Field', 'Value'], ['Source file', data.file], ['Pages', data.pages], ['Data date', data.dataDate], ['Exported rows', exportedRows(shown()).length],
+            ['Rows', exportSet() ? 'Filtered only (checked rows the keywords show)' : 'All checked rows'], ['Columns', keys.map(k => data.columns.find(c => c.key === k).label).join(', ')],
             ['Keywords in use', active.join(', ')], ['Keyword match', $('kw-all').checked ? 'every keyword' : 'any keyword'],
             ['Exported at', new Date().toISOString()], ['Notes', 'Preview edits applied. Only checked rows are exported. Dates and identifiers are text. Only printed information is recovered.']] },
         { name: 'Warnings', rows: [['Source page', 'Import note'], ...data.warnings.map(w => [w.page || '', w.message])] },
