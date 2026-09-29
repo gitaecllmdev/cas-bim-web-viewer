@@ -165,9 +165,9 @@ export function scheduleFromXer(tables, { file = '', importedAt = new Date().toI
 
 // A P6 layout exported to Excel or CSV: rows of cells, the first row with an activity id and a name column is the
 // header. Columns are found by their P6 names (and a few common alternatives).
-const COLUMNS = {
-    id: /^(activity id|task code|task_code|activity code|id)$/,
-    name: /^(activity name|task name|task_name|name|description)$/,
+export const COLUMNS = {
+    id: /^(activity id|act id|task code|task_code|activity code|id)$/,
+    name: /^(activity name|act name|task name|task_name|name|description)$/,
     start: /^(start|start date|early start|current start)$/,
     finish: /^(finish|finish date|end|end date|early finish|current finish)$/,
     plannedStart: /^(planned start|bl project start|baseline start|bl start|target start|bl1 start)$/,
@@ -175,8 +175,8 @@ const COLUMNS = {
     actualStart: /^actual start$/, actualFinish: /^actual finish$/,
     pct: /^(physical % complete|activity % complete|duration % complete|% complete|percent complete|progress)$/,
     status: /^(activity status|status)$/,
-    dur: /^(original duration|planned duration|duration|at completion duration)$/,
-    rem: /^remaining duration$/, float: /^total float$/,
+    dur: /^(original duration|orig dur|od|planned duration|duration|at completion duration)$/,
+    rem: /^(remaining duration|rem dur)$/, float: /^total float$/,
     wbs: /^(wbs|wbs name|wbs code)$/, level: /^(level|location|area|floor|zone)$/, stage: /^(stage|install stage|phase)$/,
     type: /^(activity type|type)$/, preds: /^(predecessors|predecessor|preds)$/,
 };
@@ -225,7 +225,7 @@ function parsePreds(text) {
     });
 }
 
-export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt = new Date().toISOString() } = {}) {
+export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt = new Date().toISOString(), dataDate = '' } = {}) {
     const norm = (v) => String(v ?? '').trim().toLowerCase().replace(/\s*\(.*\)$/, '').replace(/\s+/g, ' ');
     const headerAt = rows.findIndex(r => r.some(c => COLUMNS.id.test(norm(c))) && r.some(c => COLUMNS.name.test(norm(c))));
     if (headerAt < 0) throw new Error('No header row with "Activity ID" and "Activity Name" columns');
@@ -244,9 +244,9 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
         const as = parseDateText(get(r, 'actualStart')).day || (s.actual ? s.day : '');
         const af = parseDateText(get(r, 'actualFinish')).day || (f.actual ? f.day : '');
         const statusText = get(r, 'status').toLowerCase();
-        let pct = num(get(r, 'pct')) ?? 0;
-        if (fraction) pct *= 100;
-        const status = /complete/.test(statusText) || af ? 'complete' : /progress|active/.test(statusText) || as ? 'active' : 'planned';
+        let pct = num(get(r, 'pct'));
+        if (fraction && pct != null) pct *= 100;
+        const status = /^(complete|completed|tk_complete)$/.test(statusText) || af ? 'complete' : /progress|active/.test(statusText) || as ? 'active' : 'planned';
         if (status === 'complete') pct = 100;
         const typeText = get(r, 'type').toLowerCase();
         const start = s.day || f.day, finish = f.day || s.day, dur = num(get(r, 'dur')) ?? 0;
@@ -263,7 +263,7 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
             type, status, start, finish,
             plannedStart: parseDateText(get(r, 'plannedStart')).day || start, plannedFinish: parseDateText(get(r, 'plannedFinish')).day || finish,
             actualStart: as, actualFinish: af, dur, rem: num(get(r, 'rem')) ?? 0, float: num(get(r, 'float')),
-            pct: Math.max(0, Math.min(100, Math.round(pct))), codes,
+            pct: pct == null ? null : Math.max(0, Math.min(100, Math.round(pct))), codes,
         };
     }).filter(a => a.start);
     if (!activities.length) throw new Error('No activities with dates found');
@@ -273,7 +273,7 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
     const known = new Set(activities.map(a => a.id));
     return {
         source: { file, format, importedAt },
-        project: { id: '', name: file.replace(/\.[^.]+$/, '') || 'P6 schedule', dataDate: actuals.length ? cal.add(addDays(actuals.at(-1), 1), 0) : '', estimatedDataDate: true },
+        project: { id: '', name: file.replace(/\.[^.]+$/, '') || 'P6 schedule', dataDate: dataDate || (actuals.length ? cal.add(addDays(actuals.at(-1), 1), 0) : ''), estimatedDataDate: !dataDate },
         calendar: { name: 'Standard 5-day (not in the file)', workDays: cal.workDays, holidays: [], hoursPerDay: 8 },
         wbs, activities, links: links.filter(l => known.has(l.from) && known.has(l.to)), map: { levels: {}, stages: {}, activities: {} },
     };
@@ -303,7 +303,7 @@ export function matchLevel(text, levelNames) {
 }
 
 const NOT_A_STAGE = /layout|inspect|survey|mobili[sz]|submittal|deliver|milestone|dry-?in/i;
-const STAGE_WORDS = [['Framed', /\bfram|\bstud/i], ['Boarded', /\bboard|\bhang|\bsheath|\bgyp/i], ['Taped', /\btap|\bmud|\bembed|\bjoint/i], ['Finished', /\bfinish|\bsand|\bpunch|\bprime/i]];
+const STAGE_WORDS = [['Framed', /\bfram|\bstud/i], ['Taped', /\btap|\bmud|\bembed|\bjoint/i], ['Finished', /\bfinish|\bsand|\bpunch|\bprime/i], ['Boarded', /\bboard|\bhang|\bsheath|\bgyp|\bdrywall|\bclose[ -]?up|\bclose walls/i]];
 export function matchStage(text) {
     const t = String(text || '').trim();
     if (!t) return null;
@@ -336,7 +336,7 @@ export function linkActivities(schedule, levelNames) {
         const l = labelsOf(a, schedule), own = map.activities?.[a.id] || {};
         let level = null, levelHow = '', locationKey = l.location || l.wbsChain[0] || '';
         if (own.level !== undefined) { level = own.level || null; levelHow = 'set on this activity'; }
-        else if (locationKey && map.levels?.[locationKey] !== undefined) { level = map.levels[locationKey] || null; levelHow = `link table (${locationKey})`; }
+        else if (locationKey && map.levels?.[locationKey] !== undefined) { level = map.levels[locationKey] || null; levelHow = schedule.source.demo?.levelAssignments?.[locationKey] === level ? `demo assignment (${locationKey})` : `link table (${locationKey})`; }
         else if (l.location && (level = matchLevel(l.location, levelNames))) levelHow = l.locationFrom;
         else {
             const w = l.wbsChain.find(n => matchLevel(n, levelNames));
@@ -394,6 +394,7 @@ export function finishVariance(activity, cal) {
 // Model vs P6 for an activity: 'behind' when the walls marked are more than `tolerance` points below the P6 %.
 export function compare(model, p6Pct, tolerance = 10) {
     if (!model) return null;
+    if (p6Pct == null) return { delta: null, state: 'unknown' };
     const delta = model.pct - p6Pct;
     return { delta, state: delta < -tolerance ? 'behind' : delta > tolerance ? 'ahead' : 'even' };
 }
@@ -463,7 +464,7 @@ export function ganttRows(linked, schedule, { keep = () => true, collapsed = new
             rows.push({
                 kind: 'wbs', id: w.id, name: w.name, code: w.code, depth, start: starts[0], finish: ends.at(-1), count: items.length, collapsed: collapsed.has(w.id),
                 complete: items.every(a => a.status === 'complete'), active: items.some(a => a.status === 'active'),
-                pct: Math.round(items.reduce((s, a) => s + a.pct * weight(a), 0) / total),
+                pct: items.some(a => a.pct == null) ? null : Math.round(items.reduce((s, a) => s + a.pct * weight(a), 0) / total),
             });
             if (collapsed.has(w.id)) continue;
             for (const a of (under.get(w.id) || []).sort(byStart)) rows.push({ kind: 'act', a, depth: depth + 1 });
@@ -478,3 +479,38 @@ export function ganttRows(linked, schedule, { keep = () => true, collapsed = new
 
 // WBS groups whose activities are all complete (to fold them, so the open work is near the top).
 export const completeGroups = (linked, schedule) => ganttRows(linked, schedule).filter(r => r.kind === 'wbs' && r.complete).map(r => r.id);
+
+// Demo-only transformation. Keep the original for exact Undo, including the original links and calendar.
+export function demoShift(schedule, { today = new Date(), project = 'Demo project' } = {}) {
+    const original = structuredClone(schedule.source?.original || schedule);
+    const out = structuredClone(original);
+    const anchor = out.project.dataDate || out.activities.map(a => a.start).filter(Boolean).sort()[0];
+    if (!anchor) throw new Error('No schedule date is available for the demo move.');
+    const years = today.getFullYear() - Number(anchor.slice(0, 4));
+    const target = Date.UTC(today.getFullYear(), Number(anchor.slice(5, 7)) - 1, Number(anchor.slice(8, 10)));
+    let shiftDays = 7 * Math.round((target - dayMs(anchor)) / (7 * DAY));
+    // Whole-week rounding near New Year must still put the anchor in the selected year.
+    const movedYear = Number(addDays(anchor, shiftDays).slice(0, 4));
+    if (movedYear < today.getFullYear()) shiftDays += 7;
+    if (movedYear > today.getFullYear()) shiftDays -= 7;
+    const shift = value => value ? addDays(value, shiftDays) : value;
+    for (const a of out.activities) for (const key of ['start', 'finish', 'plannedStart', 'plannedFinish', 'actualStart', 'actualFinish']) a[key] = shift(a[key]);
+    out.project.dataDate = shift(out.project.dataDate);
+    out.calendar.holidays = (out.calendar.holidays || []).map(shift);
+    out.source.original = original;
+    out.source.demo = { originalProject: original.project.name, originalId: original.project.id, originalDataDate: original.project.dataDate, shiftDays, years, at: today.toISOString(), levelAssignments: {} };
+    out.project.name = `${project} – demo schedule`;
+    out.project.id = `demo-${original.project.id || original.source.file || 'schedule'}`;
+    return out;
+}
+export function assignDemoLevels(linked, levelNames) {
+    const used = new Set(linked.map(a => a.level).filter(Boolean));
+    const available = levelNames.filter(l => l !== 'Not set' && !used.has(l));
+    const assigned = {};
+    for (const a of linked) {
+        if (a.level || !a.locationKey || a.locationKey in assigned || /set on|link table/.test(a.levelHow || '')) continue;
+        if (!available.length) break;
+        assigned[a.locationKey] = available.shift();
+    }
+    return assigned;
+}

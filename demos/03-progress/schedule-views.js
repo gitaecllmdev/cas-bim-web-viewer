@@ -68,7 +68,7 @@ export function ganttHtml(g) {
         const a = r.a, color = g.colorOf(a), m = g.modelOf(a), c = g.cmpOf(a);
         const s = x(a.start), e = x(a.finish) + ppd, ps = x(a.plannedStart), pe = x(a.plannedFinish) + ppd;
         const crit = a.status !== 'complete' && a.float != null && a.float <= 0;
-        const tip = `${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)}${a.plannedStart ? ` (planned ${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)})` : ''}\nP6 ${a.pct}%${m ? ` · model ${m.pct}% (${m.done} of ${m.total} walls)` : ''}${a.float != null && a.status !== 'complete' ? ` · float ${a.float} d` : ''}`;
+        const tip = `${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)}${a.plannedStart ? ` (planned ${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)})` : ''}\nP6 ${a.pct == null ? 'not printed' : a.pct + '%'}${m ? ` · model ${m.pct}% (${m.done} of ${m.total} walls)` : ''}${a.float != null && a.status !== 'complete' ? ` · float ${a.float} d` : ''}`;
         const ms = a.type === 'start' || a.type === 'finish';
         const bar = ms
             ? `<em class="pg-ms ${a.status === 'complete' ? 'done' : ''} ${crit ? 'crit' : ''}" style="left:${(a.type === 'start' ? s : e) - 7}px">◆</em>`
@@ -143,7 +143,7 @@ export function calendarHtml(c) {
             const cont = `${a.start < weekStart ? ' from-l' : ''}${a.finish > weekEnd ? ' to-r' : ''}`;
             bars.push(`<div class="pg-cal-ev${ms ? ' ms' : ''}${a.id === c.selectedId ? ' sel' : ''}${cont}" data-act="${escapeHtml(a.id)}"
                 style="left:calc(${(s / 7) * 100}% + 2px);width:calc(${((e - s + 1) / 7) * 100}% - 4px);top:${HEAD + lane * LANE}px;${ms ? '' : `background:${color};color:${textOn(color)}`}"
-                title="${escapeHtml(`${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)} · P6 ${a.pct}%`)}">${ms ? '◆ ' : ''}${escapeHtml(a.name)}</div>`);
+                title="${escapeHtml(`${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)} · P6 ${a.pct == null ? 'not printed' : a.pct + '%'}`)}">${ms ? '◆ ' : ''}${escapeHtml(a.name)}</div>`);
         }
         const shown = Math.min(lanes.length, LANES) + (hidden.some(Boolean) ? 1 : 0);
         const days = Array.from({ length: 7 }, (_, k) => {

@@ -3,6 +3,7 @@
 // URLs are relative so the same code runs on the local server and on the static review site.
 import { CONFIG } from './config.js';
 import { isMergedState, mergeState } from './state-merge.mjs';
+import { readBrowserSchedule, writeBrowserSchedule } from './schedule-store.mjs';
 
 export async function fetchJson(url, options) {
     const resp = await fetch(url, options);
@@ -21,6 +22,11 @@ export const sharedStateOn = () => CONFIG.mode !== 'static' || !!CONFIG.stateUrl
 const stateServiceUrl = (name) => `${CONFIG.stateUrl.replace(/\/$/, '')}/state/${name}`;
 export async function loadState(name) {
     if (CONFIG.mode !== 'static') return fetchJson(`api/state/${name}`);
+    if (name === 'schedule') {
+        const saved = await readBrowserSchedule().catch(() => null); // IndexedDB blocked: fall through
+        if (saved) return saved;
+        // Older builds kept this in localStorage. Read it until the next successful save migrates it.
+    }
     if (CONFIG.stateUrl && isSharedState(name)) {
         const shared = await fetchJson(stateServiceUrl(name)).catch(err => { console.warn(`Shared state ${name}:`, err.message); return null; });
         if (shared && Object.keys(shared).length) return shared;
@@ -35,6 +41,11 @@ export async function loadState(name) {
 export async function saveState(name, data) {
     if (CONFIG.mode !== 'static') {
         return fetchJson(`api/state/${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
+    }
+    if (name === 'schedule') {
+        await writeBrowserSchedule(data);
+        try { localStorage.removeItem(stateKey(name)); } catch {}
+        return { ok: true };
     }
     if (CONFIG.stateUrl && isSharedState(name)) {
         return fetchJson(stateServiceUrl(name), { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });

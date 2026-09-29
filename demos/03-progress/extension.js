@@ -6,8 +6,10 @@
 // The schedule: p6.mjs reads the P6 export and links activities to levels and stages; schedule-views.js draws them.
 import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv } from '../../helpers.js';
 import { readXlsx } from '../common/xlsx.mjs';
+import { readSchedulePdf } from '../common/pdf-reader.mjs';
+import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
-    STAGE_NAMES, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
+    STAGE_NAMES, demoShift, assignDemoLevels, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
     stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
@@ -48,6 +50,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.colorMode = 'actual';
         this.gantt = { scale: 'week', show: 'all', links: 'selected', fold: 'done', collapsed: new Set() };
         this.selectedAct = null;
+        this.demoMove = true;
+        try { this.demoMove = localStorage.getItem('drywall-demos:schedule-demo-shift') !== 'false'; } catch {}
         this.panel.innerHTML = `<div class="demo-panel"><h2>Install Progress Tracker</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
         this.onSelection = () => this.updateSelection();
         this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
@@ -61,6 +65,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     unload() {
+        this.importController?.abort();
         this.stops.forEach(stop => stop());
         this.stopPlay();
         this.resizer.disconnect();
@@ -81,7 +86,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.walls = (await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
-            if (schedule?.activities?.length) this.useSchedule(schedule);
+            if (schedule?.activities?.length) {
+                // Sent from the P6 Converter with the demo box on: move it now that the model's levels are known.
+                if (schedule.source?.pendingDemo) {
+                    delete schedule.source.pendingDemo;
+                    this.useSchedule(await this.applyDemoMove(schedule));
+                    await this.saveSchedule();
+                } else this.useSchedule(schedule);
+            }
             else if (!schedule?.removed) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
             this.render();
         } catch (err) {
@@ -144,9 +156,16 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     // A P6 export: .xer, or a layout exported to Excel (.xlsx) or CSV.
     async importFile(file) {
-        const ext = file.name.split('.').pop().toLowerCase(), buffer = await file.arrayBuffer();
-        let s;
-        if (ext === 'xlsx') {
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (!['pdf', 'xer', 'xlsx', 'csv', 'txt'].includes(ext)) throw new Error('Choose a PDF, XER, XLSX or CSV file.');
+        const buffer = ext === 'pdf' ? null : await file.arrayBuffer();
+        let s, pdfNotes = '';
+        if (ext === 'pdf') {
+            const doc = await readSchedulePdf(file, { signal: this.importController?.signal, onProgress: message => this.message(message, 'warn') });
+            s = scheduleFromRows(scheduleRows(doc), { file: file.name, format: 'pdf', dataDate: parseDateText(doc.dataDate).day });
+            pdfNotes = ` PDF: ${doc.warnings.length} import notes; Monday–Friday calendar. Use P6 Converter to review/edit extracted rows.`;
+            s.source.warnings = doc.warnings;
+        } else if (ext === 'xlsx') {
             let firstError;
             for (const sheet of await readXlsx(buffer)) {
                 try { s = scheduleFromRows(sheet.rows, { file: file.name, format: 'xlsx' }); break; } catch (err) { firstError ??= err; }
@@ -156,20 +175,37 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             const text = decodeText(buffer);
             s = /^ERMHDR|\n%T\t/.test(text) ? scheduleFromXer(parseXer(text), { file: file.name }) : scheduleFromRows(parseCsv(text), { file: file.name, format: 'csv' });
         }
-        // The same project again (a schedule update): keep its links to the model.
-        if (this.schedule?.project.id && this.schedule.project.id === s.project.id && !this.schedule.source.sample) s.map = this.schedule.map;
+        // The same project again (a schedule update): keep its links to the model (a demo-moved one by its original id).
+        const current = this.schedule?.source.demo?.originalId || this.schedule?.project.id;
+        if (current && current === s.project.id && !this.schedule.source.sample) s.map = structuredClone(this.schedule.source.original?.map || this.schedule.map);
+        if (this.demoMove) s = await this.applyDemoMove(s);
+        if (this.importController?.signal.aborted) return;
+        this.stopPlay();
         this.useSchedule(s);
         this.render();
-        await this.saveSchedule();
+        if (!await this.saveSchedule()) return;
         const linked = this.linked.filter(a => a.level && a.stage).length;
-        this.message(`Loaded ${s.activities.length} activities from ${file.name} (${s.source.format}); ${linked} linked to walls.${linked ? '' : ' Link them with 🔗 Links.'}`);
+        this.message(`Loaded ${s.activities.length} activities from ${file.name} (${s.source.format}); ${linked} linked to walls.${linked ? '' : ' Link them with 🔗 Links.'}${pdfNotes}`, pdfNotes ? 'warn' : '');
+    }
+
+    // Demo: dates moved by whole weeks into this year, shown as this model's project, and P6 locations that match no
+    // level assigned to the model's levels in order (p6.mjs demoShift, assignDemoLevels).
+    async applyDemoMove(s) {
+        const snapshot = await loadState('takeoff-snapshot').catch(() => ({}));
+        const moved = demoShift(s, { project: snapshot.project || 'Snowdon Towers (Arch)' });
+        const assignments = assignDemoLevels(linkActivities(moved, this.levels), this.levels);
+        Object.assign(moved.map.levels, assignments);
+        moved.source.demo.levelAssignments = assignments;
+        return moved;
     }
 
     async saveSchedule() {
         try {
             await saveState(SCHEDULE_STATE, this.schedule);
+            return true;
         } catch (err) {
             this.message(`Schedule not saved: ${err.message}`, 'warn');
+            return false;
         }
     }
 
@@ -195,10 +231,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
                     <span class="tk-spacer"></span>
-                    <label class="tk-file" title="A Primavera P6 export: .xer, or a layout exported to Excel (.xlsx) or CSV">Upload P6 schedule…<input type="file" data-upload accept=".xer,.xlsx,.csv,.txt" hidden></label>
+                    <label class="tk-file" title="A Primavera P6 export: PDF, XER, Excel (.xlsx) or CSV">Upload P6 schedule…<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
+                    <label title="Demo only: move dates by whole weeks and assign unmatched locations to model levels. Shifted holidays are not the new year’s real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}> Demo: this year and this project</label>
+                    ${s?.source.demo ? `<span class="tk-src manual" title="Dates moved by whole weeks for the demo; Schedule ▾ Undo restores them">Demo: moved ${s.source.demo.years >= 0 ? '+' : ''}${s.source.demo.years} years (${s.source.demo.shiftDays.toLocaleString()} days) from ${escapeHtml(s.source.demo.originalProject)} (${s.source.demo.originalDataDate ? fmtDay(s.source.demo.originalDataDate) : 'earliest start'})</span>` : ''}
                     ${s ? '<button data-links-toggle title="Which model level and install stage each activity stands for">🔗 Links</button>' : ''}
                     ${document.body.classList.contains('dock-bottom') ? '<button data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢ Expand</button>' : ''}
                     <details class="tk-dd pg-menu"><summary>Schedule</summary><div class="tk-dd-list">
+                        <a href="p6-converter.html" target="_blank" rel="noopener">P6 Converter: preview, edit, Excel / CSV</a>
+                        ${s?.source.original ? '<a href="#" data-undo-demo>Undo the demo move</a>' : ''}
                         <a href="#" data-sample>Load the sample schedule (made up)</a>
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
@@ -214,8 +254,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         p.querySelector('[data-upload]').onchange = async (e) => {
             const file = e.target.files[0];
             e.target.value = '';
-            if (file) this.importFile(file).catch(err => this.message(`Could not read ${file.name}: ${err.message}`, 'warn'));
+            if (!file || this.importController) return;
+            this.importController = new AbortController(); e.target.disabled = true;
+            try { await this.importFile(file); }
+            catch (err) { if (err.name !== 'AbortError') this.message(`Could not read ${file.name}: ${err.message}`, 'warn'); }
+            finally { this.importController = null; const input = this.panel.querySelector('[data-upload]'); if (input) input.disabled = false; }
         };
+        p.querySelector('[data-demo-move]').onchange = e => { this.demoMove = e.target.checked; try { localStorage.setItem('drywall-demos:schedule-demo-shift', String(this.demoMove)); } catch {} };
+        p.querySelector('[data-undo-demo]')?.addEventListener('click', async e => { e.preventDefault(); this.stopPlay(); this.useSchedule(structuredClone(this.schedule.source.original)); this.render(); if (await this.saveSchedule()) this.message('Original dates, project and links restored.'); });
         p.querySelector('[data-sample]').onclick = (e) => { e.preventDefault(); this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn')); };
         const exp = p.querySelector('[data-export]');
         if (exp) exp.onclick = (e) => { e.preventDefault(); this.exportCsv(); };
@@ -703,7 +749,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                 const m = this.modelOf(a), c = compare(m, a.pct);
                 return `<tr class="clickable ${a.id === this.selectedAct ? 'selected' : ''}" data-act="${escapeHtml(a.id)}"><td><span class="swatch" style="background:${this.colorOf(a)}"></span>${escapeHtml(a.id)} ${escapeHtml(a.name)}</td>
                     <td>${escapeHtml(a.level || '–')}</td><td>${escapeHtml(a.stage || '–')}</td><td>${fmtDay(a.start)}</td><td>${fmtDay(a.finish)}</td>
-                    <td class="num">${expectedPct(a, d, this.cal)}%</td><td class="num">${a.pct}%</td><td class="num">${m ? `<span class="pg-cmp ${c.state}">${m.pct}%</span>` : '–'}</td></tr>`;
+                    <td class="num">${expectedPct(a, d, this.cal)}%</td><td class="num">${a.pct == null ? 'not printed' : a.pct + '%'}</td><td class="num">${m ? `<span class="pg-cmp ${c.state}">${m.pct}%</span>` : '–'}</td></tr>`;
             }).join('')}</tbody></table>` : ''}`;
         el.querySelectorAll('[data-act]').forEach(tr => tr.onclick = () => this.selectActivity(tr.dataset.act));
     }
@@ -734,7 +780,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             <div class="pg-d-facts">
                 <span><b>Dates</b> ${fmtDay(a.start)}${a.actualStart ? ' A' : ''} → ${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}${ms ? '' : ` · ${Math.round(a.dur)} d${a.status === 'active' ? `, ${Math.round(a.rem)} d left` : ''}`}</span>
                 <span><b>Planned</b> ${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)} · ${v > 0 ? `<span class="warn">finish ${v} d late</span>` : v < 0 ? `${-v} d early` : 'on time'}</span>
-                ${ms ? '' : `<span><b>Progress</b> P6 ${a.pct}%${plannedByDd != null ? ` <span class="muted">(plan: ${plannedByDd}% by the data date)</span>` : ''} · model ${m ? `<span class="pg-cmp ${c.state}">${m.pct}%</span> <span class="muted">${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later</span>${c.state === 'behind' ? ` <span class="warn">model ${-c.delta} pts behind P6</span>` : c.state === 'ahead' ? ` <span class="muted">model ${c.delta} pts ahead of P6</span>` : ''}` : '<span class="muted">not linked to walls</span>'}</span>`}
+                ${ms ? '' : `<span><b>Progress</b> P6 ${a.pct == null ? 'not printed' : a.pct + '%'}${plannedByDd != null ? ` <span class="muted">(plan: ${plannedByDd}% by the data date)</span>` : ''} · model ${m ? `<span class="pg-cmp ${c.state}">${m.pct}%</span> <span class="muted">${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later</span>${c.state === 'behind' ? ` <span class="warn">model ${-c.delta} pts behind P6</span>` : c.state === 'ahead' ? ` <span class="muted">model ${c.delta} pts ahead of P6</span>` : ''}` : '<span class="muted">not linked to walls</span>'}</span>`}
                 <span><b>Level</b> <select data-own="level">${levelOptions}</select> <span class="muted">${escapeHtml(a.levelHow || '')}</span></span>
                 ${ms ? '' : `<span><b>Stage</b> <select data-own="stage">${stageOptions}</select> <span class="muted">${escapeHtml(a.stageHow || '')}</span></span>`}
                 ${Object.keys(a.codes || {}).length ? `<span><b>Codes</b> ${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</span>` : ''}

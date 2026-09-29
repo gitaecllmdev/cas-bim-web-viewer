@@ -8,7 +8,8 @@
 // Returns [{ name, rows: string[][] }] in workbook order.
 export async function readXlsx(buffer) {
     const files = await unzip(buffer);
-    const text = (name) => (files.has(name) ? new TextDecoder().decode(files.get(name)) : '');
+    // Excel/ClosedXML may prefix SpreadsheetML elements with x: (the namespace is equivalent).
+    const text = (name) => (files.has(name) ? new TextDecoder().decode(files.get(name)).replace(/(<\/?)[A-Za-z_][\w.-]*:/g, '$1') : '');
     const shared = [...text('xl/sharedStrings.xml').matchAll(/<si>([\s\S]*?)<\/si>/g)].map(m => runs(m[1]));
     const rels = new Map([...text('xl/_rels/workbook.xml.rels').matchAll(/<Relationship\b[^>]*>/g)]
         .map(m => [attr(m[0], 'Id'), attr(m[0], 'Target')]));

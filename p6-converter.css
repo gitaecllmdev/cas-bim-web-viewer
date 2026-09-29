@@ -1,0 +1,22 @@
+#converter { max-width: 1680px; }
+.bar a { color: white; } .bar a:last-child { margin-left: auto; }
+.intro { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 24px; }
+.eyebrow { font-size: 12px; letter-spacing: .1em; color: var(--accent); font-weight: 700; }
+h1 { margin: 5px 0; font-size: 30px; } .intro p { margin: 8px 0; }
+#results { display: grid; gap: 12px; } #results[hidden], [hidden] { display: none !important; }
+#status { margin: 0; padding: 4px; } #progress { width: 100%; }
+.spacer { flex: 1; } .filters { margin-top: 18px; } #columns { display: flex; flex-wrap: wrap; gap: 8px 20px; padding: 16px 0; }
+#columns label { min-width: 165px; } input[type=checkbox] { width: 17px; height: 17px; vertical-align: middle; }
+summary { cursor: pointer; font-weight: 600; } #warnings { max-height: 210px; overflow: auto; }
+#table-wrap { overflow: auto; max-height: 62vh; margin-top: 12px; border: 1px solid var(--line); }
+#preview { width: max-content; min-width: 100%; font-size: 13px; }
+#preview th { position: sticky; top: 0; background: #eaf0f6; text-align: left; padding: 10px; z-index: 1; white-space: nowrap; }
+#preview td { min-width: 115px; max-width: 400px; padding: 0; vertical-align: middle; }
+#preview td:first-child { min-width: 60px; padding: 8px; text-align: center; }
+#preview input[type=text] { width: 100%; min-width: 115px; border: 1px solid transparent; border-radius: 0; background: transparent; font-size: 13px; padding: 9px; }
+#preview td.name, #preview td.wbs { min-width: 350px; }
+#preview input[type=text]:focus { background: white; border-color: var(--accent); outline: 2px solid #aac3da; }
+#preview tr.summary { background: #edf2f7; font-weight: 600; } #preview tr.excluded { opacity: .45; }
+#preview td.readonly { padding: 9px; color: var(--muted); }
+.paging { justify-content: flex-end; margin-top: 12px; } button:disabled { opacity: .45; cursor: default; }
+@media (max-width: 700px) { .intro { flex-direction: column; align-items: flex-start; padding: 16px; } .bar a:last-child { margin-left: 0; } }
