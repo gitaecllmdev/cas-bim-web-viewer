@@ -14,6 +14,7 @@ import {
     randomWallLinks, wallProgress, demoTarget,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
+import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 
 const EXTENSION_ID = 'Drywall.Progress';
 const STATE_NAME = 'progress';
@@ -39,6 +40,9 @@ const SHOW = { all: 'All activities', walls: 'Wall work only', active: 'In progr
 // WBS groups: finished ones folded (the default, so the work in progress is near the top), all open, or all folded.
 const FOLD = { done: 'Fold finished groups', none: 'Open all groups', all: 'Fold all groups' };
 const localToday = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in the viewer's time zone
+const KW_HISTORY = 'drywall-demos:schedule-keywords'; // this browser's schedule search history
+const KW_SUGGEST = ['framing', 'layout', 'drywall', 'board', 'tape', 'finish', 'insulation', 'shaftwall', 'soffit'];
+const same = (x, y) => x.toLowerCase() === y.toLowerCase();
 
 class ProgressExtension extends Autodesk.Viewing.Extension {
     load() {
@@ -54,6 +58,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.selectedAct = null;
         this.demoMove = true;
         try { this.demoMove = localStorage.getItem('drywall-demos:schedule-demo-shift') !== 'false'; } catch {}
+        // Schedule search: keywords in use, the text being typed, any / all, and the history of keywords used.
+        this.kw = { active: [], typed: '', all: false, history: [] };
+        try { this.kw.history = JSON.parse(localStorage.getItem(KW_HISTORY) || '[]'); } catch { /* storage blocked */ }
         this.panel.innerHTML = `<div class="demo-panel"><h2>Install Progress Tracker</h2><p class="muted" data-status>Waiting for a model…</p></div>`;
         this.onSelection = () => this.updateSelection();
         this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
@@ -265,6 +272,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     </div></details>
                 </div>
                 ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
+                ${s ? `<div class="pg-row pg-search" data-search ${this.tab === 'stages' ? 'hidden' : ''}>
+                    <input type="search" data-kw autocomplete="off" aria-label="Search the schedule" value="${escapeHtml(this.kw.typed)}"
+                        placeholder="Search activities: framing, finish, drywall L3, &quot;tape and finish&quot;… (Enter keeps a keyword)">
+                    <span class="pg-s-chips" data-kw-chips></span>
+                    <span class="pg-s-count muted" data-kw-count></span>
+                    <button class="pg-btn" data-kw-walls hidden title="Show the walls of every matching wall activity">Walls of all</button>
+                    <details class="pg-keybox pg-s-hist"><summary class="pg-btn" title="Keywords used before, and suggestions">History</summary><div class="pg-keypop pg-histpop" data-kw-history></div></details>
+                </div>` : ''}
                 <div data-links hidden></div>
                 <p class="pg-msg" data-msg hidden></p>
             </div>
@@ -300,6 +315,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (lt) lt.onclick = () => { const d = p.querySelector('[data-links]'); d.hidden = !d.hidden; lt.classList.toggle('active', !d.hidden); if (!d.hidden) this.renderLinks(); this.fitGantt(); };
         this.renderInfo();
         this.renderColorBar();
+        this.wireSearch();
         this.renderBody();
         this.refresh();
     }
@@ -310,6 +326,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (tab === 'stages') params.delete('tab'); else params.set('tab', tab);
         history.replaceState(null, '', `${location.pathname}?${params}`);
         this.panel.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        const search = this.panel.querySelector('[data-search]');
+        if (search) search.hidden = tab === 'stages';
         this.renderBody();
     }
 
@@ -429,6 +447,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         else if (this.tab === 'calendar') this.renderCalendar(body);
         else this.renderStages(body);
         this.renderInfo();
+        if (this.tab !== 'stages') this.renderSearch(); // the match count follows the level and Show filters
     }
 
     // --- Stages tab (the tracker) ----------------------------------------------------------------------------------
@@ -598,8 +617,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     // Activities on the header level (and the milestones), by the Gantt's Show filter.
     visibleActivities(show = 'all') {
-        const level = this.views.level?.name;
+        const level = this.views.level?.name, hits = this.keywordHits();
         return this.linked.filter(a => {
+            if (hits && !hits.ids.has(a.id)) return false;
             if (level && a.level !== level && !(a.type === 'start' || a.type === 'finish')) return false;
             if (show === 'walls') return a.scope !== 'other';
             if (show === 'active') return a.status === 'active';
@@ -609,6 +629,113 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             if (show === 'behind') return compare(this.modelOf(a), a.pct)?.state === 'behind';
             return true;
         });
+    }
+
+    // --- Schedule search (keywords, like the P6 Converter) ---------------------------------------------------------------
+
+    // Keywords in use plus the ones being typed; null when not searching.
+    keywordList() {
+        return [...this.kw.active, ...parseKeywords(this.kw.typed).filter(k => !this.kw.active.some(a => same(a, k)))];
+    }
+    searchText(a) {
+        this.searchTexts ??= new WeakMap();
+        if (!this.searchTexts.has(a)) {
+            // The whole WBS path (so "drywall" finds the activities under an "Interior framing & drywall" group).
+            const wbs = new Map((this.schedule.wbs || []).map(w => [w.id, w])), path = [];
+            for (let w = wbs.get(a.wbs); w && path.length < 20; w = wbs.get(w.parent)) path.push(w.name);
+            this.searchTexts.set(a, [a.id, a.name, ...path, a.level, a.stage, a.scope === 'other' ? 'not wall work' : a.scope === 'wall' ? 'wall work' : '',
+                ...Object.values(a.codes || {})].filter(Boolean).join(' | ').toLowerCase());
+        }
+        return this.searchTexts.get(a);
+    }
+    keywordHits() {
+        const kws = this.keywordList();
+        if (!kws.length || !this.schedule) return null;
+        const key = `${kws.join('\u0001')}|${this.kw.all}`;
+        if (this.hitCache?.key === key && this.hitCache.linked === this.linked) return this.hitCache.value;
+        const texts = this.linked.map(a => this.searchText(a)), res = matchRows(texts, kws, { all: this.kw.all });
+        const value = { kws, ids: new Set(this.linked.filter((a, i) => res[i]).map(a => a.id)), counts: keywordCounts(texts, kws) };
+        this.hitCache = { key, linked: this.linked, value };
+        return value;
+    }
+
+    wireSearch() {
+        const row = this.panel.querySelector('[data-search]');
+        if (!row) return;
+        const input = row.querySelector('[data-kw]');
+        const keep = () => {
+            const list = parseKeywords(input.value);
+            input.value = ''; this.kw.typed = '';
+            if (!list.length) return;
+            this.kw.active = [...this.kw.active, ...list.filter(k => !this.kw.active.some(a => same(a, k)))];
+            this.kw.history = remember(this.kw.history, list);
+            try { localStorage.setItem(KW_HISTORY, JSON.stringify(this.kw.history)); } catch { /* storage blocked */ }
+            this.searchChanged();
+        };
+        input.oninput = () => { this.kw.typed = input.value; this.searchChanged(); };
+        input.onkeydown = (e) => { if (e.key === 'Enter') { e.preventDefault(); keep(); } else if (e.key === 'Escape') { input.value = ''; this.kw.typed = ''; this.searchChanged(); } };
+        row.querySelector('[data-kw-walls]').onclick = () => {
+            const hits = this.keywordHits();
+            const acts = hits ? this.visibleActivities(this.gantt.show).filter(a => a.type !== 'start' && a.type !== 'finish' && a.scope !== 'other' && a.level) : [];
+            const ids = [...new Set(acts.flatMap(a => this.wallsOf(a).map(w => w.dbId)))];
+            if (!ids.length) return;
+            this.clearFocus();
+            this.views.isolate(ids);
+            this.views.showPlanFor(ids);
+            this.isolatedBySchedule = true;
+            this.refresh();
+            this.renderBody();
+            this.message(`Showing the walls of ${acts.length} matching activities (${ids.length} walls). Clear the search to show every wall.`);
+        };
+        this.renderSearch();
+    }
+
+    // Chips (keywords in use with their matches, the one being typed), the count, the history popover.
+    renderSearch() {
+        const row = this.panel.querySelector('[data-search]');
+        if (!row) return;
+        const hits = this.keywordHits(), counts = hits?.counts || new Map();
+        const typed = parseKeywords(this.kw.typed).filter(k => !this.kw.active.some(a => same(a, k)));
+        const chip = (k, on) => `<span class="pg-kchip ${on ? 'on' : 'typing'}" title="${on ? 'Keyword in use' : 'Being typed: Enter keeps it'}">${escapeHtml(k)} <span class="n">${(counts.get(k) || 0).toLocaleString()}</span>${on ? `<button data-kw-remove="${escapeHtml(k)}" aria-label="Remove ${escapeHtml(k)}">×</button>` : ''}</span>`;
+        row.querySelector('[data-kw-chips]').innerHTML = this.kw.active.map(k => chip(k, true)).join('') + typed.map(k => chip(k, false)).join('')
+            + (this.kw.active.length ? '<button class="pg-x" data-kw-clear title="Clear the search">Clear</button>' : '');
+        row.querySelectorAll('[data-kw-remove]').forEach(b => b.onclick = () => { this.kw.active = this.kw.active.filter(k => !same(k, b.dataset.kwRemove)); this.searchChanged(); });
+        const clear = row.querySelector('[data-kw-clear]');
+        if (clear) clear.onclick = () => { this.kw.active = []; this.searchChanged(); };
+        const shown = hits ? this.visibleActivities(this.gantt.show).filter(a => a.type !== 'start' && a.type !== 'finish') : null;
+        row.querySelector('[data-kw-count]').textContent = hits ? `${shown.length.toLocaleString()} ${shown.length === 1 ? 'match' : 'matches'}${this.kw.all && hits.kws.length > 1 ? ' (all keywords)' : ''}` : '';
+        const wallActs = hits ? shown.filter(a => a.scope !== 'other' && a.level).length : 0;
+        const walls = row.querySelector('[data-kw-walls]');
+        walls.hidden = !wallActs;
+        walls.textContent = `Walls of all ${wallActs.toLocaleString()}`;
+        // History: keywords used before (click to use), suggestions, any / all.
+        const past = this.kw.history.filter(h => !this.kw.active.some(a => same(a, h.text)));
+        const suggest = KW_SUGGEST.filter(k => !this.kw.active.some(a => same(a, k)) && !this.kw.history.some(h => same(h.text, k)));
+        row.querySelector('[data-kw-history]').innerHTML = `
+            <label class="pg-check"><input type="checkbox" data-kw-all ${this.kw.all ? 'checked' : ''}> Match all keywords</label>
+            ${past.length ? `<b>Used before</b><div class="pg-hlist">${past.map(h => `<span class="pg-kchip past"><button data-kw-use="${escapeHtml(h.text)}" title="Used ${h.uses}×">${escapeHtml(h.text)}</button><button data-kw-forget="${escapeHtml(h.text)}" aria-label="Forget ${escapeHtml(h.text)}">×</button></span>`).join('')}</div>` : ''}
+            ${suggest.length ? `<b>Suggestions</b><div class="pg-hlist">${suggest.map(k => `<span class="pg-kchip past"><button data-kw-use="${k}">${k}</button></span>`).join('')}</div>` : ''}
+            ${this.kw.history.length ? '<button class="pg-x" data-kw-forget-all>Clear history</button>' : ''}`;
+        const pop = row.querySelector('[data-kw-history]');
+        pop.querySelector('[data-kw-all]').onchange = (e) => { this.kw.all = e.target.checked; this.searchChanged(); };
+        pop.querySelectorAll('[data-kw-use]').forEach(b => b.onclick = () => {
+            const k = b.dataset.kwUse;
+            if (!this.kw.active.some(a => same(a, k))) this.kw.active = [...this.kw.active, k];
+            this.kw.history = remember(this.kw.history, [k]);
+            try { localStorage.setItem(KW_HISTORY, JSON.stringify(this.kw.history)); } catch { /* storage blocked */ }
+            this.searchChanged();
+        });
+        const saveHist = () => { try { localStorage.setItem(KW_HISTORY, JSON.stringify(this.kw.history)); } catch { /* storage blocked */ } };
+        pop.querySelectorAll('[data-kw-forget]').forEach(b => b.onclick = () => { this.kw.history = this.kw.history.filter(h => !same(h.text, b.dataset.kwForget)); saveHist(); this.renderSearch(); });
+        const all = pop.querySelector('[data-kw-forget-all]');
+        if (all) all.onclick = () => { this.kw.history = []; saveHist(); this.renderSearch(); };
+    }
+
+    searchChanged() {
+        // The search's wall view ends when the search changes (unless an activity is picked).
+        if (this.isolatedBySchedule && !this.selectedAct) { this.views.showAll(); this.isolatedBySchedule = false; this.refresh(); }
+        this.renderSearch();
+        this.renderBody();
     }
 
     selectActivity(id) {
@@ -640,7 +767,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const old = body.querySelector('[data-gantt]'), keep = old ? [old.scrollLeft, old.scrollTop] : null;
         this.counts ??= stageCounts(this.walls, w => this.stageOf(w));
         const level = this.views.level?.name;
-        const rows = ganttRows(this.visibleActivities(this.gantt.show), this.schedule, { collapsed: this.gantt.collapsed });
+        const rows = ganttRows(this.visibleActivities(this.gantt.show), this.schedule, { collapsed: this.keywordHits() ? new Set() : this.gantt.collapsed });
         const html = ganttHtml({
             rows, span: this.span, scale: this.gantt.scale, cal: this.cal, dataDate: this.schedule.project.dataDate, today: localToday(),
             cursor: this.colorMode === 'actual' ? null : this.cursor, selectedId: this.selectedAct, linkMode: this.gantt.links, links: this.schedule.links,
