@@ -76,7 +76,8 @@ export function ganttHtml(g) {
                 ${a.pct ? `<s style="width:${a.pct}%"></s>` : ''}${m ? `<u style="left:${m.pct}%" class="${c?.state || ''}"></u>` : ''}</b>`;
         const planned = !ms && a.plannedStart && (a.plannedStart !== a.start || a.plannedFinish !== a.finish) ? `<i class="pg-bl" style="left:${ps}px;width:${Math.max(3, pe - ps)}px"></i>` : '';
         const label = g.scale === 'day' || e - s > 70 ? '' : `<span class="pg-lbl" style="left:${(ms ? e + 4 : e + 4)}px">${escapeHtml(a.stage || '')}</span>`;
-        return `<div class="pg-g-row act st-${a.status} ${a.id === g.selectedId ? 'sel' : ''} ${crit ? 'crit' : ''}" data-act="${escapeHtml(a.id)}" title="${escapeHtml(tip)}">
+        const other = a.scope === 'other';
+        return `<div class="pg-g-row act st-${a.status} ${a.id === g.selectedId ? 'sel' : ''} ${crit ? 'crit' : ''}${other ? ' other' : ''}" data-act="${escapeHtml(a.id)}" title="${escapeHtml(other ? `${tip}\nNot wall work (${a.scopeHow}): not linked to walls` : tip)}">
             <div class="pg-g-cells"><span>${escapeHtml(a.id)}</span>
                 <span class="pg-g-name" style="padding-left:${r.depth * 12}px"><i class="swatch" style="background:${color}"></i>${escapeHtml(a.name)}</span>
                 <span class="c-date ${a.actualStart ? 'act' : ''}">${fmtDay(a.start)}${a.actualStart ? ' A' : ''}</span><span class="c-date ${a.actualFinish ? 'act' : ''}">${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}</span>
@@ -141,7 +142,7 @@ export function calendarHtml(c) {
             if (lane >= LANES) { for (let k = s; k <= e; k++) hidden[k]++; continue; }
             const color = c.colorOf(a), ms = a.type === 'start' || a.type === 'finish';
             const cont = `${a.start < weekStart ? ' from-l' : ''}${a.finish > weekEnd ? ' to-r' : ''}`;
-            bars.push(`<div class="pg-cal-ev${ms ? ' ms' : ''}${a.id === c.selectedId ? ' sel' : ''}${cont}" data-act="${escapeHtml(a.id)}"
+            bars.push(`<div class="pg-cal-ev${ms ? ' ms' : ''}${a.scope === 'other' ? ' other' : ''}${a.id === c.selectedId ? ' sel' : ''}${cont}" data-act="${escapeHtml(a.id)}"
                 style="left:calc(${(s / 7) * 100}% + 2px);width:calc(${((e - s + 1) / 7) * 100}% - 4px);top:${HEAD + lane * LANE}px;${ms ? '' : `background:${color};color:${textOn(color)}`}"
                 title="${escapeHtml(`${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)} · P6 ${a.pct == null ? 'not printed' : a.pct + '%'}`)}">${ms ? '◆ ' : ''}${escapeHtml(a.name)}</div>`);
         }

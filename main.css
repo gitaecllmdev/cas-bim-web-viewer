@@ -481,6 +481,13 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg-how { display: block; font-size: 11px; }
 .pg .pg-g-scroll { border-radius: 6px; }
 
+/* MEP and other trades: greyed, not linked to walls */
+.pg-g-row.other .pg-g-cells { color: #9aa5b1; }
+.pg-g-row.other .pg-g-cells .act { color: #9aa5b1; }
+.pg-g-row.other .pg-bar { opacity: 0.55; box-shadow: none; }
+.pg-g-row.other .pg-bar s { background: rgba(0, 0, 0, 0.12); }
+.pg-cal-ev.other { background: #eef1f4 !important; color: #8a96a3 !important; box-shadow: inset 0 0 0 1px #dde2e8; }
+
 /* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
 @media (max-width: 900px) {
     #main { flex-direction: column; }

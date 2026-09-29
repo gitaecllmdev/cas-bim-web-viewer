@@ -32,9 +32,10 @@ const FINISHED = 'Finished';
 const TABS = { stages: 'Stages', gantt: 'Gantt', calendar: 'Calendar' };
 const COLOR_MODES = { actual: 'Colors: installed', planned: 'Colors: planned on date (4D)', compare: 'Colors: installed vs plan' };
 const COMPARE = { behind: { color: '#d62728', label: 'Behind the plan' }, even: { color: '#59a14f', label: 'On plan' }, ahead: { color: '#1f77b4', label: 'Ahead of the plan' } };
-const OTHER = '#8c96a0'; // activities not linked to an install stage (layout, inspections, milestones)
+const OTHER = '#8c96a0'; // wall work not linked to an install stage (layout, inspections), milestones
+const NOT_WALL = '#cfd5dc'; // MEP and other trades: greyed, never linked to walls
 const NOT_YET = '#c9ced6'; // a selected activity's walls not at its stage yet
-const SHOW = { all: 'All activities', active: 'In progress', open: 'Not complete', linked: 'Linked to walls', behind: 'Model behind P6', critical: 'Critical (float ≤ 0)' };
+const SHOW = { all: 'All activities', walls: 'Wall work only', active: 'In progress', open: 'Not complete', linked: 'Linked to walls', behind: 'Model behind P6', critical: 'Critical (float ≤ 0)' };
 // WBS groups: finished ones folded (the default, so the work in progress is near the top), all open, or all folded.
 const FOLD = { done: 'Fold finished groups', none: 'Open all groups', all: 'Fold all groups' };
 const localToday = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in the viewer's time zone
@@ -203,7 +204,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     async applyDemoMove(s) {
         const snapshot = await loadState('takeoff-snapshot').catch(() => ({}));
         const moved = demoShift(s, { project: snapshot.project || 'Snowdon Towers (Arch)' });
-        const assignments = assignDemoLevels(linkActivities(moved, this.levels), this.levels);
+        const assignments = assignDemoLevels(linkActivities(moved, this.levels).filter(a => a.scope === 'wall'), this.levels);
         Object.assign(moved.map.levels, assignments);
         moved.source.demo.levelAssignments = assignments;
         return moved;
@@ -308,9 +309,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (!el) return;
         const s = this.schedule;
         if (!s) { el.innerHTML = '<span class="muted">No schedule</span>'; return; }
-        const linked = this.linked.filter(a => a.level && a.stage).length, random = this.linked.filter(a => a.demoWalls).length;
+        const linked = this.linked.filter(a => a.level && a.stage).length, random = this.linked.filter(a => a.demoWalls).length, other = this.linked.filter(a => a.scope === 'other').length;
         el.innerHTML = `<b title="${escapeHtml(s.source.file)}">${escapeHtml(s.project.name)}</b>${s.source.sample ? ' <span class="tk-src gap" title="A made-up P6 schedule for the sample model">sample</span>' : ''}
-            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'} · ${s.activities.length} activities · ${linked} linked to walls${random ? ` (${random} to walls picked at random for the demo)` : ''}</span>`;
+            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'} · ${s.activities.length} activities · ${linked} linked to walls${random ? ` (${random} to walls picked at random for the demo)` : ''}${other ? ` · ${other} not wall work (greyed)` : ''}</span>`;
     }
 
     // Model colors: installed stages, the plan on a date (4D), or installed vs plan; a date slider for the last two.
@@ -499,7 +500,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     // The selected activity when its walls are shown (it has a level).
     focusActivity() {
         const a = this.selectedAct && this.activity(this.selectedAct);
-        return a?.level ? a : null;
+        return a?.level && a.scope !== 'other' ? a : null; // MEP and other trades don't touch the walls
     }
 
     // Re-theme walls and rebuild the legend and per-level percentages (Stages tab).
@@ -574,6 +575,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     // --- Activities: color, model progress, selection ---------------------------------------------------------------
 
     colorOf(a) {
+        if (a.scope === 'other') return NOT_WALL;
         return STAGES.find(s => s.name === a.stage)?.color || OTHER;
     }
     wallsOf(a) {
@@ -590,6 +592,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const level = this.views.level?.name;
         return this.linked.filter(a => {
             if (level && a.level !== level && !(a.type === 'start' || a.type === 'finish')) return false;
+            if (show === 'walls') return a.scope !== 'other';
             if (show === 'active') return a.status === 'active';
             if (show === 'linked') return !!(a.level && a.stage);
             if (show === 'open') return a.status !== 'complete';
@@ -796,13 +799,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         el.innerHTML = `<div class="pg-details">
             <div class="pg-d-head"><span class="swatch" style="background:${this.colorOf(a)}"></span><b class="pg-d-name" title="${escapeHtml(`${a.id} ${a.name}`)}">${escapeHtml(a.id)} · ${escapeHtml(a.name)}</b>
                 <button class="pg-x" data-clear-act title="Close and show every wall again">✕</button></div>
-            <div class="pg-d-tags">${status}${a.float != null && a.status !== 'complete' ? `<span class="tk-src ${a.float <= 0 ? 'bad' : ''}">float ${a.float} d${a.float <= 0 ? ' · critical' : ''}</span>` : ''}
+            <div class="pg-d-tags">${status}${a.scope === 'other' ? `<span class="tk-src" title="${escapeHtml(a.scopeHow || '')}">not wall work</span>` : ''}${a.float != null && a.status !== 'complete' ? `<span class="tk-src ${a.float <= 0 ? 'bad' : ''}">float ${a.float} d${a.float <= 0 ? ' · critical' : ''}</span>` : ''}
                 ${m ? `<span class="pg-cmp ${c.state}" title="Model: ${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later">model ${m.pct}%</span>` : ''}
-                ${a.level ? '<span class="pg-d-acts"><button class="pg-btn" data-show-level title="Cut the model at this level and open its plan">Level</button><button class="pg-btn" data-select-walls title="Select these walls, then set their stage on the Stages tab">Select walls</button></span>' : ''}</div>
+                ${a.level && a.scope !== 'other' ? '<span class="pg-d-acts"><button class="pg-btn" data-show-level title="Cut the model at this level and open its plan">Level</button><button class="pg-btn" data-select-walls title="Select these walls, then set their stage on the Stages tab">Select walls</button></span>' : ''}</div>
             <dl class="pg-d-facts">
                 <dt>Dates</dt><dd>${fmtDay(a.start)}${a.actualStart ? ' A' : ''} → ${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}${ms ? '' : ` · ${Math.round(a.dur)} d${a.status === 'active' ? `, ${Math.round(a.rem)} left` : ''}`}</dd>
                 <dt>Planned</dt><dd>${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)} · ${v > 0 ? `<span class="warn">${v} d late</span>` : v < 0 ? `${-v} d early` : 'on time'}</dd>
                 ${ms ? '' : `<dt>Progress</dt><dd>P6 ${a.pct == null ? 'not printed' : a.pct + '%'}${plannedByDd != null ? ` <span class="muted">(plan ${plannedByDd}%)</span>` : ''} · model ${m ? `${m.pct}% <span class="muted">(${m.done}/${m.total} walls)</span>${c.state === 'behind' ? ` <span class="warn">${-c.delta} pts behind</span>` : c.state === 'ahead' ? ` <span class="muted">${c.delta} pts ahead</span>` : ''}` : '<span class="muted">not linked</span>'}</dd>`}
+                ${ms ? '' : `<dt>Scope</dt><dd><select data-own="scope"><option value="__auto">Auto: ${a.scope === 'other' ? 'not wall work' : 'wall work'}</option><option value="wall" ${own.scope === 'wall' ? 'selected' : ''}>Wall work</option><option value="other" ${own.scope === 'other' ? 'selected' : ''}>Not wall work</option></select><span class="muted pg-how">${escapeHtml(a.scopeHow || '')}</span></dd>`}
                 <dt>Level</dt><dd><select data-own="level">${levelOptions}</select><span class="muted pg-how">${escapeHtml(a.levelHow || '')}</span></dd>
                 ${ms ? '' : `<dt>Stage</dt><dd><select data-own="stage">${stageOptions}</select><span class="muted pg-how">${escapeHtml(a.stageHow || '')}</span></dd>`}
                 ${Object.keys(a.codes || {}).length ? `<dt>Codes</dt><dd>${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</dd>` : ''}
@@ -880,11 +884,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     exportCsv() {
         this.counts ??= stageCounts(this.walls, w => this.stageOf(w));
         const rows = [['Activity ID', 'Activity Name', 'Level', 'Install stage', 'Status', 'Start', 'Finish', 'Planned Start', 'Planned Finish', 'Finish variance (d)', 'Total float (d)',
-            'P6 % complete', 'Model % complete', 'Walls at stage', 'Walls on level', 'Model - P6 (pts)']];
+            'P6 % complete', 'Model % complete', 'Walls at stage', 'Walls on level', 'Model - P6 (pts)', 'Scope']];
         for (const a of this.linked) {
             const m = this.modelOf(a), c = compare(m, a.pct);
             rows.push([a.id, a.name, a.level || '', a.stage || '', a.status, a.start, a.finish, a.plannedStart, a.plannedFinish, finishVariance(a, this.cal), a.float ?? '',
-                a.pct, m ? m.pct : '', m ? m.done : '', m ? m.total : '', c ? c.delta : '']);
+                a.pct, m ? m.pct : '', m ? m.done : '', m ? m.total : '', c ? c.delta : '', a.scope === 'other' ? 'Not wall work' : a.scope === 'wall' ? 'Wall work' : 'Milestone']);
         }
         const name = (this.schedule.project.id || 'schedule').replace(/[^\w-]+/g, '_');
         downloadCsv(`${name}-progress-${localToday()}.csv`, rows);
