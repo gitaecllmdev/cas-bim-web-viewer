@@ -514,3 +514,35 @@ export function assignDemoLevels(linked, levelNames) {
     }
     return assigned;
 }
+
+// Demo only: walls for the activities of an uploaded schedule that aren't linked to a level and an install stage, so
+// every activity shows something on the sample model. Repeatable, not random each time: the same schedule always maps
+// the same way (seeded by the activity id and WBS). One level per WBS group (the activity's own level if it has one),
+// a run of 6-24 neighbouring walls (by id) per activity, and an install stage when the name gives none.
+// wallsByLevel: Map(level -> wall dbIds sorted). Returns Map(activity id -> { level, stage, dbIds }).
+const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
+const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+export function randomWallLinks(linked, wallsByLevel, { seed = '' } = {}) {
+    const levels = [...wallsByLevel.keys()].filter(l => wallsByLevel.get(l).length >= 6);
+    const out = new Map();
+    if (!levels.length) return out;
+    for (const a of linked) {
+        if (a.type === 'start' || a.type === 'finish' || (a.level && a.stage)) continue;
+        const r = rng(hash(`${seed}|${a.id}`));
+        const group = a.wbs || a.locationKey || a.id;
+        const level = a.level && wallsByLevel.get(a.level)?.length ? a.level : levels[hash(`${seed}|${group}`) % levels.length];
+        const walls = wallsByLevel.get(level);
+        const size = Math.min(walls.length, 6 + Math.floor(r() * 19));
+        const start = Math.floor(r() * (walls.length - size + 1));
+        out.set(a.id, { level, stage: a.stage || STAGE_NAMES[1 + Math.floor(r() * 4)], dbIds: walls.slice(start, start + size) });
+    }
+    return out;
+}
+
+// Progress over an activity's own walls (demo random walls): walls at its stage or later.
+export function wallProgress(activity, stageIndexOf) {
+    const k = STAGE_NAMES.indexOf(activity.stage);
+    if (!activity.walls?.length || k < 1) return null;
+    const done = activity.walls.filter(w => stageIndexOf(w) >= k).length;
+    return { done, total: activity.walls.length, pct: Math.round((done / activity.walls.length) * 100) };
+}

@@ -11,6 +11,7 @@ import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
     STAGE_NAMES, demoShift, assignDemoLevels, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
     stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
+    randomWallLinks, wallProgress,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 
@@ -131,7 +132,23 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     get linked() {
-        if (!this.linkedCache) this.linkedCache = this.schedule ? linkActivities(this.schedule, this.levels) : [];
+        if (!this.linkedCache) {
+            this.linkedCache = this.schedule ? linkActivities(this.schedule, this.levels) : [];
+            // Demo schedules (moved to this year and this project): every activity not linked to a level and a stage
+            // gets a repeatable set of walls on this model (p6.mjs randomWallLinks), so each one shows something.
+            if (this.schedule?.source.demo && this.walls) {
+                const byLevel = new Map();
+                for (const w of this.wallOrder) if (w.level) (byLevel.get(w.level) || byLevel.set(w.level, []).get(w.level)).push(w.dbId);
+                const links = randomWallLinks(this.linkedCache, byLevel, { seed: this.schedule.project.id });
+                for (const a of this.linkedCache) {
+                    const l = links.get(a.id);
+                    if (!l) continue;
+                    a.levelHow = a.level ? `${a.levelHow}; demo: ${l.dbIds.length} walls picked on it` : `demo: ${l.dbIds.length} walls picked at random`;
+                    if (!a.stage) a.stageHow = 'demo: picked at random';
+                    Object.assign(a, { level: l.level, stage: l.stage, walls: l.dbIds.map(id => this.byDbId.get(id)), demoWalls: true });
+                }
+            }
+        }
         return this.linkedCache;
     }
     activity(id) {
@@ -290,9 +307,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (!el) return;
         const s = this.schedule;
         if (!s) { el.innerHTML = '<span class="muted">No schedule</span>'; return; }
-        const linked = this.linked.filter(a => a.level && a.stage).length;
+        const linked = this.linked.filter(a => a.level && a.stage).length, random = this.linked.filter(a => a.demoWalls).length;
         el.innerHTML = `<b title="${escapeHtml(s.source.file)}">${escapeHtml(s.project.name)}</b>${s.source.sample ? ' <span class="tk-src gap" title="A made-up P6 schedule for the sample model">sample</span>' : ''}
-            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'} · ${s.activities.length} activities · ${linked} linked to walls</span>`;
+            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'} · ${s.activities.length} activities · ${linked} linked to walls${random ? ` (${random} to walls picked at random for the demo)` : ''}</span>`;
     }
 
     // Model colors: installed stages, the plan on a date (4D), or installed vs plan; a date slider for the last two.
@@ -353,7 +370,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const focus = this.focusActivity();
         if (focus) {
             const st = STAGES.find(x => x.name === focus.stage);
-            el.innerHTML = `<span class="tk-key"><span class="swatch" style="background:${st?.color || OTHER}"></span>${escapeHtml(focus.level)} walls ${escapeHtml(focus.stage || '')} or later</span>
+            el.innerHTML = `<span class="tk-key"><span class="swatch" style="background:${st?.color || OTHER}"></span>${focus.walls ? `Its ${focus.walls.length} walls (${escapeHtml(focus.level)})` : `${escapeHtml(focus.level)} walls`} ${escapeHtml(focus.stage || '')} or later</span>
                 ${st ? `<span class="tk-key"><span class="swatch" style="background:${NOT_YET}"></span>not yet</span>` : ''}`;
         } else if (this.colorMode === 'compare') {
             const c = this.compareCounts || {};
@@ -506,13 +523,13 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             // A selected activity: its level's walls at its stage (or later) in the stage's color, the rest grey.
             colors.clear();
             const k = STAGE_NAMES.indexOf(focus.stage), st = STAGES[k];
-            if (st?.color) for (const w of this.walls) if (w.level === focus.level) colors.set(w.dbId, this.stageIndex(w) >= k ? st.color : NOT_YET);
+            if (st?.color) for (const w of this.wallsOf(focus)) colors.set(w.dbId, this.stageIndex(w) >= k ? st.color : NOT_YET);
         } else if (this.schedule && this.colorMode !== 'actual') {
             colors.clear();
             // The plan says how many walls of a level should be at a stage, not which: the walls furthest along are
             // taken first, so a wall shows "behind" only when its level has fewer walls at that stage than planned.
             const ranked = [...this.wallOrder].sort((a, b) => this.stageIndex(b) - this.stageIndex(a));
-            const planned = plannedStages(ranked, this.linked, this.cursor, this.cal);
+            const planned = plannedStages(ranked, this.linked.filter(a => !a.demoWalls), this.cursor, this.cal);
             const c = { behind: 0, even: 0, ahead: 0 };
             for (const [w, k] of planned) {
                 if (this.colorMode === 'planned') { if (STAGES[k].color) colors.set(w.dbId, STAGES[k].color); continue; }
@@ -559,7 +576,12 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     colorOf(a) {
         return STAGES.find(s => s.name === a.stage)?.color || OTHER;
     }
+    wallsOf(a) {
+        return a.walls || this.walls.filter(w => w.level === a.level);
+    }
+
     modelOf(a) {
+        if (a.walls) return wallProgress(a, (w) => this.stageIndex(w));
         return this.counts ? modelProgress(a, this.counts) : null;
     }
 
@@ -582,7 +604,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.reveal = !!this.selectedAct;
         const a = this.focusActivity();
         if (a) {
-            const ids = this.walls.filter(w => w.level === a.level).map(w => w.dbId);
+            const ids = this.wallsOf(a).map(w => w.dbId);
             this.views.isolate(ids);
             this.views.showPlanFor(ids);
             this.isolatedBySchedule = true;
@@ -784,7 +806,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const show = el.querySelector('[data-show-level]');
         if (show) show.onclick = () => this.views.setLevel(a.level);
         const sel = el.querySelector('[data-select-walls]');
-        if (sel) sel.onclick = () => { this.views.select(this.walls.filter(w => w.level === a.level).map(w => w.dbId)); this.setTab('stages'); };
+        if (sel) sel.onclick = () => { this.views.select(this.wallsOf(a).map(w => w.dbId)); this.setTab('stages'); };
         el.querySelectorAll('[data-own]').forEach(s => s.onchange = () => {
             const own = (this.schedule.map.activities ??= {});
             const entry = { ...own[a.id] };
