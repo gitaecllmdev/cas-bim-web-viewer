@@ -543,22 +543,66 @@ export function assignDemoLevels(linked, levelNames) {
 // wallsByLevel: Map(level -> wall dbIds sorted). Returns Map(activity id -> { level, stage, dbIds }).
 const hash = (s) => { let h = 2166136261; for (const ch of String(s)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619); } return h >>> 0; };
 const rng = (seed) => () => { seed = (seed + 0x6D2B79F5) >>> 0; let t = seed; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
-export function randomWallLinks(linked, wallsByLevel, { seed = '' } = {}) {
+//
+// With { all: true, stageIndexOf, target } (the tracker's demo schedules) every wall activity gets walls, and they are
+// picked so the share already at its stage matches target(a) (0-1: how far along it should be): walls from a level
+// that has enough done and not-done walls for that split, so picking it shows a real mix (a finished activity: done
+// walls; one not started: walls not there yet; one under way: some of each).
+export function randomWallLinks(linked, wallsByLevel, { seed = '', all = false, stageIndexOf = null, target = null } = {}) {
     const levels = [...wallsByLevel.keys()].filter(l => wallsByLevel.get(l).length >= 6);
     const out = new Map();
     if (!levels.length) return out;
+    const split = new Map(); // level|stage -> { done, todo } wall ids
+    const splitOf = (level, k) => {
+        const key = `${level}|${k}`;
+        if (!split.has(key)) {
+            const walls = wallsByLevel.get(level);
+            split.set(key, { done: walls.filter(id => stageIndexOf(id) >= k), todo: walls.filter(id => stageIndexOf(id) < k) });
+        }
+        return split.get(key);
+    };
     for (const a of linked) {
-        if (a.type === 'start' || a.type === 'finish' || a.scope === 'other' || (a.level && a.stage)) continue;
+        if (a.type === 'start' || a.type === 'finish' || a.scope === 'other' || (!all && a.level && a.stage)) continue;
         const r = rng(hash(`${seed}|${a.id}`));
         const group = a.wbs || a.locationKey || a.id;
-        const level = a.level && wallsByLevel.get(a.level)?.length ? a.level : levels[hash(`${seed}|${group}`) % levels.length];
-        const walls = wallsByLevel.get(level);
-        const size = Math.min(walls.length, 6 + Math.floor(r() * 19));
-        const start = Math.floor(r() * (walls.length - size + 1));
+        const home = a.level && wallsByLevel.get(a.level)?.length >= 6 ? a.level : levels[hash(`${seed}|${group}`) % levels.length];
         const stage = a.stage || (/lay ?out/i.test(a.name || '') ? 'Framed' : STAGE_NAMES[1 + Math.floor(r() * 4)]);
-        out.set(a.id, { level, stage, dbIds: walls.slice(start, start + size) });
+        const size = 6 + Math.floor(r() * 19);
+        if (!stageIndexOf || !target) {
+            const walls = wallsByLevel.get(home), n = Math.min(walls.length, size), start = Math.floor(r() * (walls.length - n + 1));
+            out.set(a.id, { level: home, stage, dbIds: walls.slice(start, start + n) });
+            continue;
+        }
+        const k = STAGE_NAMES.indexOf(stage), done = Math.round(Math.max(0, Math.min(1, target(a, r))) * size);
+        // The home level if it has the split, else the next level (in a repeatable order) that does.
+        const order = [home, ...levels.filter(l => l !== home).sort((x, y) => hash(`${seed}|${a.id}|${x}`) - hash(`${seed}|${a.id}|${y}`))];
+        const run = (list, n) => { const i = Math.floor(r() * (list.length - n + 1)); return list.slice(i, i + n); }; // neighbouring walls
+        const both = order.find(l => { const s = splitOf(l, k); return s.done.length >= done && s.todo.length >= size - done; });
+        if (both) {
+            const s = splitOf(both, k);
+            out.set(a.id, { level: both, stage, dbIds: [...run(s.done, done), ...run(s.todo, size - done)].sort((x, y) => x - y) });
+            continue;
+        }
+        // No level has that mix at this stage (the building is all done or all not started there): the done walls from
+        // one level and the rest from another, so the split still shows.
+        const doneLevel = order.find(l => splitOf(l, k).done.length >= done) || home;
+        const todoLevel = order.find(l => splitOf(l, k).todo.length >= size - done) || home;
+        const d = Math.min(done, splitOf(doneLevel, k).done.length), t = Math.min(size - done, splitOf(todoLevel, k).todo.length);
+        const ids = [...run(splitOf(doneLevel, k).done, d), ...run(splitOf(todoLevel, k).todo, t)].sort((x, y) => x - y);
+        out.set(a.id, { level: d >= t ? doneLevel : todoLevel, stage, dbIds: ids });
     }
     return out;
+}
+
+// How far along an activity should be at the data date (0-1), for picking its demo walls: its P6 % if printed; done
+// if complete; not started if it starts after the data date; else the share of its working days gone, give or take
+// 15 points (so the model and P6 don't agree exactly), kept between 10% and 90% so the split shows.
+export function demoTarget(a, r, { dataDate, cal }) {
+    if (a.status === 'complete') return 1;
+    if (a.pct != null && a.status === 'active') return Math.max(0.1, Math.min(0.9, a.pct / 100 + (r() - 0.5) * 0.3));
+    if (a.status !== 'active' && (!dataDate || a.start >= dataDate)) return 0;
+    const f = dataDate && cal ? expectedPct(a, dataDate, cal) / 100 : 0.5;
+    return Math.max(0.1, Math.min(0.9, f + (r() - 0.5) * 0.3));
 }
 
 // Progress over an activity's own walls (demo random walls): walls at its stage or later.

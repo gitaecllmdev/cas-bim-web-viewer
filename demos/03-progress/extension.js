@@ -11,7 +11,7 @@ import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
     STAGE_NAMES, demoShift, assignDemoLevels, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
     stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
-    randomWallLinks, wallProgress,
+    randomWallLinks, wallProgress, demoTarget,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 
@@ -34,7 +34,7 @@ const COLOR_MODES = { actual: 'Colors: installed', planned: 'Colors: planned on 
 const COMPARE = { behind: { color: '#d62728', label: 'Behind the plan' }, even: { color: '#59a14f', label: 'On plan' }, ahead: { color: '#1f77b4', label: 'Ahead of the plan' } };
 const OTHER = '#8c96a0'; // wall work not linked to an install stage (layout, inspections), milestones
 const NOT_WALL = '#cfd5dc'; // MEP and other trades: greyed, never linked to walls
-const NOT_YET = '#c9ced6'; // a selected activity's walls not at its stage yet
+const NOT_YET = '#f4a582'; // a picked activity's walls not at its stage yet (soft coral: stands out against the faded model)
 const SHOW = { all: 'All activities', walls: 'Wall work only', active: 'In progress', open: 'Not complete', linked: 'Linked to walls', behind: 'Model behind P6', critical: 'Critical (float ≤ 0)' };
 // WBS groups: finished ones folded (the default, so the work in progress is near the top), all open, or all folded.
 const FOLD = { done: 'Fold finished groups', none: 'Open all groups', all: 'Fold all groups' };
@@ -140,11 +140,18 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             if (this.schedule?.source.demo && this.walls) {
                 const byLevel = new Map();
                 for (const w of this.wallOrder) if (w.level) (byLevel.get(w.level) || byLevel.set(w.level, []).get(w.level)).push(w.dbId);
-                const links = randomWallLinks(this.linkedCache, byLevel, { seed: this.schedule.project.id });
+                // Every wall activity gets its own walls, picked so the share already at its stage matches how far along
+                // it should be (done / some of each / not yet): picking one shows a real split.
+                const dataDate = this.schedule.project.dataDate, cal = this.cal;
+                const links = randomWallLinks(this.linkedCache, byLevel, {
+                    seed: this.schedule.project.id, all: true,
+                    stageIndexOf: (id) => this.stageIndex(this.byDbId.get(id)),
+                    target: (a, r) => demoTarget(a, r, { dataDate, cal }),
+                });
                 for (const a of this.linkedCache) {
                     const l = links.get(a.id);
                     if (!l) continue;
-                    a.levelHow = a.level ? `${a.levelHow}; demo: ${l.dbIds.length} walls picked on it` : `demo: ${l.dbIds.length} walls picked at random`;
+                    a.levelHow = `demo: ${l.dbIds.length} walls picked to match its progress${a.level && a.level !== l.level ? ` (was ${a.level})` : ''}`;
                     if (!a.stage) a.stageHow = 'demo: picked at random';
                     Object.assign(a, { level: l.level, stage: l.stage, walls: l.dbIds.map(id => this.byDbId.get(id)), demoWalls: true });
                 }
@@ -228,7 +235,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         el.className = `pg-msg ${kind}`;
         el.textContent = text;
         clearTimeout(this.messageTimer);
-        if (text && kind !== 'warn') this.messageTimer = setTimeout(() => { el.hidden = true; this.fitGantt(); }, 8000);
+        el.title = 'Click to close';
+        el.onclick = () => { el.hidden = true; clearTimeout(this.messageTimer); };
+        if (text) this.messageTimer = setTimeout(() => { el.hidden = true; this.fitGantt(); }, kind === 'warn' ? 15000 : 8000);
         this.fitGantt();
     }
 
@@ -243,7 +252,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     <b class="pg-title">Install Progress</b>
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
-                    ${d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">demo ${d.years >= 0 ? '+' : ''}${d.years} y</span>` : ''}
+                    ${d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">${d.years ? `demo ${d.years > 0 ? '+' : ''}${d.years} y` : 'demo'}</span>` : ''}
                     <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">⬆ Upload<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
                     <label class="pg-check" title="Demo: an uploaded schedule is moved to this year and shown as this project (dates by whole weeks; locations and walls assigned to the model). Shifted holidays are not the new year's real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}>Demo</label>
                     ${s ? '<button class="pg-btn" data-links-toggle title="Links: which model level and install stage each activity stands for">🔗</button>' : ''}

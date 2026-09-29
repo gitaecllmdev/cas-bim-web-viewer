@@ -442,6 +442,7 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg .pg-cursor-label { flex: 0 0 92px; min-width: 0; font-size: 12px; }
 .pg .pg-legend { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; font-size: 12px; }
 .pg .pg-legend .tk-key { margin-right: 10px; }
+.pg-msg { cursor: pointer; }
 .pg-msg { position: absolute; right: 8px; top: 64px; z-index: 7; max-width: 60%; margin: 0; box-shadow: 0 4px 14px rgba(0, 0, 0, 0.15); }
 .pg .pg-head { position: sticky; }
 .pg .pg-tools { flex-wrap: nowrap; white-space: nowrap; gap: 6px; margin: 4px 0; font-size: 12.5px; min-height: 28px; }
