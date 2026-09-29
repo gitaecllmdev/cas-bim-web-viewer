@@ -30,7 +30,7 @@ const STAGES = [
 ];
 const FINISHED = 'Finished';
 const TABS = { stages: 'Stages', gantt: 'Gantt', calendar: 'Calendar' };
-const COLOR_MODES = { actual: 'Installed (tracked)', planned: 'Planned on the date (4D)', compare: 'Installed vs plan on the date' };
+const COLOR_MODES = { actual: 'Colors: installed', planned: 'Colors: planned on date (4D)', compare: 'Colors: installed vs plan' };
 const COMPARE = { behind: { color: '#d62728', label: 'Behind the plan' }, even: { color: '#59a14f', label: 'On plan' }, ahead: { color: '#1f77b4', label: 'Ahead of the plan' } };
 const OTHER = '#8c96a0'; // activities not linked to an install stage (layout, inspections, milestones)
 const NOT_YET = '#c9ced6'; // a selected activity's walls not at its stage yet
@@ -235,25 +235,26 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     render() {
         const s = this.schedule;
+        const d = s?.source.demo;
         this.panel.innerHTML = `<div class="demo-panel pg">
-            <div class="tk-head">
-                <div class="tk-bar"><b class="tk-title">Install Progress</b>
+            <div class="tk-head pg-head">
+                <div class="pg-row">
+                    <b class="pg-title">Install Progress</b>
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
-                    <span class="tk-spacer"></span>
-                    <label class="tk-file" title="A Primavera P6 export: PDF, XER, Excel (.xlsx) or CSV">Upload P6 schedule…<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
-                    <label title="Demo only: move dates by whole weeks and assign unmatched locations to model levels. Shifted holidays are not the new year’s real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}> Demo: this year and this project</label>
-                    ${s?.source.demo ? `<span class="tk-src manual" title="Dates moved by whole weeks for the demo; Schedule ▾ Undo restores them">Demo: moved ${s.source.demo.years >= 0 ? '+' : ''}${s.source.demo.years} years (${s.source.demo.shiftDays.toLocaleString()} days) from ${escapeHtml(s.source.demo.originalProject)} (${s.source.demo.originalDataDate ? fmtDay(s.source.demo.originalDataDate) : 'earliest start'})</span>` : ''}
-                    ${s ? '<button data-links-toggle title="Which model level and install stage each activity stands for">🔗 Links</button>' : ''}
-                    ${document.body.classList.contains('dock-bottom') ? '<button data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢ Expand</button>' : ''}
-                    <details class="tk-dd pg-menu"><summary>Schedule</summary><div class="tk-dd-list">
+                    ${d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">demo ${d.years >= 0 ? '+' : ''}${d.years} y</span>` : ''}
+                    <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">⬆ Upload<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
+                    <label class="pg-check" title="Demo: an uploaded schedule is moved to this year and shown as this project (dates by whole weeks; locations and walls assigned to the model). Shifted holidays are not the new year's real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}>Demo</label>
+                    ${s ? '<button class="pg-btn" data-links-toggle title="Links: which model level and install stage each activity stands for">🔗</button>' : ''}
+                    ${document.body.classList.contains('dock-bottom') ? '<button class="pg-btn" data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢</button>' : ''}
+                    <details class="tk-dd pg-menu"><summary class="pg-btn" title="Schedule: sample, export, remove">⋯</summary><div class="tk-dd-list">
                         ${s?.source.original ? '<a href="#" data-undo-demo>Undo the demo move</a>' : ''}
                         <a href="#" data-sample>Load the sample schedule (made up)</a>
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
                 </div>
-                ${s ? '<div class="pg-colorbar" data-colorbar></div>' : ''}
+                ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
                 <div data-links hidden></div>
                 <p class="pg-msg" data-msg hidden></p>
             </div>
@@ -317,12 +318,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const el = this.panel.querySelector('[data-colorbar]');
         if (!el || !this.span) return;
         const days = Math.round((dayMs(this.span[1]) - dayMs(this.span[0])) / 86400000);
-        el.innerHTML = `<span class="tk-sl-label">Model colors</span>
-            <select data-color-mode>${Object.entries(COLOR_MODES).map(([k, l]) => `<option value="${k}" ${k === this.colorMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
-            <input type="range" data-cursor min="0" max="${days}" step="1" value="${Math.round((dayMs(this.cursor) - dayMs(this.span[0])) / 86400000)}" aria-label="Date the model shows the plan for">
+        el.innerHTML = `<select data-color-mode title="How the model is colored">${Object.entries(COLOR_MODES).map(([k, l]) => `<option value="${k}" ${k === this.colorMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
+            <input type="range" data-cursor min="0" max="${days}" step="1" value="${Math.round((dayMs(this.cursor) - dayMs(this.span[0])) / 86400000)}" aria-label="Date the model shows the plan for" title="Slide to see the model as planned on a day">
             <b data-cursor-label class="pg-cursor-label"></b>
-            <button data-play title="Play the plan day by day">▶</button>
-            <button data-cursor-dd title="Back to the schedule's data date">Data date</button>
+            <button class="pg-btn" data-play title="Play the plan day by day">▶</button>
+            <button class="pg-btn" data-cursor-dd title="Back to the schedule's data date">Data date</button>
             <span class="pg-legend" data-color-legend></span>`;
         el.querySelector('[data-color-mode]').onchange = (e) => { this.colorMode = e.target.value; this.clearFocus(); this.refresh(); this.renderBody(); };
         el.querySelector('[data-cursor]').oninput = (e) => this.setCursor(addDays(this.span[0], Number(e.target.value)));
@@ -636,15 +636,16 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         });
         body.innerHTML = `<div class="pg-tools">
                 <div class="tk-tabs">${Object.entries(SCALES).map(([k, s]) => `<button data-scale="${k}" class="${k === this.gantt.scale ? 'active' : ''}">${s.label}</button>`).join('')}</div>
-                <label class="tk-sl-label">Show</label><select data-show>${Object.entries(SHOW).map(([k, l]) => `<option value="${k}" ${k === this.gantt.show ? 'selected' : ''}>${l}</option>`).join('')}</select>
-                <label class="tk-sl-label">Links</label><select data-linkmode>${[['selected', 'Of the selected activity'], ['all', 'All'], ['none', 'None']].map(([k, l]) => `<option value="${k}" ${k === this.gantt.links ? 'selected' : ''}>${l}</option>`).join('')}</select>
-                <button data-today>Today</button>
+                <select data-show title="Which activities">${Object.entries(SHOW).map(([k, l]) => `<option value="${k}" ${k === this.gantt.show ? 'selected' : ''}>${l}</option>`).join('')}</select>
+                <select data-linkmode title="Relationship lines">${[['selected', 'Links: selected'], ['all', 'Links: all'], ['none', 'Links: none']].map(([k, l]) => `<option value="${k}" ${k === this.gantt.links ? 'selected' : ''}>${l}</option>`).join('')}</select>
                 <select data-fold title="Fold WBS groups (click a group's row to fold or open just that one)">${Object.entries(FOLD).map(([k, l]) => `<option value="${k}" ${k === this.gantt.fold ? 'selected' : ''}>${l}</option>`).join('')}</select>
-                <span class="muted">${level ? `Level ${escapeHtml(level)} · <a href="#" data-all-levels>all levels</a>` : 'All levels'} · click an activity for its walls</span>
-                <span class="tk-spacer"></span>
-                <span class="pg-key"><i class="k-bl"></i>planned <i class="k-bar"></i>current <i class="k-done"></i>P6 % done <i class="k-model"></i>model % <i class="k-crit"></i>critical <b>◆</b> milestone</span>
+                <button class="pg-btn" data-today title="Scroll to today">Today</button>
+                <span class="pg-level muted">${level ? `Level ${escapeHtml(level)} · <a href="#" data-all-levels>all levels</a>` : 'All levels'}</span>
+                <details class="pg-keybox"><summary class="pg-btn" title="What the bars and marks mean">Key</summary><div class="pg-keypop">
+                    <span><i class="k-bl"></i>planned</span><span><i class="k-bar"></i>current</span><span><i class="k-done"></i>P6 % done</span>
+                    <span><i class="k-model"></i>model %</span><span><i class="k-crit"></i>critical</span><span><b>◆</b> milestone</span></div></details>
             </div>
-            <div class="pg-main ${this.sideDetails ? 'side' : ''}">
+            <div class="pg-main ${this.sideDetails ? 'side' : 'float'}">
                 <div class="pg-g-scroll" data-gantt>${rows.length ? html : '<p class="muted pg-empty">No activities to show with this filter.</p>'}</div>
                 <div class="pg-side" data-details></div></div>`;
         body.querySelectorAll('[data-scale]').forEach(b => b.onclick = () => { this.gantt.scale = b.dataset.scale; this.scrolled = false; this.renderBody(); });
@@ -702,12 +703,16 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     // The chart fills the panel's height (in dock-bottom mode the panel is what's left under the viewers).
     fitGantt() {
         const main = this.panel.querySelector('.pg-main');
-        if (main && main.classList.contains('side') !== this.sideDetails) main.classList.toggle('side', this.sideDetails);
+        if (main && main.classList.contains('side') !== this.sideDetails) {
+            main.classList.toggle('side', this.sideDetails);
+            main.classList.toggle('float', !this.sideDetails);
+            this.renderDetails(main.querySelector('[data-details]'));
+        }
         const g = this.panel.querySelector('[data-gantt]');
         if (!g) return;
         // A narrow chart drops the Start, Finish and Dur columns (the bars show the dates) to leave room for the bars.
         g.querySelector('.pg-gantt')?.classList.toggle('compact', g.clientWidth < 1150);
-        const room = `${Math.max(180, this.panel.getBoundingClientRect().bottom - g.getBoundingClientRect().top - 12)}px`;
+        const room = `${Math.max(180, this.panel.getBoundingClientRect().bottom - g.getBoundingClientRect().top - 22)}px`;
         g.style.maxHeight = room;
         const side = this.panel.querySelector('.pg-main.side .pg-side');
         if (side) side.style.maxHeight = room;
@@ -720,13 +725,13 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const acts = this.visibleActivities(this.gantt.show === 'behind' || this.gantt.show === 'critical' ? this.gantt.show : 'all');
         const level = this.views.level?.name;
         body.innerHTML = `<div class="pg-tools">
-                <button data-month="-1" aria-label="Previous month">‹</button><b class="pg-month">${monthName(`${this.calMonth}-01`)}</b><button data-month="1" aria-label="Next month">›</button>
-                <button data-cal-today>Today</button><button data-cal-dd>Data date</button>
-                <span class="muted">${level ? `Level ${escapeHtml(level)} · <a href="#" data-all-levels>all levels</a>` : 'All levels'} · click a day to see the model as planned that day; click an activity for its walls</span>
-                <span class="tk-spacer"></span>
-                <span class="pg-key">${STAGES.filter(s => s.color).map(s => `<i style="background:${s.color}"></i>${s.name}`).join(' ')} <i style="background:${OTHER}"></i>other <b>◆</b> milestone</span>
+                <button class="pg-btn" data-month="-1" aria-label="Previous month">‹</button><b class="pg-month">${monthName(`${this.calMonth}-01`)}</b><button class="pg-btn" data-month="1" aria-label="Next month">›</button>
+                <button class="pg-btn" data-cal-today>Today</button><button class="pg-btn" data-cal-dd>Data date</button>
+                <span class="pg-level muted" title="Click a day to see the model as planned that day; click an activity for its walls">${level ? `Level ${escapeHtml(level)} · <a href="#" data-all-levels>all levels</a>` : 'All levels'}</span>
+                <details class="pg-keybox"><summary class="pg-btn" title="Colors">Key</summary><div class="pg-keypop">
+                    ${STAGES.filter(s => s.color).map(s => `<span><i style="background:${s.color}"></i>${s.name}</span>`).join('')}<span><i style="background:${OTHER}"></i>other</span><span><b>◆</b> milestone</span></div></details>
             </div>
-            <div class="pg-main ${this.sideDetails ? 'side' : ''}"><div class="pg-cal-wrap">
+            <div class="pg-main ${this.sideDetails ? 'side' : 'float'}"><div class="pg-cal-wrap">
             ${calendarHtml({ month: this.calMonth, activities: acts, cal: this.cal, dataDate: this.schedule.project.dataDate, today: localToday(), cursor: this.cursor, selectedId: this.selectedAct, colorOf: (a) => this.colorOf(a) })}
             <div data-daylist class="pg-daylist"></div></div><div class="pg-side" data-details></div></div>`;
         const move = (n) => {
@@ -773,7 +778,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     renderDetails(el) {
         const a = this.selectedAct && this.activity(this.selectedAct);
         if (!el) return;
-        if (!a) { el.innerHTML = ''; return; }
+        if (!a) {
+            el.innerHTML = el.closest('.pg-main.side') ? '<div class="pg-details empty"><b>No activity picked</b><span class="muted">Click a bar or a row to see its walls in the model, its dates, progress and links.</span></div>' : '';
+            return;
+        }
         const m = this.modelOf(a), c = compare(m, a.pct), v = finishVariance(a, this.cal);
         const dd = this.schedule.project.dataDate;
         const plannedByDd = dd ? expectedPct(a, addDays(dd, -1), this.cal, { planned: true }) : null;
@@ -786,21 +794,21 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const levelOptions = `<option value="__auto">Auto${own.level === undefined ? `: ${escapeHtml(a.level || 'none')}` : ''}</option>${this.levels.map(l => `<option ${own.level === l ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}<option value="" ${own.level === '' ? 'selected' : ''}>Not in the model</option>`;
         const stageOptions = `<option value="__auto">Auto${own.stage === undefined ? `: ${escapeHtml(a.stage || 'none')}` : ''}</option>${STAGE_NAMES.slice(1).map(s => `<option ${own.stage === s ? 'selected' : ''}>${s}</option>`).join('')}<option value="" ${own.stage === '' ? 'selected' : ''}>No stage</option>`;
         el.innerHTML = `<div class="pg-details">
-            <div class="pg-d-head"><span class="swatch" style="background:${this.colorOf(a)}"></span><b>${escapeHtml(a.id)}</b> ${escapeHtml(a.name)} ${status}
-                ${a.float != null && a.status !== 'complete' ? `<span class="tk-src ${a.float <= 0 ? 'bad' : ''}">float ${a.float} d${a.float <= 0 ? ' · critical' : ''}</span>` : ''}
-                <span class="tk-spacer"></span>
-                ${a.level ? '<button data-show-level title="Cut the model at this level and open its plan">Show the level</button><button data-select-walls title="Select this level\'s walls, then set their stage on the Stages tab">Select its walls</button>' : ''}
-                <button data-clear-act title="Show every wall again">✕</button></div>
-            <div class="pg-d-facts">
-                <span><b>Dates</b> ${fmtDay(a.start)}${a.actualStart ? ' A' : ''} → ${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}${ms ? '' : ` · ${Math.round(a.dur)} d${a.status === 'active' ? `, ${Math.round(a.rem)} d left` : ''}`}</span>
-                <span><b>Planned</b> ${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)} · ${v > 0 ? `<span class="warn">finish ${v} d late</span>` : v < 0 ? `${-v} d early` : 'on time'}</span>
-                ${ms ? '' : `<span><b>Progress</b> P6 ${a.pct == null ? 'not printed' : a.pct + '%'}${plannedByDd != null ? ` <span class="muted">(plan: ${plannedByDd}% by the data date)</span>` : ''} · model ${m ? `<span class="pg-cmp ${c.state}">${m.pct}%</span> <span class="muted">${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later</span>${c.state === 'behind' ? ` <span class="warn">model ${-c.delta} pts behind P6</span>` : c.state === 'ahead' ? ` <span class="muted">model ${c.delta} pts ahead of P6</span>` : ''}` : '<span class="muted">not linked to walls</span>'}</span>`}
-                <span><b>Level</b> <select data-own="level">${levelOptions}</select> <span class="muted">${escapeHtml(a.levelHow || '')}</span></span>
-                ${ms ? '' : `<span><b>Stage</b> <select data-own="stage">${stageOptions}</select> <span class="muted">${escapeHtml(a.stageHow || '')}</span></span>`}
-                ${Object.keys(a.codes || {}).length ? `<span><b>Codes</b> ${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</span>` : ''}
-                <span><b>Predecessors</b> ${preds.map(l => rel(l, l.from)).join(', ') || '<span class="muted">none</span>'}</span>
-                <span><b>Successors</b> ${succs.map(l => rel(l, l.to)).join(', ') || '<span class="muted">none</span>'}</span>
-            </div></div>`;
+            <div class="pg-d-head"><span class="swatch" style="background:${this.colorOf(a)}"></span><b class="pg-d-name" title="${escapeHtml(`${a.id} ${a.name}`)}">${escapeHtml(a.id)} · ${escapeHtml(a.name)}</b>
+                <button class="pg-x" data-clear-act title="Close and show every wall again">✕</button></div>
+            <div class="pg-d-tags">${status}${a.float != null && a.status !== 'complete' ? `<span class="tk-src ${a.float <= 0 ? 'bad' : ''}">float ${a.float} d${a.float <= 0 ? ' · critical' : ''}</span>` : ''}
+                ${m ? `<span class="pg-cmp ${c.state}" title="Model: ${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later">model ${m.pct}%</span>` : ''}
+                ${a.level ? '<span class="pg-d-acts"><button class="pg-btn" data-show-level title="Cut the model at this level and open its plan">Level</button><button class="pg-btn" data-select-walls title="Select these walls, then set their stage on the Stages tab">Select walls</button></span>' : ''}</div>
+            <dl class="pg-d-facts">
+                <dt>Dates</dt><dd>${fmtDay(a.start)}${a.actualStart ? ' A' : ''} → ${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}${ms ? '' : ` · ${Math.round(a.dur)} d${a.status === 'active' ? `, ${Math.round(a.rem)} left` : ''}`}</dd>
+                <dt>Planned</dt><dd>${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)} · ${v > 0 ? `<span class="warn">${v} d late</span>` : v < 0 ? `${-v} d early` : 'on time'}</dd>
+                ${ms ? '' : `<dt>Progress</dt><dd>P6 ${a.pct == null ? 'not printed' : a.pct + '%'}${plannedByDd != null ? ` <span class="muted">(plan ${plannedByDd}%)</span>` : ''} · model ${m ? `${m.pct}% <span class="muted">(${m.done}/${m.total} walls)</span>${c.state === 'behind' ? ` <span class="warn">${-c.delta} pts behind</span>` : c.state === 'ahead' ? ` <span class="muted">${c.delta} pts ahead</span>` : ''}` : '<span class="muted">not linked</span>'}</dd>`}
+                <dt>Level</dt><dd><select data-own="level">${levelOptions}</select><span class="muted pg-how">${escapeHtml(a.levelHow || '')}</span></dd>
+                ${ms ? '' : `<dt>Stage</dt><dd><select data-own="stage">${stageOptions}</select><span class="muted pg-how">${escapeHtml(a.stageHow || '')}</span></dd>`}
+                ${Object.keys(a.codes || {}).length ? `<dt>Codes</dt><dd>${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</dd>` : ''}
+                <dt>Before</dt><dd>${preds.map(l => rel(l, l.from)).join(', ') || '<span class="muted">none</span>'}</dd>
+                <dt>After</dt><dd>${succs.map(l => rel(l, l.to)).join(', ') || '<span class="muted">none</span>'}</dd>
+            </dl></div>`;
         el.querySelectorAll('[data-goto]').forEach(x => x.onclick = (e) => { e.preventDefault(); this.selectActivity(x.dataset.goto); });
         el.querySelector('[data-clear-act]').onclick = () => this.selectActivity(a.id);
         const show = el.querySelector('[data-show-level]');
