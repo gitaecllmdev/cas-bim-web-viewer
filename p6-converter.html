@@ -3,17 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
-    <script type="importmap">{"imports":{"./config.js":"./config.js?v=93632502ff","./helpers.js":"./helpers.js?v=3d44803c0a","./hits.js":"./hits.js?v=8a2f9e8f9d","./main.js":"./main.js?v=a5148cc6e2","./p6-converter.js":"./p6-converter.js?v=336fb9c230","./panel.js":"./panel.js?v=fbc99ce03b","./panels.js":"./panels.js?v=b0398df7c4","./schedule-store.mjs":"./schedule-store.mjs?v=2b045e348c","./state-merge.mjs":"./state-merge.mjs?v=e6cc302892","./takeoff.js":"./takeoff.js?v=f7021db0c5","./tools.js":"./tools.js?v=10056cffa5","./viewer.js":"./viewer.js?v=da52f99168","./views.js":"./views.js?v=ce55e15900","./demos/01-wall-types/extension.js":"./demos/01-wall-types/extension.js?v=cbcb7c00b2","./demos/02-takeoff/breakdown.mjs":"./demos/02-takeoff/breakdown.mjs?v=e9595bd4e8","./demos/02-takeoff/calc.mjs":"./demos/02-takeoff/calc.mjs?v=458efd438a","./demos/02-takeoff/colors.mjs":"./demos/02-takeoff/colors.mjs?v=b66e36afde","./demos/02-takeoff/criteria.mjs":"./demos/02-takeoff/criteria.mjs?v=ab87e4cfbb","./demos/02-takeoff/extension.js":"./demos/02-takeoff/extension.js?v=4f135e1dd7","./demos/03-progress/extension.js":"./demos/03-progress/extension.js?v=fed3f94cd0","./demos/03-progress/p6.mjs":"./demos/03-progress/p6.mjs?v=4953a432b9","./demos/03-progress/schedule-views.js":"./demos/03-progress/schedule-views.js?v=2b417f2c3d","./demos/04-punch/extension.js":"./demos/04-punch/extension.js?v=0689d48812","./demos/05-field-layout/extension.js":"./demos/05-field-layout/extension.js?v=67ae9c29be","./demos/06-shop-drawings/conditions.mjs":"./demos/06-shop-drawings/conditions.mjs?v=16e4a3451e","./demos/06-shop-drawings/context.js":"./demos/06-shop-drawings/context.js?v=532bf70236","./demos/06-shop-drawings/extension.js":"./demos/06-shop-drawings/extension.js?v=c21f07e406","./demos/06-shop-drawings/panels.mjs":"./demos/06-shop-drawings/panels.mjs?v=3b5a3e222b","./demos/06-shop-drawings/pdf.mjs":"./demos/06-shop-drawings/pdf.mjs?v=8d0c10c122","./demos/06-shop-drawings/sheet.mjs":"./demos/06-shop-drawings/sheet.mjs?v=c0ff7a6c29","./demos/common/framing.mjs":"./demos/common/framing.mjs?v=c32c80b85a","./demos/common/p6-pdf.mjs":"./demos/common/p6-pdf.mjs?v=4195ffc5cf","./demos/common/pdf-reader.mjs":"./demos/common/pdf-reader.mjs?v=b0f8251f53","./demos/common/qr.mjs":"./demos/common/qr.mjs?v=d999acbdd2","./demos/common/table-export.mjs":"./demos/common/table-export.mjs?v=3b66df20be","./demos/common/wallscan.js":"./demos/common/wallscan.js?v=1ae6ddb9dc","./demos/common/xlsx.mjs":"./demos/common/xlsx.mjs?v=57943939a7"}}</script>
+    <script type="importmap">{"imports":{"./config.js":"./config.js?v=93632502ff","./helpers.js":"./helpers.js?v=3d44803c0a","./hits.js":"./hits.js?v=8a2f9e8f9d","./main.js":"./main.js?v=a5148cc6e2","./p6-converter.js":"./p6-converter.js?v=b122bd4c6f","./p6-keywords.mjs":"./p6-keywords.mjs?v=eca11092ea","./panel.js":"./panel.js?v=fbc99ce03b","./panels.js":"./panels.js?v=b0398df7c4","./schedule-store.mjs":"./schedule-store.mjs?v=2b045e348c","./state-merge.mjs":"./state-merge.mjs?v=e6cc302892","./takeoff.js":"./takeoff.js?v=f7021db0c5","./tools.js":"./tools.js?v=10056cffa5","./viewer.js":"./viewer.js?v=da52f99168","./views.js":"./views.js?v=ce55e15900","./demos/01-wall-types/extension.js":"./demos/01-wall-types/extension.js?v=cbcb7c00b2","./demos/02-takeoff/breakdown.mjs":"./demos/02-takeoff/breakdown.mjs?v=e9595bd4e8","./demos/02-takeoff/calc.mjs":"./demos/02-takeoff/calc.mjs?v=458efd438a","./demos/02-takeoff/colors.mjs":"./demos/02-takeoff/colors.mjs?v=b66e36afde","./demos/02-takeoff/criteria.mjs":"./demos/02-takeoff/criteria.mjs?v=ab87e4cfbb","./demos/02-takeoff/extension.js":"./demos/02-takeoff/extension.js?v=4f135e1dd7","./demos/03-progress/extension.js":"./demos/03-progress/extension.js?v=7046ae8fe1","./demos/03-progress/p6.mjs":"./demos/03-progress/p6.mjs?v=4953a432b9","./demos/03-progress/schedule-views.js":"./demos/03-progress/schedule-views.js?v=2b417f2c3d","./demos/04-punch/extension.js":"./demos/04-punch/extension.js?v=0689d48812","./demos/05-field-layout/extension.js":"./demos/05-field-layout/extension.js?v=67ae9c29be","./demos/06-shop-drawings/conditions.mjs":"./demos/06-shop-drawings/conditions.mjs?v=16e4a3451e","./demos/06-shop-drawings/context.js":"./demos/06-shop-drawings/context.js?v=532bf70236","./demos/06-shop-drawings/extension.js":"./demos/06-shop-drawings/extension.js?v=c21f07e406","./demos/06-shop-drawings/panels.mjs":"./demos/06-shop-drawings/panels.mjs?v=3b5a3e222b","./demos/06-shop-drawings/pdf.mjs":"./demos/06-shop-drawings/pdf.mjs?v=8d0c10c122","./demos/06-shop-drawings/sheet.mjs":"./demos/06-shop-drawings/sheet.mjs?v=c0ff7a6c29","./demos/common/framing.mjs":"./demos/common/framing.mjs?v=c32c80b85a","./demos/common/p6-pdf.mjs":"./demos/common/p6-pdf.mjs?v=b9c9c23b8d","./demos/common/pdf-reader.mjs":"./demos/common/pdf-reader.mjs?v=b0f8251f53","./demos/common/qr.mjs":"./demos/common/qr.mjs?v=d999acbdd2","./demos/common/table-export.mjs":"./demos/common/table-export.mjs?v=3b66df20be","./demos/common/wallscan.js":"./demos/common/wallscan.js?v=1ae6ddb9dc","./demos/common/xlsx.mjs":"./demos/common/xlsx.mjs?v=57943939a7"}}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>P6 Converter · CAS BIM</title>
+    <!-- Standalone tool: no model, no viewer code, nothing shared with the viewers (its own keyword history only). -->
     <link rel="stylesheet" href="panel.css?v=ba25657796">
-    <link rel="stylesheet" href="p6-converter.css?v=b715b07134">
+    <link rel="stylesheet" href="p6-converter.css?v=babdd38bec">
 </head>
 <body>
-    <header class="bar"><a class="brand" href="home.html">CAS BIM Web Viewer</a><span>P6 Converter</span><a href="schedule.html">Open model schedule →</a></header>
+    <header class="bar"><a class="brand" href="home.html">CAS BIM</a><span>P6 Converter</span><span class="standalone">Standalone tool · no model needed</span></header>
     <main id="converter">
         <section class="card intro">
-            <div><span class="eyebrow">SCHEDULE TO SPREADSHEET</span><h1>P6 Converter</h1><p>Turn a printed P6 schedule into a table you can review, edit and download.</p>
+            <div><span class="eyebrow">SCHEDULE TO SPREADSHEET</span><h1>P6 Converter</h1><p>Turn a printed P6 schedule into a table you can search, review, edit and download.</p>
             <p class="muted">Your PDF is processed in this browser. Nothing is uploaded. Download your work before closing or reloading this page.</p></div>
             <div><label class="button">Choose schedule PDF<input id="pdf-file" type="file" accept=".pdf,application/pdf" hidden></label><button id="cancel" class="secondary" hidden>Cancel import</button>
             <p class="muted">Text-based P6 layouts · up to 100 MB / 500 pages</p></div>
@@ -21,18 +22,38 @@
         <p id="status" role="status" aria-live="polite">Choose a PDF to begin. Scanned pages need OCR before importing.</p>
         <progress id="progress" hidden aria-label="PDF import progress"></progress>
         <section id="results" hidden>
-            <div class="card"><div class="row"><h2 id="summary"></h2><span class="spacer"></span><button id="excel">Download Excel</button><button id="csv" class="secondary">Download CSV</button><button id="send" class="secondary">Use in model schedule</button></div>
+            <div class="card"><div class="row"><h2 id="summary"></h2><span class="spacer"></span><button id="excel">Download Excel</button><button id="csv" class="secondary">Download CSV</button></div>
                 <p id="export-summary" class="muted"></p>
                 <details><summary>Choose export columns</summary><div id="columns"></div><div class="row"><button id="all-columns" class="secondary">Include all columns</button><button id="no-columns" class="secondary">Exclude all columns</button></div></details>
-                <div class="row filters"><label><input id="summaries" type="checkbox" checked> Include summary / WBS rows</label><label>Search preview <input id="search" type="search" placeholder="Activity, ID or location"></label><span class="muted">Search only filters the preview. Row checkboxes control export.</span></div>
+                <label class="filters"><input id="summaries" type="checkbox" checked> Include summary / WBS rows</label>
             </div>
             <details class="card" id="warning-box"><summary id="warning-count">Import notes</summary><ul id="warnings"></ul></details>
-            <section class="card"><div class="row"><h2>Review & edit</h2><span class="muted">Edit a cell directly. Uncheck a row to exclude it from both downloads.</span></div>
+            <section class="card">
+                <div class="row"><h2>Find &amp; choose rows</h2><span class="muted">Type keywords to find activities, then check the ones to export. Edit a cell directly.</span></div>
+                <div class="kw-bar">
+                    <input id="kw" type="search" autocomplete="off" aria-label="Keywords"
+                        placeholder='Keywords: type, then Enter to keep one (e.g. frame, drywall L3, "level 3")'>
+                    <button id="kw-add" class="secondary">Add keyword</button>
+                    <label title="Show rows that match every keyword, instead of any of them"><input id="kw-all" type="checkbox"> Match all keywords</label>
+                    <button id="kw-clear" class="secondary" hidden>Clear keywords</button>
+                </div>
+                <p class="muted kw-help">Several keywords: separate them with commas or add them one by one. Words in one keyword must all appear (any order); "quotes" keep a phrase. Rows matching any keyword are shown below (every keyword, with Match all).</p>
+                <div id="kw-active" class="chips" aria-label="Keywords in use"></div>
+                <div id="kw-history-row" class="chips history" hidden><span class="muted">History:</span><span id="kw-history"></span><button id="kw-forget" class="link" title="Forget every keyword used in this browser">Clear history</button></div>
+                <div class="row bulk">
+                    <button id="check-all" class="secondary" title="Check every row for export">✓ Check all</button>
+                    <button id="uncheck-all" class="secondary" title="Uncheck every row">✗ Uncheck all</button>
+                    <span class="sep" aria-hidden="true"></span>
+                    <button id="check-shown" title="Check the rows the keywords show (all pages)">✓ Check shown</button>
+                    <button id="uncheck-shown" class="secondary" title="Uncheck the rows the keywords show">✗ Uncheck shown</button>
+                    <button id="only-shown" class="secondary" title="Uncheck everything, then check only the rows shown">Only shown</button>
+                    <span class="spacer"></span><span id="checked-count" class="muted"></span>
+                </div>
                 <div id="table-wrap"><table id="preview"></table></div>
                 <div class="row paging"><button id="prev" class="secondary">Previous</button><span id="page-label"></span><button id="next" class="secondary">Next</button></div>
             </section>
         </section>
     </main>
-    <script type="module" src="p6-converter.js?v=336fb9c230"></script>
+    <script type="module" src="p6-converter.js?v=b122bd4c6f"></script>
 </body>
 </html>

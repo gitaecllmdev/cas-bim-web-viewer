@@ -86,14 +86,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.walls = (await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
-            if (schedule?.activities?.length) {
-                // Sent from the P6 Converter with the demo box on: move it now that the model's levels are known.
-                if (schedule.source?.pendingDemo) {
-                    delete schedule.source.pendingDemo;
-                    this.useSchedule(await this.applyDemoMove(schedule));
-                    await this.saveSchedule();
-                } else this.useSchedule(schedule);
-            }
+            if (schedule?.activities?.length) this.useSchedule(schedule);
             else if (!schedule?.removed) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
             this.render();
         } catch (err) {
@@ -163,7 +156,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (ext === 'pdf') {
             const doc = await readSchedulePdf(file, { signal: this.importController?.signal, onProgress: message => this.message(message, 'warn') });
             s = scheduleFromRows(scheduleRows(doc), { file: file.name, format: 'pdf', dataDate: parseDateText(doc.dataDate).day });
-            pdfNotes = ` PDF: ${doc.warnings.length} import notes; Monday–Friday calendar. Use P6 Converter to review/edit extracted rows.`;
+            pdfNotes = ` PDF: ${doc.warnings.length} import notes; no relationships or calendar in a PDF (Monday–Friday used).`;
             s.source.warnings = doc.warnings;
         } else if (ext === 'xlsx') {
             let firstError;
@@ -237,7 +230,6 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     ${s ? '<button data-links-toggle title="Which model level and install stage each activity stands for">🔗 Links</button>' : ''}
                     ${document.body.classList.contains('dock-bottom') ? '<button data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢ Expand</button>' : ''}
                     <details class="tk-dd pg-menu"><summary>Schedule</summary><div class="tk-dd-list">
-                        <a href="p6-converter.html" target="_blank" rel="noopener">P6 Converter: preview, edit, Excel / CSV</a>
                         ${s?.source.original ? '<a href="#" data-undo-demo>Undo the demo move</a>' : ''}
                         <a href="#" data-sample>Load the sample schedule (made up)</a>
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>

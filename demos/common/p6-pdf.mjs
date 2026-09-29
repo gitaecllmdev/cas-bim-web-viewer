@@ -152,7 +152,7 @@ export function scheduleRows(document) {
     const selected = document.rows.filter(r => r.include !== false && r.kind === 'Activity');
     const keys = document.columns.map(c => c.key).filter(k => !['rowNumber', 'kind', 'page', 'startFlag', 'finishFlag'].includes(k));
     const seen = new Set();
-    for (const r of selected) { if (seen.has(r.cells.id)) throw new Error(`Duplicate activity ${r.cells.id}. Exclude repeated rows in P6 Converter first.`); seen.add(r.cells.id); }
+    for (const r of selected) { if (seen.has(r.cells.id)) throw new Error(`The PDF repeats activity ${r.cells.id} (repeated print panels?). Export the layout from P6 as .xer or Excel instead.`); seen.add(r.cells.id); }
     return [keys.map(k => document.columns.find(c => c.key === k).label), ...selected.map(r => keys.map(k => {
         const value = cellValue(r, k); const flag = k === 'start' ? r.cells.startFlag : k === 'finish' ? r.cells.finishFlag : '';
         return flag && /^A$/i.test(flag.trim()) && !/\sA$/.test(value) ? `${value} A` : value;
