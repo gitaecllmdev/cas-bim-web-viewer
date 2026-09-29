@@ -4,8 +4,11 @@
 // by wall GUID ('takeoff'), and the engineer's criteria if this browser has loaded them ('takeoff-criteria').
 // Changes made here (level, gauge, order lengths) are for viewing only and are not saved.
 import { loadState, fetchJson, escapeHtml, downloadCsv } from './helpers.js';
+import { countVisit } from './hits.js';
 import { takeoff, ROLES } from './demos/02-takeoff/calc.mjs';
 import { fmtFtIn } from './demos/common/framing.mjs';
+
+countVisit(); // the home page's view counter (hits.js)
 
 const main = document.getElementById('takeoff-main');
 const params = new URLSearchParams(location.search);

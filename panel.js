@@ -4,9 +4,12 @@
 // Data: state 'shop-panel-<id>' (written by Demo 6 when the wall is picked) and 'panel-notes-<id>' (links, comments),
 // through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
 import { loadState, saveState, escapeHtml, sharedStateOn } from './helpers.js';
+import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf } from './demos/06-shop-drawings/sheet.mjs';
 import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
+
+countVisit(); // the home page's view counter (hits.js)
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const key = (new URLSearchParams(location.search).get('p') || '').toLowerCase();

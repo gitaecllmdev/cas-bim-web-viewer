@@ -4,4 +4,5 @@ export const CONFIG = {
     tokenUrl: "https://cas-bim-token.karthikeya-civ.workers.dev",
     publicUrl: "https://gitaecllmdev.github.io/cas-bim-web-viewer/",
     stateUrl: "",
+    hitsUrl: "https://cas-bim-token.karthikeya-civ.workers.dev/hits",
 };

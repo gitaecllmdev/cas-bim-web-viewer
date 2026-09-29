@@ -2,8 +2,11 @@
 // drawing (panel.html). Reads the 'shop-panel-index' state through loadState (local server, shared store, or the
 // panels published with the review site).
 import { loadState, escapeHtml } from './helpers.js';
+import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { INDEX_STATE, sortPanels, entryLayout, thumbnailSvg, openingsOf, openingsText, PANEL_TYPES } from './demos/06-shop-drawings/panels.mjs';
+
+countVisit(); // the home page's view counter (hits.js)
 
 const gallery = document.getElementById('gallery');
 const search = document.getElementById('search');
