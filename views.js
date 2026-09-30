@@ -8,7 +8,7 @@
 // Section extension (setSectionBox, deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
-import { toThemingColor, getLevels, loadPropertyMap, findWalls, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
+import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
@@ -154,6 +154,18 @@ export class Views {
             viewer.showAll();
             if (viewer === this.viewer2d) this.applyColors(viewer, model);
         }
+        this.applyCeilings();
+    }
+
+    // With one level shown, its ceilings are hidden in 3D: seen from above in the section they cover the walls (a
+    // model with modeled ceilings, like a hotel). Found once per model. Viewer3D hide / show:
+    // https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    async applyCeilings() {
+        const model = this.viewer3d.model;
+        if (!model) return;
+        if (this.ceilingsOf !== model) { this.ceilingsOf = model; this.ceilings = await findCategory(model, 'Revit Ceilings').catch(() => []); }
+        if (!this.ceilings.length || this.viewer3d.model !== model) return;
+        if (this.level) this.viewer3d.hide(this.ceilings, model); else this.viewer3d.show(this.ceilings, model);
     }
 
     select(ids) {
@@ -273,11 +285,19 @@ export class Views {
         const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
         if (level && this.viewer3d.model) {
             const world = this.viewer3d.model.getBoundingBox();
+            // Cut 1.5 ft below the next level: the slab above hangs below its level line and would roof the floor over.
+            const top = Math.max(level.bottom + 4, level.top - 1.4);
             section.setSectionBox(new THREE.Box3(
                 new THREE.Vector3(world.min.x - 1, world.min.y - 1, level.bottom),
-                new THREE.Vector3(world.max.x + 1, world.max.y + 1, level.top)));
+                new THREE.Vector3(world.max.x + 1, world.max.y + 1, top)));
         } else {
             section.deactivate(false);
+        }
+        await this.applyCeilings();
+        // A model with far-away extents (see setModel): frame the level's walls, or the cut is lost in the distance.
+        if (this.farExtents && this.viewer3d.model) {
+            const walls = level ? this.wallsByLevel.get(level.name) : [...this.wallsByLevel.values()].flat();
+            if (walls?.length) this.viewer3d.fitToView(walls, this.viewer3d.model);
         }
         if (this.showing2d) {
             const plan = this.planFor(level?.name);
@@ -454,6 +474,22 @@ export class Views {
             || '<option>No 2D views in this model</option>';
         this.el.sheets.disabled = !this.sheets.length;
         this.level = null;
+        // A model whose extents are far bigger than any building (an element left miles from the site in Revit) opens
+        // as a dot: frame its walls instead. Model.getBoundingBox, Viewer3D.fitToView:
+        // https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/ and .../reference/Viewing/Viewer3D/
+        // Checked once the geometry is in (GEOMETRY_LOADED_EVENT): before that the extents are only partly known.
+        const walls = [...this.wallsByLevel.values()].flat();
+        const frameWalls = () => {
+            if (this.viewer3d.model !== model3d || !walls.length) return;
+            const size = model3d.getBoundingBox()?.getSize(new THREE.Vector3());
+            this.farExtents = !!(size && Math.max(size.x, size.y) > 20000);
+            if (this.farExtents) this.viewer3d.fitToView(walls, model3d, true);
+        };
+        if (model3d.isLoadDone()) frameWalls();
+        else {
+            const once = (e) => { if (e.model !== model3d) return; this.viewer3d.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, once); frameWalls(); };
+            this.viewer3d.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, once);
+        }
         this.emit('ready', this);
         const wanted = new URLSearchParams(location.search).get('level');
         if (wanted && this.levelOf(wanted)) await this.setLevel(wanted); // a shared link opens at its level

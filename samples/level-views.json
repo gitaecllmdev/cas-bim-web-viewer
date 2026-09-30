@@ -1,5 +1,5 @@
 {
-    "_comment": "Master 2D view per level: the plan the 2D pane opens when you pick that level. Chosen by a scan of every 2D view for the level (Snowdon Towers, 2026-09-25): the floor-plan sheet that shows room names and the most walls on that level (the SD1xx sheets; ceiling plans show more walls but no rooms). Levels with no plan of their own use the nearest floor plan. Users can reassign a level with the ★ Master button above the 2D pane (saved per user).",
+    "_comment": "Master 2D view per level: the plan the 2D pane opens when you pick that level. Chosen by a scan of every 2D view for the level (Snowdon Towers, 2026-09-25): the floor-plan sheet that shows room names and the most walls on that level (the SD1xx sheets; ceiling plans show more walls but no rooms). Levels with no plan of their own use the nearest floor plan. Users can reassign a level with the ★ Master button above the 2D pane (saved per user). A second (private) model, 2026-09-30: each floor opens its A1.xx.0 floor plan sheet.",
     "masterViews": {
         "Parking": "SD100 - Parking Deck Floor Plan",
         "L1 - Block 35": "SD101 - First Floor Plan",
@@ -14,14 +14,102 @@
         "Block 39 - Parapet": "SD106 - Roof Plan",
         "R2": "SD106 - Roof Plan",
         "Green Roof Hardscape": "SD106 - Roof Plan",
-        "Parapet": "SD106 - Roof Plan"
+        "Parapet": "SD106 - Roof Plan",
+        "GROUND FLOOR": "A1.01.0 - LEVEL 1 FLOOR PLAN",
+        "Level 1": "A1.01.0 - LEVEL 1 FLOOR PLAN",
+        "2ND FLOOR": "A1.02.0 - LEVEL 2  FLOOR PLAN",
+        "3RD FLOOR": "A1.03.0 - LEVEL 3 FLOOR PLAN",
+        "4TH FLOOR": "A1.04.0 - LEVEL 4 FLOOR PLAN",
+        "5TH FLOOR": "A1.05.0 - LEVEL 5 FLOOR PLAN",
+        "6TH FLOOR": "A1.06.0 - LEVEL 6 FLOOR PLAN",
+        "7TH FLOOR": "A1.07.0 - LEVEL 7 FLOOR PLAN",
+        "8TH FLOOR": "A1.08.0 - LEVEL 8 FLOOR PLAN",
+        "9TH FLOOR": "A1.09.0 - LEVEL 9 FLOOR PLAN",
+        "10TH FLOOR": "A1.10.0 - LEVEL 10 FLOOR PLAN",
+        "11TH FLOOR": "A1.11.0 - LEVEL 11 FLOOR PLAN",
+        "12TH FLOOR": "A1.12.0 - LEVEL 12 FLOOR PLAN",
+        "ROOF": "A1.13.0 - ROOF PLAN"
     },
     "audit": {
-        "Parking": { "SD100 - Parking Deck Floor Plan": { "levelWalls": 38, "rooms": 1 }, "A100 - Parking Deck Floor Plan": { "levelWalls": 38, "rooms": 0 } },
-        "L1 - Block 35": { "SD101 - First Floor Plan": { "levelWalls": 51, "rooms": 8 }, "A101 - First Floor Plan": { "levelWalls": 51, "rooms": 0 }, "A108 - First Floor Ceiling Plan": { "levelWalls": 41, "rooms": 0 } },
-        "L2": { "SD102 - Second Floor Plan": { "levelWalls": 92, "rooms": 11 }, "A102 - Second Floor Plan": { "levelWalls": 92, "rooms": 0 }, "A109 - Second Floor Ceiling Plan": { "levelWalls": 111, "rooms": 0 } },
-        "L3": { "SD103 - Third Floor Plan": { "levelWalls": 134, "rooms": 9 }, "A103 - Third Floor Plan": { "levelWalls": 134, "rooms": 0 }, "A110 - Third Floor Ceiling Plan": { "levelWalls": 166, "rooms": 0 } },
-        "L4": { "SD104 - Fourth Floor Plan": { "levelWalls": 144, "rooms": 9 }, "A104 - Fourth Floor Plan": { "levelWalls": 144, "rooms": 0 }, "A111 - Fourth Floor Ceiling Plan": { "levelWalls": 176, "rooms": 0 } },
-        "L5": { "SD105 - Fifth Floor Plan": { "levelWalls": 129, "rooms": 9 }, "A105 - Fifth Floor Plan": { "levelWalls": 129, "rooms": 0 }, "A112 - Fifth Floor Ceiling Plan": { "levelWalls": 118, "rooms": 0 } }
+        "Parking": {
+            "SD100 - Parking Deck Floor Plan": {
+                "levelWalls": 38,
+                "rooms": 1
+            },
+            "A100 - Parking Deck Floor Plan": {
+                "levelWalls": 38,
+                "rooms": 0
+            }
+        },
+        "L1 - Block 35": {
+            "SD101 - First Floor Plan": {
+                "levelWalls": 51,
+                "rooms": 8
+            },
+            "A101 - First Floor Plan": {
+                "levelWalls": 51,
+                "rooms": 0
+            },
+            "A108 - First Floor Ceiling Plan": {
+                "levelWalls": 41,
+                "rooms": 0
+            }
+        },
+        "L2": {
+            "SD102 - Second Floor Plan": {
+                "levelWalls": 92,
+                "rooms": 11
+            },
+            "A102 - Second Floor Plan": {
+                "levelWalls": 92,
+                "rooms": 0
+            },
+            "A109 - Second Floor Ceiling Plan": {
+                "levelWalls": 111,
+                "rooms": 0
+            }
+        },
+        "L3": {
+            "SD103 - Third Floor Plan": {
+                "levelWalls": 134,
+                "rooms": 9
+            },
+            "A103 - Third Floor Plan": {
+                "levelWalls": 134,
+                "rooms": 0
+            },
+            "A110 - Third Floor Ceiling Plan": {
+                "levelWalls": 166,
+                "rooms": 0
+            }
+        },
+        "L4": {
+            "SD104 - Fourth Floor Plan": {
+                "levelWalls": 144,
+                "rooms": 9
+            },
+            "A104 - Fourth Floor Plan": {
+                "levelWalls": 144,
+                "rooms": 0
+            },
+            "A111 - Fourth Floor Ceiling Plan": {
+                "levelWalls": 176,
+                "rooms": 0
+            }
+        },
+        "L5": {
+            "SD105 - Fifth Floor Plan": {
+                "levelWalls": 129,
+                "rooms": 9
+            },
+            "A105 - Fifth Floor Plan": {
+                "levelWalls": 129,
+                "rooms": 0
+            },
+            "A112 - Fifth Floor Ceiling Plan": {
+                "levelWalls": 118,
+                "rooms": 0
+            }
+        }
     }
 }

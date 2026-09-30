@@ -4,7 +4,7 @@
 // Model (getBulkProperties with externalId): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Stage colors go through core/client/views.js (3D + 2D plan); selecting walls on the plan selects them in 3D too.
 // The schedule: p6.mjs reads the P6 export and links activities to levels and stages; schedule-views.js draws them.
-import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson } from '../../helpers.js';
 import { readXlsx } from '../common/xlsx.mjs';
 import { readSchedulePdf } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
@@ -17,8 +17,10 @@ import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 
 const EXTENSION_ID = 'Drywall.Progress';
-const STATE_NAME = 'progress';
-const SCHEDULE_STATE = 'schedule';
+// Saved per model: 'progress' / 'schedule' for the sample model (Snowdon, the one with a sample schedule in
+// samples/urns.json), 'progress-<model>' / 'schedule-<model>' for every other model, so their walls and schedules
+// never mix. <model> is a short hash of its URN.
+const modelKey = (urn) => { let h = 5381; for (const ch of String(urn)) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0; return h.toString(36); };
 const SAMPLE = { url: 'samples/schedule/snowdon-drywall-p6.xer', file: 'snowdon-drywall-p6.xer' };
 const NOT_SET = 'Not set';
 // "Not started" walls keep their normal look (no color).
@@ -69,6 +71,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', () => { if (this.walls) this.renderBody(); }),
+            // Levels and their elevations arrive after the walls: redraw so floors list bottom to top.
+            this.views.on('ready', () => { if (this.walls) { this.linkedCache = null; this.renderBody(); } }),
         ];
         return true;
     }
@@ -89,14 +93,21 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     async init(model) {
         this.model = model;
         try {
-            const [map, saved, schedule] = await Promise.all([loadPropertyMap(), loadState(STATE_NAME), loadState(SCHEDULE_STATE).catch(() => ({}))]);
+            // Which model this is (the URN is the page's #hash), and whether it has the sample schedule.
+            const urn = decodeURIComponent(location.hash.slice(1));
+            const models = await fetchJson('samples/urns.json').catch(() => []);
+            const entry = models.find(m => m.urn === urn) || (!urn ? models[0] : null);
+            this.sampleSchedule = entry?.sampleSchedule || null;
+            this.stateName = this.sampleSchedule ? 'progress' : `progress-${modelKey(urn)}`;
+            this.scheduleState = this.sampleSchedule ? 'schedule' : `schedule-${modelKey(urn)}`;
+            const [map, saved, schedule] = await Promise.all([loadPropertyMap(), loadState(this.stateName), loadState(this.scheduleState).catch(() => ({}))]);
             this.map = map;
             this.stages = saved.stages || {};
             this.walls = (await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
             if (schedule?.activities?.length) this.useSchedule(schedule);
-            else if (!schedule?.removed) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
+            else if (!schedule?.removed && this.sampleSchedule) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
             this.render();
         } catch (err) {
             this.panel.querySelector('[data-status]').textContent = `Could not load progress: ${err.message || err}`;
@@ -226,7 +237,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     async saveSchedule() {
         try {
-            await saveState(SCHEDULE_STATE, this.schedule);
+            await saveState(this.scheduleState, this.schedule);
             return true;
         } catch (err) {
             this.message(`Schedule not saved: ${err.message}`, 'warn');
@@ -266,8 +277,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     ${document.body.classList.contains('dock-bottom') ? '<button class="pg-btn" data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢</button>' : ''}
                     <details class="tk-dd pg-menu"><summary class="pg-btn" title="Schedule: sample, export, remove">⋯</summary><div class="tk-dd-list">
                         ${s?.source.original ? '<a href="#" data-undo-demo>Undo the demo move</a>' : ''}
-                        <a href="#" data-sample>Load the sample schedule (made up)</a>
-                        <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>
+                        ${this.sampleSchedule ? `<a href="#" data-sample>Load the sample schedule (made up)</a>
+                        <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>` : ''}
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
                 </div>
@@ -297,7 +308,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         };
         p.querySelector('[data-demo-move]').onchange = e => { this.demoMove = e.target.checked; try { localStorage.setItem('drywall-demos:schedule-demo-shift', String(this.demoMove)); } catch {} };
         p.querySelector('[data-undo-demo]')?.addEventListener('click', async e => { e.preventDefault(); this.stopPlay(); this.useSchedule(structuredClone(this.schedule.source.original)); this.render(); if (await this.saveSchedule()) this.message('Original dates, project and links restored.'); });
-        p.querySelector('[data-sample]').onclick = (e) => { e.preventDefault(); this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn')); };
+        const sampleLink = p.querySelector('[data-sample]');
+        if (sampleLink) sampleLink.onclick = (e) => { e.preventDefault(); this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn')); };
         const exp = p.querySelector('[data-export]');
         if (exp) exp.onclick = (e) => { e.preventDefault(); this.exportCsv(); };
         const rem = p.querySelector('[data-remove]');
@@ -307,7 +319,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.clearFocus();
             this.schedule = null;
             this.colorMode = 'actual';
-            await saveState(SCHEDULE_STATE, { removed: true, at: new Date().toISOString() }).catch(() => {});
+            await saveState(this.scheduleState, { removed: true, at: new Date().toISOString() }).catch(() => {});
             this.render();
         };
         p.querySelector('[data-dock]')?.addEventListener('click', () => document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })));
@@ -437,10 +449,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const wide = this.tab !== 'stages' && !document.body.classList.contains('dock-bottom');
         if (this.panel.classList.contains('xwide') !== wide) { this.panel.classList.toggle('xwide', wide); requestAnimationFrame(() => this.views.resize()); }
         if (this.tab !== 'stages' && !this.schedule) {
-            body.innerHTML = `<div class="pg-empty"><p>No schedule loaded.</p>
-                <p><button data-sample2>Load the sample P6 schedule</button> <span class="muted">(made up, for the sample model)</span></p>
+            body.innerHTML = `<div class="pg-empty"><p>No schedule for this model yet.</p>
+                ${this.sampleSchedule ? '<p><button data-sample2>Load the sample P6 schedule</button> <span class="muted">(made up, for the sample model)</span></p>' : ''}
                 <p class="muted">Or upload your own P6 export above: an .xer file, or a layout exported to Excel (.xlsx) or CSV with Activity ID, Activity Name, Start and Finish columns.</p></div>`;
-            body.querySelector('[data-sample2]').onclick = () => this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn'));
+            const sample2 = body.querySelector('[data-sample2]');
+            if (sample2) sample2.onclick = () => this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn'));
             return;
         }
         if (this.tab === 'gantt') this.renderGantt(body);
@@ -518,7 +531,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const undoButton = this.panel.querySelector('[data-undo]');
         if (undoButton) undoButton.hidden = !this.undoStages;
         try {
-            await saveState(STATE_NAME, { stages, updatedAt: new Date().toISOString() });
+            await saveState(this.stateName, { stages, updatedAt: new Date().toISOString() });
             if (saved) saved.textContent = `Saved ${new Date().toLocaleTimeString()}`;
         } catch (err) {
             if (saved) saved.innerHTML = `<span class="warn">Not saved: ${escapeHtml(err.message)}</span>`;

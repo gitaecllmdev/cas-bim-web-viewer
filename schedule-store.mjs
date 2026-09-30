@@ -18,5 +18,6 @@ async function transact(mode, action) {
         tx.onerror = tx.onabort = () => reject(tx.error || request.error || new Error('Schedule storage failed.'));
     }); } finally { db.close(); }
 }
-export const readBrowserSchedule = () => transact('readonly', store => store.get('schedule'));
-export const writeBrowserSchedule = value => transact('readwrite', store => store.put(value, 'schedule'));
+// One entry per state name ('schedule' for the sample model, 'schedule-<model>' for the others).
+export const readBrowserSchedule = (name = 'schedule') => transact('readonly', store => store.get(name));
+export const writeBrowserSchedule = (value, name = 'schedule') => transact('readwrite', store => store.put(value, name));

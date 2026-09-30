@@ -22,8 +22,8 @@ export const sharedStateOn = () => CONFIG.mode !== 'static' || !!CONFIG.stateUrl
 const stateServiceUrl = (name) => `${CONFIG.stateUrl.replace(/\/$/, '')}/state/${name}`;
 export async function loadState(name) {
     if (CONFIG.mode !== 'static') return fetchJson(`api/state/${name}`);
-    if (name === 'schedule') {
-        const saved = await readBrowserSchedule().catch(() => null); // IndexedDB blocked: fall through
+    if (/^schedule(-[a-z0-9]+)?$/.test(name)) {
+        const saved = await readBrowserSchedule(name).catch(() => null); // IndexedDB blocked: fall through
         if (saved) return saved;
         // Older builds kept this in localStorage. Read it until the next successful save migrates it.
     }
@@ -42,8 +42,8 @@ export async function saveState(name, data) {
     if (CONFIG.mode !== 'static') {
         return fetchJson(`api/state/${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     }
-    if (name === 'schedule') {
-        await writeBrowserSchedule(data);
+    if (/^schedule(-[a-z0-9]+)?$/.test(name)) {
+        await writeBrowserSchedule(data, name);
         try { localStorage.removeItem(stateKey(name)); } catch {}
         return { ok: true };
     }
@@ -82,6 +82,12 @@ export function propValue(result, name) {
 // dbIds of walls, using the category rule in samples/property-map.json.
 export async function findWalls(model, map) {
     const { property, value } = map.wallCategory;
+    const results = await getBulkProperties(model, await getLeafDbIds(model), [property]);
+    return results.filter(r => propValue(r, property) === value).map(r => r.dbId);
+}
+
+// dbIds of every object in a category (e.g. "Revit Ceilings").
+export async function findCategory(model, value, property = 'Category') {
     const results = await getBulkProperties(model, await getLeafDbIds(model), [property]);
     return results.filter(r => propValue(r, property) === value).map(r => r.dbId);
 }
