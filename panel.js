@@ -3,7 +3,7 @@
 // conditions, a links list at the top (paste Egnyte or other document links) and comments.
 // Data: state 'shop-panel-<id>' (written by Demo 6 when the wall is picked) and 'panel-notes-<id>' (links, comments),
 // through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
-import { loadState, saveState, escapeHtml, sharedStateOn } from './helpers.js';
+import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf } from './demos/06-shop-drawings/sheet.mjs';
@@ -42,7 +42,7 @@ async function start() {
 
 // Previous / All panels / Next in the header (gallery order: level, then mark); the arrow keys do the same.
 async function pager() {
-    const index = await loadState(INDEX_STATE).catch(() => ({}));
+    const index = await loadState(await stateFor(INDEX_STATE)).catch(() => ({}));
     const order = new URLSearchParams(location.search).get('order') === 'level' ? 'level' : 'complex';
     const list = sortPanels(Object.values(index.panels || {}), order);
     const i = list.findIndex(p => p.key === key);

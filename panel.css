@@ -65,6 +65,9 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .home-card p { margin: 0; color: var(--muted); }
 .home-icon { font-size: 1.8em; color: var(--accent); }
 .home-card.soon { opacity: 0.75; }
+.home-card.featured { grid-column: 1 / -1; position: relative; border: 2px solid var(--accent); background: linear-gradient(135deg, #f3f7fb, #fff 60%); }
+.home-card.featured h2 { font-size: 1.45em; }
+.home-badge { position: absolute; top: 14px; right: 16px; padding: 2px 10px; border-radius: 999px; background: var(--accent); color: #fff; font-size: 0.8em; font-weight: 600; }
 .home-card.soon .open { color: var(--muted); font-weight: 400; }
 .tabs { display: inline-flex; gap: 0.3em; }
 .home-section { font-size: 1.05em; margin: 12px 0 0; }
@@ -72,4 +75,12 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .home-num { display: inline-grid; place-items: center; width: 1.9em; height: 1.9em; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; }
 .home-foot { display: flex; flex-wrap: wrap; justify-content: center; gap: 0.3em 1.6em; margin: 28px 0 16px; padding: 12px 16px 0; border-top: 1px solid var(--line, #dde3e9); color: var(--muted); font-size: 0.9em; }
 .home-foot b { color: var(--ink, #1d2b38); font-weight: 600; }
+.home-foot .hits-toggle { font: inherit; color: inherit; background: none; border: 1px solid transparent; border-radius: 6px; padding: 2px 8px; cursor: pointer; }
+.home-foot .hits-toggle:hover, .home-foot .hits-toggle[aria-expanded="true"] { border-color: var(--line, #dde3e9); background: #fff; }
+.home-foot .hits-visits { flex: 1 1 100%; max-width: 560px; margin: 8px auto 0; padding: 10px 14px; border: 1px solid var(--line, #dde3e9); border-radius: 8px; background: #fff; text-align: left; }
+.home-foot .hits-visits h3 { margin: 0 0 6px; font-size: 0.95em; color: var(--ink, #1d2b38); }
+.home-foot .hits-visits ol { margin: 0; padding: 0; list-style: none; max-height: 260px; overflow: auto; }
+.home-foot .hits-visits li { display: flex; justify-content: space-between; gap: 1em; padding: 4px 0; border-top: 1px solid #eef1f4; }
+.home-foot .hits-visits li:first-child { border-top: none; }
+.home-foot .hits-visits p { margin: 8px 0 0; font-size: 0.85em; }
 .home-for { font-size: 0.85em; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em; }

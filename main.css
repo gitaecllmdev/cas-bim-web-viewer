@@ -506,6 +506,33 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg-g-row.other .pg-bar s { background: rgba(0, 0, 0, 0.12); }
 .pg-cal-ev.other { background: #eef1f4 !important; color: #8a96a3 !important; box-shadow: inset 0 0 0 1px #dde2e8; }
 
+/* Demo 7: 3D Model Explorer */
+.demo-panel.ex { font-size: 13px; }
+.ex .ex-sec { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #e1e6eb; border-radius: 8px; background: #fbfcfd; }
+.ex .ex-sec h3 { margin: 0 0 8px; font-size: 13.5px; color: #1f3b57; display: flex; align-items: center; gap: 7px; }
+.ex .ex-sec h3 span { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #1f3b57; color: #fff; font-size: 11.5px; }
+.ex .ex-row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 8px; margin: 6px 0 0; }
+.ex .ex-lbl { width: 58px; font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: .03em; color: #5a6b7b; }
+.ex .ex-groups { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.demo-panel.ex .ex-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid #c9d1da; border-radius: 999px; background: #fff; font-size: 12.5px; cursor: pointer; }
+.demo-panel.ex .ex-chip:hover { border-color: #1f3b57; }
+.demo-panel.ex .ex-chip.on { background: #1f3b57; border-color: #1f3b57; color: #fff; }
+.ex .ex-chip i { width: 11px; height: 11px; border-radius: 3px; display: inline-block; }
+.ex .ex-chip b { font-weight: 600; opacity: .75; }
+.ex .ex-note { margin: 8px 0 0; font-size: 12px; color: #5a6b7b; }
+.ex .ex-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 8px; font-size: 12px; }
+.ex input[type=range] { flex: 1 1 160px; max-width: 260px; }
+.ex .ex-floor { min-width: 110px; text-align: center; font-weight: 600; color: #1f3b57; }
+.ex .ex-pick { display: grid; gap: 3px; }
+.ex .ex-pick i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.ex .ex-howto summary { cursor: pointer; font-weight: 600; color: #1f3b57; }
+.ex .ex-howto p { margin: 8px 0 0; font-size: 12.5px; line-height: 1.5; color: #34414e; }
+.demo-panel.ex .pg-btn { display: inline-flex; align-items: center; gap: 4px; height: 27px; padding: 0 10px; font-size: 12.5px; border: 1px solid #c9d1da; border-radius: 5px; background: #fff; cursor: pointer; }
+.demo-panel.ex .pg-btn:hover { background: #eef3f8; }
+.demo-panel.ex .pg-btn.active { background: #1f3b57; border-color: #1f3b57; color: #fff; }
+.ex .pg-check { display: inline-flex; align-items: center; gap: 4px; }
+.ex select { height: 27px; font-size: 12.5px; }
+
 /* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
 @media (max-width: 900px) {
     #main { flex-direction: column; }

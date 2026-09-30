@@ -3,7 +3,7 @@
 // ('takeoff-snapshot'), the opening scans ('wall-openings'), the estimator's settings, assemblies and framing overrides
 // by wall GUID ('takeoff'), and the engineer's criteria if this browser has loaded them ('takeoff-criteria').
 // Changes made here (level, gauge, order lengths) are for viewing only and are not saved.
-import { loadState, fetchJson, escapeHtml, downloadCsv } from './helpers.js';
+import { loadState, fetchJson, escapeHtml, downloadCsv, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { takeoff, ROLES } from './demos/02-takeoff/calc.mjs';
 import { fmtFtIn } from './demos/common/framing.mjs';
@@ -23,14 +23,15 @@ const view = { level: params.get('level') || '', tab: params.get('tab') === 'typ
 start().catch(err => { main.innerHTML = `<p class="warn">Could not load the takeoff: ${escapeHtml(err.message || err)}</p>`; });
 
 async function start() {
-    [snapshot, rules, saved, criteria] = await Promise.all([loadState('takeoff-snapshot').catch(() => ({})), fetchJson('samples/takeoff-rules.json'),
-        loadState('takeoff').catch(() => ({})), loadState('takeoff-criteria').catch(() => ({}))]);
+    // The site's model (helpers stateFor): the sample's plain names, or another model's own.
+    [snapshot, rules, saved, criteria] = await Promise.all([loadState(await stateFor('takeoff-snapshot')).catch(() => ({})), fetchJson('samples/takeoff-rules.json'),
+        loadState(await stateFor('takeoff')).catch(() => ({})), loadState(await stateFor('takeoff-criteria')).catch(() => ({}))]);
     if (!snapshot.walls?.length) {
         main.innerHTML = `<section class="card"><h2>No takeoff published yet</h2>
             <p>Open the <a href="index.html?demo=02-takeoff">3D takeoff</a> once on the local server, then publish the site.</p></section>`;
         return;
     }
-    const scans = await loadState('wall-openings').catch(() => ({}));
+    const scans = await loadState(await stateFor('wall-openings')).catch(() => ({}));
     walls = snapshot.walls.map(w => ({ ...w, scan: scans[w.externalId] }));
     view.settings = { ...(saved.settings || {}) };
     render();

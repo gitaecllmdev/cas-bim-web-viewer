@@ -1,7 +1,8 @@
 // Site views, shown at the bottom of the home page. A browser counts one view per 30 minutes, so reloads and moving
 // between pages don't count again. The count is kept by the local server (/api/hits) or, on the review site, by the
-// token Worker (/hits, in its KV store; see deploy/cloudflare-worker/). Only a count and times are stored, nothing
-// about who visited. When the service isn't there (or not set up yet), nothing is shown.
+// token Worker (/hits, in its KV store; see deploy/cloudflare-worker/). Stored: a count, times, and the approximate
+// place (city, region, country) of the last 25 visits; never an IP address. When the service isn't there (or not set
+// up yet), nothing is shown.
 import { CONFIG } from './config.js';
 
 const KEY = 'drywall-demos:visit'; // this browser's last counted view: { at, previous }
@@ -25,8 +26,8 @@ export async function countVisit() {
     }
 }
 
-// For the footer: { views, since, previous } where previous is the visit before this browser's latest one; null when
-// there is no count to show.
+// For the footer: { views, since, previous, visits } where previous is the visit before this browser's latest one and
+// visits the last ones with their places ({ at, place }, newest first); null when there is no count to show.
 export async function siteHits() {
     let hits = await countVisit();
     const last = mine();
@@ -40,5 +41,6 @@ export async function siteHits() {
             hits = null;
         }
     }
-    return hits && { views: hits.views, since: hits.since || null, previous: last ? last.previous : hits.previous || null };
+    return hits && { views: hits.views, since: hits.since || null, previous: last ? last.previous : hits.previous || null,
+        visits: Array.isArray(hits.visits) ? hits.visits : [] };
 }

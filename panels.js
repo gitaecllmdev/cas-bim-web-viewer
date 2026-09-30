@@ -1,7 +1,7 @@
 // Panel shop gallery (panels.html): every panel saved by Demo 6, as cards with a thumbnail. One click opens the shop
 // drawing (panel.html). Reads the 'shop-panel-index' state through loadState (local server, shared store, or the
 // panels published with the review site).
-import { loadState, escapeHtml } from './helpers.js';
+import { loadState, escapeHtml, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { INDEX_STATE, sortPanels, entryLayout, thumbnailSvg, openingsOf, openingsText, PANEL_TYPES } from './demos/06-shop-drawings/panels.mjs';
@@ -22,7 +22,7 @@ let panels = [];
 start().catch(err => { gallery.innerHTML = `<p class="warn">Could not load the panels: ${escapeHtml(err.message || err)}</p>`; });
 
 async function start() {
-    const index = await loadState(INDEX_STATE).catch(() => ({}));
+    const index = await loadState(await stateFor(INDEX_STATE)).catch(() => ({})); // the site's model's panels
     panels = Object.values(index.panels || {});
     if (!panels.length) {
         gallery.innerHTML = `<section class="card"><h2>No panel shops yet</h2>
