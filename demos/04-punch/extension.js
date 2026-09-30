@@ -8,7 +8,7 @@
 // MarkupsCore: https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/MarkupsCore/
 // Viewer3D (clientToWorld, hitTest, getState, restoreState, fitToView): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Navigation (setView, getTarget, setPivotPoint) for "Jump to 3D": https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
-import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, downloadCsv, escapeHtml } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, downloadCsv, escapeHtml, buildingCenter, stateFor } from '../../helpers.js';
 
 const EXTENSION_ID = 'Drywall.Punch';
 const STATE_NAME = 'punch';
@@ -71,7 +71,8 @@ class PunchExtension extends Autodesk.Viewing.Extension {
     async init(model) {
         this.model = model;
         try {
-            const [map, saved] = await Promise.all([loadPropertyMap(), loadState(STATE_NAME)]);
+            this.stateName = await stateFor(STATE_NAME); // per model (the sample model keeps 'punch')
+            const [map, saved] = await Promise.all([loadPropertyMap(), loadState(this.stateName)]);
             this.items = saved.items || [];
             const walls = (await getWallData(model, map)).walls;
             this.byDbId = new Map(walls.map(w => [w.dbId, w]));
@@ -266,8 +267,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
         const wallCenter = nav.getTarget().clone();
         const fitDistance = nav.getEyeVector().length();
         const poi = item.point ? new THREE.Vector3(item.point.x, item.point.y, item.point.z) : wallCenter;
-        const box = model.getBoundingBox();
-        const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5); // viewer's three.js has no getCenter
+        const center = buildingCenter(model); // the middle of the building (its walls), not of objects far off the site
         const toCenter = new THREE.Vector3(center.x - poi.x, center.y - poi.y, 0);
         if (toCenter.length() < 1) toCenter.set(1, -1, 0); // pin near the middle: a standard 3/4 view
         toCenter.normalize();
@@ -292,7 +292,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
     async save() {
         await this.refreshAll();
         try {
-            await saveState(STATE_NAME, { items: this.items, updatedAt: new Date().toISOString() });
+            await saveState(this.stateName, { items: this.items, updatedAt: new Date().toISOString() });
         } catch (err) {
             alert(`Punch list not saved: ${err.message}`);
         }

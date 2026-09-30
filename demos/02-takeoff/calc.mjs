@@ -38,7 +38,9 @@ export function assemblyFor(typeName, rules, overrides = {}) {
         ? { scope: 'framed', rows: 1, layers: [0, 0], track: true, sheathingSides: 0, member: 'stud', ...rule }
         : { scope: 'review', label: 'No rule matches: set the assembly in the Assemblies tab', rows: 1, layers: [0, 0], track: true, sheathingSides: 0, member: 'stud' };
     const asm = { ...base, ...overrides[typeName] };
-    asm.insulation ??= /insulated panel/i.test(typeName || '') ? 'insulated panel' : /insul|batt|mineral wool|acoustic|sound/i.test(typeName || '') ? 'batt' : 'none';
+    // "NO INSUL." in a type name means none (CAS-coded names say NO INSUL. / THERMAL INSUL. / ACOUSTICAL INSUL.).
+    const t = (typeName || '').replace(/\bno\s+insul\w*\.?/gi, '');
+    asm.insulation ??= /insulated panel/i.test(t) ? 'insulated panel' : /insul|batt|mineral wool|acoustic|sound/i.test(t) ? 'batt' : 'none';
     return asm;
 }
 

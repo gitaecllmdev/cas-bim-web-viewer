@@ -13,7 +13,7 @@
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Navigation (setView, getTarget, getEyeVector, setVerticalFov): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
 // Document / BubbleNode (search for the 3D viewables): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
-import { loadPropertyMap, getWallData, onModelReady, getBulkProperties, propValue, escapeHtml, fetchJson, downloadCsv, loadState, saveState, markContextNode } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, getBulkProperties, propValue, escapeHtml, fetchJson, downloadCsv, loadState, saveState, markContextNode, stateFor } from '../../helpers.js';
 import { assemblyFor, boardFor } from '../02-takeoff/calc.mjs';
 import { frameWall, fmtFtIn, flipLayout } from '../common/framing.mjs';
 import { renderSheet, renderSheetPdf, sheetSize, SHEETS } from './sheet.mjs';
@@ -72,7 +72,8 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         this.contextModels = null; // a new model: its context views load on the next context request
         this.contextShown = false;
         try {
-            const [map, rules, takeoff, saved] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState('takeoff'), loadState(STATE_NAME)]);
+            this.names = { takeoff: await stateFor('takeoff'), settings: await stateFor(STATE_NAME), index: await stateFor(INDEX_STATE) }; // per model
+            const [map, rules, takeoff, saved] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState(this.names.takeoff), loadState(this.names.settings)]);
             this.map = map;
             this.rules = rules;
             this.overrides = takeoff.overrides || {}; // same assemblies as the takeoff demo
@@ -191,7 +192,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     async saveSettings() {
-        await saveState(STATE_NAME, { settings: this.settings, flips: this.flips, sheets: this.sheets }).catch(err => console.warn('Settings not saved:', err.message));
+        await saveState(this.names.settings, { settings: this.settings, flips: this.flips, sheets: this.sheets }).catch(err => console.warn('Settings not saved:', err.message));
     }
 
     // --- Flip: the panel drawn from side B (sheet, 3D drawing and camera); the members and labels don't change -------
@@ -568,8 +569,8 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         await saveState(`shop-panel-${c.wall.externalId}`, record);
         // One index write at a time, so walking through walls quickly doesn't drop entries.
         this.indexQueue = (this.indexQueue || Promise.resolve()).then(async () => {
-            const index = await loadState(INDEX_STATE).catch(() => ({}));
-            await saveState(INDEX_STATE, { panels: { ...(index.panels || {}), [record.key]: indexEntry(record) } });
+            const index = await loadState(this.names.index).catch(() => ({}));
+            await saveState(this.names.index, { panels: { ...(index.panels || {}), [record.key]: indexEntry(record) } });
         }).catch(err => console.warn('Panel index not saved:', err.message));
         await this.indexQueue;
     }

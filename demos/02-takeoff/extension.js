@@ -10,7 +10,7 @@
 // Dashboard tutorial (aggregating properties): https://get-started.aps.autodesk.com/tutorials/dashboard/
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
-import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState } from '../../helpers.js';
+import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState, stateFor } from '../../helpers.js';
 import { takeoff, assemblyFor, fmtInches, ROLES, INSULATIONS } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
 import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
@@ -130,8 +130,10 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     async init(model) {
         try {
-            const [map, rules, saved, criteria] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState(STATE_NAME),
-                loadState(CRITERIA_STATE).catch(() => ({}))]);
+            // Per model (helpers stateFor): the sample model keeps 'takeoff', 'takeoff-snapshot', 'takeoff-criteria'.
+            this.names = { takeoff: await stateFor(STATE_NAME), snapshot: await stateFor(SNAPSHOT_STATE), criteria: await stateFor(CRITERIA_STATE) };
+            const [map, rules, saved, criteria] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'), loadState(this.names.takeoff),
+                loadState(this.names.criteria).catch(() => ({}))]);
             this.map = map;
             this.rules = rules;
             this.settings = saved.settings || {};
@@ -707,7 +709,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     async saveCriteria() {
         this.render();
-        try { await saveState(CRITERIA_STATE, this.criteria || {}); } catch (err) { console.warn('Criteria not saved:', err.message); }
+        try { await saveState(this.names.criteria, this.criteria || {}); } catch (err) { console.warn('Criteria not saved:', err.message); }
     }
 
     toggleSelection(key) {
@@ -1010,14 +1012,14 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
         const walls = this.walls.map(({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt, materials, rValue, function: fn }) =>
             ({ dbId, externalId, wallType, fireRating, level, length, area, heightFt, baseOffsetFt, levelSpanFt, materials, rValue, function: fn }));
         const project = document.getElementById('models')?.selectedOptions[0]?.text || model.getDocumentNode()?.getDocument()?.getRoot()?.name?.() || 'Project';
-        saveState(SNAPSHOT_STATE, { project, urn: location.hash.slice(1), savedAt: new Date().toISOString(), walls })
+        saveState(this.names.snapshot, { project, urn: location.hash.slice(1), savedAt: new Date().toISOString(), walls })
             .catch(err => console.warn('Takeoff snapshot not saved:', err.message));
     }
 
     async save() {
         this.render();
         try {
-            await saveState(STATE_NAME, { settings: this.settings, overrides: this.overrides, elementOverrides: this.elementOverrides, updatedAt: new Date().toISOString() });
+            await saveState(this.names.takeoff, { settings: this.settings, overrides: this.overrides, elementOverrides: this.elementOverrides, updatedAt: new Date().toISOString() });
         } catch (err) {
             console.warn('Takeoff settings not saved:', err.message);
         }

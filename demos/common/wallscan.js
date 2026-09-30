@@ -6,7 +6,7 @@
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Navigation (setView, getTarget, getEyeVector, setVerticalFov): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
 // Scans are saved per wall (externalId) in the 'wall-openings' state, shared by both demos.
-import { loadState, saveState } from '../../helpers.js';
+import { loadState, saveState, buildingCenter, stateFor } from '../../helpers.js';
 import { fmtFtIn } from './framing.mjs';
 
 const STATE_NAME = 'wall-openings';
@@ -61,8 +61,7 @@ export async function scanWall(viewer, dbId, { level, heightFt, baseOffsetFt = 0
         const n = new THREE.Vector3(-u.y, u.x, 0);
         const up = new THREE.Vector3(0, 0, 1);
         // Look from the building-interior side ("side A"); make screen-right = +u so the drawing matches the view.
-        const box = model.getBoundingBox();
-        const center = new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+        const center = buildingCenter(model); // the building's walls, not objects far off the site
         if (new THREE.Vector3().subVectors(center, mean).dot(n) < 0) n.multiplyScalar(-1);
         const right = new THREE.Vector3().crossVectors(n.clone().multiplyScalar(-1), up);
         if (right.dot(u) < 0) u.multiplyScalar(-1);
@@ -85,6 +84,7 @@ export async function scanWall(viewer, dbId, { level, heightFt, baseOffsetFt = 0
         };
         // The geometry's lowest and highest points, from a few columns across the wall.
         let gLo = Infinity, gHi = -Infinity;
+        const box = model.getBoundingBox(); // heights only (objects far off the site are off to the side, not above)
         for (const f of [0.05, 0.15, 0.3, 0.4, 0.5, 0.6, 0.7, 0.85, 0.95]) {
             const s = sMin + (sMax - sMin) * f;
             for (let z = box.min.z; z <= box.max.z; z += 1 / 12) if (ray(s, z)) { gLo = Math.min(gLo, z); gHi = Math.max(gHi, z); }
@@ -150,12 +150,12 @@ export async function scanWall(viewer, dbId, { level, heightFt, baseOffsetFt = 0
 }
 
 // Saved scans: externalId -> { lengthIn, heightIn, openings, notes, at }.
-export const loadScans = () => loadState(STATE_NAME).catch(() => ({}));
+export const loadScans = async () => loadState(await stateFor(STATE_NAME)).catch(() => ({})); // per model
 export async function saveScan(externalId, geom) {
     if (!externalId) return;
     const scans = await loadScans();
     scans[externalId] = { lengthIn: geom.lengthIn, heightIn: geom.heightIn, openings: geom.openings, notes: geom.notes, at: new Date().toISOString() };
-    await saveState(STATE_NAME, scans);
+    await saveState(await stateFor(STATE_NAME), scans);
 }
 
 // Scan many walls, then put the view back (camera, field of view, isolation, level cut).
@@ -178,10 +178,10 @@ export async function scanWalls(viewer, views, walls, { onProgress, isCancelled 
             }
             done++;
             onProgress?.(done, walls.length);
-            if (done % 20 === 0) await saveState(STATE_NAME, scans); // keep progress if the page is closed
+            if (done % 20 === 0) await saveState(await stateFor(STATE_NAME), scans); // keep progress if the page is closed
         }
     } finally {
-        await saveState(STATE_NAME, scans).catch(err => console.warn('Scans not saved:', err.message));
+        await saveState(await stateFor(STATE_NAME), scans).catch(err => console.warn('Scans not saved:', err.message));
         viewer.navigation.setVerticalFov(fov, false);
         views.isolate(views.isolated, { fit: false });
         if (!views.isolated) viewer.isolate([], viewer.model);

@@ -202,41 +202,553 @@
                 0
             ],
             "sheathingSides": 1
+        },
+        {
+            "match": "CURB|GLASS|FENCING|METAL PANEL|MT10|Corner P[ie]{2}ce|Middle Infill|col cover|^EFS ONLY$|^PARAPET W/",
+            "scope": "excluded",
+            "label": "Not framing/drywall scope (curbs, glass, metal panels, parapet panels, covers)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_SW2\\.5\\d?HR",
+            "label": "2 1/2\" C-H shaft wall, 2 layers one side + 1\" shaftliner",
+            "studIn": 2.5,
+            "layers": [
+                2,
+                0
+            ],
+            "finishClass": "SHAFT",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_SW4\\d?HR",
+            "label": "4\" C-H shaft wall, 2 layers one side + 1\" shaftliner",
+            "studIn": 4,
+            "layers": [
+                2,
+                0
+            ],
+            "finishClass": "SHAFT",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_SW6\\d?HR",
+            "label": "6\" C-H shaft wall, 2 layers one side + 1\" shaftliner",
+            "studIn": 6,
+            "layers": [
+                2,
+                0
+            ],
+            "finishClass": "SHAFT",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 1 5/8\".*W/ ?1 LAYERS?",
+            "studIn": 1.625,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "1 5/8\" stud, 1 layer 5/8\" (one side)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 1 5/8\".*W/ ?2 LAYERS?",
+            "studIn": 1.625,
+            "layers": [
+                1,
+                1
+            ],
+            "label": "1 5/8\" stud, 2 layers 5/8\" (1 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 1 5/8\".*W/ ?3 LAYERS?",
+            "studIn": 1.625,
+            "layers": [
+                2,
+                1
+            ],
+            "label": "1 5/8\" stud, 3 layers 5/8\" (2 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 1 5/8\".*W/ ?4 LAYERS?",
+            "studIn": 1.625,
+            "layers": [
+                2,
+                2
+            ],
+            "label": "1 5/8\" stud, 4 layers 5/8\" (2 + 2)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 1 5/8\".*W/ ?6 LAYERS?",
+            "studIn": 1.625,
+            "layers": [
+                3,
+                3
+            ],
+            "label": "1 5/8\" stud, 6 layers 5/8\" (3 + 3)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 2 1/2\".*W/ ?1 LAYERS?",
+            "studIn": 2.5,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "2 1/2\" stud, 1 layer 5/8\" (one side)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 2 1/2\".*W/ ?2 LAYERS?",
+            "studIn": 2.5,
+            "layers": [
+                1,
+                1
+            ],
+            "label": "2 1/2\" stud, 2 layers 5/8\" (1 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 2 1/2\".*W/ ?3 LAYERS?",
+            "studIn": 2.5,
+            "layers": [
+                2,
+                1
+            ],
+            "label": "2 1/2\" stud, 3 layers 5/8\" (2 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 2 1/2\".*W/ ?4 LAYERS?",
+            "studIn": 2.5,
+            "layers": [
+                2,
+                2
+            ],
+            "label": "2 1/2\" stud, 4 layers 5/8\" (2 + 2)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 2 1/2\".*W/ ?6 LAYERS?",
+            "studIn": 2.5,
+            "layers": [
+                3,
+                3
+            ],
+            "label": "2 1/2\" stud, 6 layers 5/8\" (3 + 3)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 3 5/8\".*W/ ?1 LAYERS?",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "3 5/8\" stud, 1 layer 5/8\" (one side)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 3 5/8\".*W/ ?2 LAYERS?",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                1
+            ],
+            "label": "3 5/8\" stud, 2 layers 5/8\" (1 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 3 5/8\".*W/ ?3 LAYERS?",
+            "studIn": 3.625,
+            "layers": [
+                2,
+                1
+            ],
+            "label": "3 5/8\" stud, 3 layers 5/8\" (2 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 3 5/8\".*W/ ?4 LAYERS?",
+            "studIn": 3.625,
+            "layers": [
+                2,
+                2
+            ],
+            "label": "3 5/8\" stud, 4 layers 5/8\" (2 + 2)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 3 5/8\".*W/ ?6 LAYERS?",
+            "studIn": 3.625,
+            "layers": [
+                3,
+                3
+            ],
+            "label": "3 5/8\" stud, 6 layers 5/8\" (3 + 3)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 6\".*W/ ?1 LAYERS?",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "6\" stud, 1 layer 5/8\" (one side)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 6\".*W/ ?2 LAYERS?",
+            "studIn": 6,
+            "layers": [
+                1,
+                1
+            ],
+            "label": "6\" stud, 2 layers 5/8\" (1 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 6\".*W/ ?3 LAYERS?",
+            "studIn": 6,
+            "layers": [
+                2,
+                1
+            ],
+            "label": "6\" stud, 3 layers 5/8\" (2 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 6\".*W/ ?4 LAYERS?",
+            "studIn": 6,
+            "layers": [
+                2,
+                2
+            ],
+            "label": "6\" stud, 4 layers 5/8\" (2 + 2)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 6\".*W/ ?6 LAYERS?",
+            "studIn": 6,
+            "layers": [
+                3,
+                3
+            ],
+            "label": "6\" stud, 6 layers 5/8\" (3 + 3)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 8\".*W/ ?1 LAYERS?",
+            "studIn": 8,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "8\" stud, 1 layer 5/8\" (one side)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 8\".*W/ ?2 LAYERS?",
+            "studIn": 8,
+            "layers": [
+                1,
+                1
+            ],
+            "label": "8\" stud, 2 layers 5/8\" (1 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 8\".*W/ ?3 LAYERS?",
+            "studIn": 8,
+            "layers": [
+                2,
+                1
+            ],
+            "label": "8\" stud, 3 layers 5/8\" (2 + 1)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 8\".*W/ ?4 LAYERS?",
+            "studIn": 8,
+            "layers": [
+                2,
+                2
+            ],
+            "label": "8\" stud, 4 layers 5/8\" (2 + 2)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^_\\d{5} - 8\".*W/ ?6 LAYERS?",
+            "studIn": 8,
+            "layers": [
+                3,
+                3
+            ],
+            "label": "8\" stud, 6 layers 5/8\" (3 + 3)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^3 5/8\" STL STUD W/ ?(\\d)",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                0
+            ],
+            "sheathingSides": 1,
+            "label": "3 5/8\" exterior CFS behind cladding, gyp inside + sheathing",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^6\" STL STUD W/ ?(\\d)",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ],
+            "sheathingSides": 1,
+            "label": "6\" exterior CFS behind cladding, gyp inside + sheathing",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^8\" STL STUD W/ ?(\\d)",
+            "studIn": 8,
+            "layers": [
+                1,
+                0
+            ],
+            "sheathingSides": 1,
+            "label": "8\" exterior CFS behind cladding, gyp inside + sheathing",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^Exterior EI?FS 6\" MtlStud( Gyp)?$",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ],
+            "sheathingSides": 1,
+            "label": "6\" CFS behind EIFS, gyp inside + sheathing",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^Exterior EFS 6\" MtlStud no Gyp$",
+            "studIn": 6,
+            "layers": [
+                0,
+                0
+            ],
+            "sheathingSides": 1,
+            "label": "6\" CFS behind EIFS, sheathing only",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^1 5/8\" (STUD|Stud)$",
+            "studIn": 1.625,
+            "layers": [
+                0,
+                0
+            ],
+            "label": "1 5/8\" studs, no board",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^6\" (STUD|Stud)$",
+            "studIn": 6,
+            "layers": [
+                0,
+                0
+            ],
+            "label": "6\" studs, no board",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^8\" (STUD|Stud)$",
+            "studIn": 8,
+            "layers": [
+                0,
+                0
+            ],
+            "label": "8\" studs, no board",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^Soffit Wall 6\"$",
+            "studIn": 6,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "6\" soffit framing, 1 layer one side (assumed)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^Soffit Wall$",
+            "studIn": 3.625,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "3 5/8\" soffit framing, 1 layer one side (assumed)",
+            "_set": "cas-coded"
+        },
+        {
+            "match": "^Valance$",
+            "studIn": 1.625,
+            "layers": [
+                1,
+                0
+            ],
+            "label": "1 5/8\" valance framing, 1 layer one side (assumed)",
+            "_set": "cas-coded"
         }
     ],
     "placeholder": {
         "_comment": "PLACEHOLDER framing when the engineer's criteria are not loaded or don't cover a wall or opening: typical estimating values in the style of SSMA limiting-height tables (interior partitions, one stud row). NOT engineered and not copied from SSMA tables: replace them with the engineer's criteria (Demo 2, Settings > Load criteria .xlsx). walls: the first row of the wall's stud depth whose maxHeightFt fits its height gives the stud; tile walls use tileHeightFactor x the height (stiffer studs); tracks are the stud's depth and gauge (T125). shaftWalls: shaft walls (finish class SHAFT) of that depth take C-H studs (CT) in J track (JR). openings: by opening width, {D} = the wall's stud depth code (362, 600, ...); a WITH part adds members, (2) = two per location.",
         "tileHeightFactor": 1.25,
         "walls": [
-            { "depthIn": 1.625, "maxHeightFt": 10, "stud": "162S125-33" },
-            { "depthIn": 2.5, "maxHeightFt": 12, "stud": "250S162-33" },
-            { "depthIn": 2.5, "maxHeightFt": 14, "stud": "250S162-43" },
-            { "depthIn": 3.625, "maxHeightFt": 14, "stud": "362S162-33" },
-            { "depthIn": 3.625, "maxHeightFt": 16, "stud": "362S162-43" },
-            { "depthIn": 3.625, "maxHeightFt": 18, "stud": "362S162-54" },
-            { "depthIn": 3.625, "maxHeightFt": 20, "stud": "362S200-68" },
-            { "depthIn": 4, "maxHeightFt": 15, "stud": "400S162-33" },
-            { "depthIn": 4, "maxHeightFt": 17, "stud": "400S162-43" },
-            { "depthIn": 4, "maxHeightFt": 20, "stud": "400S162-54" },
-            { "depthIn": 6, "maxHeightFt": 18, "stud": "600S162-33" },
-            { "depthIn": 6, "maxHeightFt": 21, "stud": "600S162-43" },
-            { "depthIn": 6, "maxHeightFt": 24, "stud": "600S162-54" },
-            { "depthIn": 6, "maxHeightFt": 28, "stud": "600S200-68" },
-            { "depthIn": 8, "maxHeightFt": 24, "stud": "800S162-43" },
-            { "depthIn": 8, "maxHeightFt": 28, "stud": "800S162-54" },
-            { "depthIn": 8, "maxHeightFt": 32, "stud": "800S200-68" }
+            {
+                "depthIn": 1.625,
+                "maxHeightFt": 10,
+                "stud": "162S125-33"
+            },
+            {
+                "depthIn": 2.5,
+                "maxHeightFt": 12,
+                "stud": "250S162-33"
+            },
+            {
+                "depthIn": 2.5,
+                "maxHeightFt": 14,
+                "stud": "250S162-43"
+            },
+            {
+                "depthIn": 3.625,
+                "maxHeightFt": 14,
+                "stud": "362S162-33"
+            },
+            {
+                "depthIn": 3.625,
+                "maxHeightFt": 16,
+                "stud": "362S162-43"
+            },
+            {
+                "depthIn": 3.625,
+                "maxHeightFt": 18,
+                "stud": "362S162-54"
+            },
+            {
+                "depthIn": 3.625,
+                "maxHeightFt": 20,
+                "stud": "362S200-68"
+            },
+            {
+                "depthIn": 4,
+                "maxHeightFt": 15,
+                "stud": "400S162-33"
+            },
+            {
+                "depthIn": 4,
+                "maxHeightFt": 17,
+                "stud": "400S162-43"
+            },
+            {
+                "depthIn": 4,
+                "maxHeightFt": 20,
+                "stud": "400S162-54"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 18,
+                "stud": "600S162-33"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 21,
+                "stud": "600S162-43"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 24,
+                "stud": "600S162-54"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 28,
+                "stud": "600S200-68"
+            },
+            {
+                "depthIn": 8,
+                "maxHeightFt": 24,
+                "stud": "800S162-43"
+            },
+            {
+                "depthIn": 8,
+                "maxHeightFt": 28,
+                "stud": "800S162-54"
+            },
+            {
+                "depthIn": 8,
+                "maxHeightFt": 32,
+                "stud": "800S200-68"
+            }
         ],
         "shaftWalls": [
-            { "depthIn": 2.5, "maxHeightFt": 12, "stud": "250CT-25", "track": "250JR-25" },
-            { "depthIn": 2.5, "maxHeightFt": 14, "stud": "250CT-33", "track": "250JR-33" },
-            { "depthIn": 4, "maxHeightFt": 16, "stud": "400CT-25", "track": "400JR-25" },
-            { "depthIn": 4, "maxHeightFt": 20, "stud": "400CT-33", "track": "400JR-33" },
-            { "depthIn": 6, "maxHeightFt": 22, "stud": "600CT-33", "track": "600JR-33" },
-            { "depthIn": 6, "maxHeightFt": 27, "stud": "600CT-43", "track": "600JR-43" }
+            {
+                "depthIn": 2.5,
+                "maxHeightFt": 12,
+                "stud": "250CT-25",
+                "track": "250JR-25"
+            },
+            {
+                "depthIn": 2.5,
+                "maxHeightFt": 14,
+                "stud": "250CT-33",
+                "track": "250JR-33"
+            },
+            {
+                "depthIn": 4,
+                "maxHeightFt": 16,
+                "stud": "400CT-25",
+                "track": "400JR-25"
+            },
+            {
+                "depthIn": 4,
+                "maxHeightFt": 20,
+                "stud": "400CT-33",
+                "track": "400JR-33"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 22,
+                "stud": "600CT-33",
+                "track": "600JR-33"
+            },
+            {
+                "depthIn": 6,
+                "maxHeightFt": 27,
+                "stud": "600CT-43",
+                "track": "600JR-43"
+            }
         ],
         "openings": [
-            { "maxWidthFt": 4, "header": "{D}T200-54", "jamb": "{D}S162-54", "sill": "{D}T150-54" },
-            { "maxWidthFt": 8, "header": "(2) {D}S162-54 WITH (2) {D}T125-54", "jamb": "(2) {D}S162-54", "sill": "{D}T150-54" }
+            {
+                "maxWidthFt": 4,
+                "header": "{D}T200-54",
+                "jamb": "{D}S162-54",
+                "sill": "{D}T150-54"
+            },
+            {
+                "maxWidthFt": 8,
+                "header": "(2) {D}S162-54 WITH (2) {D}T125-54",
+                "jamb": "(2) {D}S162-54",
+                "sill": "{D}T150-54"
+            }
         ]
     }
 }

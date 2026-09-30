@@ -8,7 +8,7 @@
 // Section extension (setSectionBox, deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
-import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
+import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
@@ -154,6 +154,7 @@ export class Views {
             viewer.showAll();
             if (viewer === this.viewer2d) this.applyColors(viewer, model);
         }
+        if (this.ignored?.length && this.viewer3d.model) this.viewer3d.hide(this.ignored, this.viewer3d.model);
         this.applyCeilings();
     }
 
@@ -284,12 +285,15 @@ export class Views {
         this.el.levels.value = level?.name || '';
         const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
         if (level && this.viewer3d.model) {
+            // Around the building (its walls), not the whole model: ignored objects far off would stretch the box.
             const world = this.viewer3d.model.getBoundingBox();
+            const b = this.building, r = b ? b.radius * 1.5 : 0;
+            const min = b ? new THREE.Vector3(b.center.x - r, b.center.y - r, 0) : world.min, max = b ? new THREE.Vector3(b.center.x + r, b.center.y + r, 0) : world.max;
             // Cut 1.5 ft below the next level: the slab above hangs below its level line and would roof the floor over.
             const top = Math.max(level.bottom + 4, level.top - 1.4);
             section.setSectionBox(new THREE.Box3(
-                new THREE.Vector3(world.min.x - 1, world.min.y - 1, level.bottom),
-                new THREE.Vector3(world.max.x + 1, world.max.y + 1, top)));
+                new THREE.Vector3(min.x - 1, min.y - 1, level.bottom),
+                new THREE.Vector3(max.x + 1, max.y + 1, top)));
         } else {
             section.deactivate(false);
         }
@@ -477,14 +481,28 @@ export class Views {
         // A model whose extents are far bigger than any building (an element left miles from the site in Revit) opens
         // as a dot: frame its walls instead. Model.getBoundingBox, Viewer3D.fitToView:
         // https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/ and .../reference/Viewing/Viewer3D/
-        // Checked once the geometry is in (GEOMETRY_LOADED_EVENT): before that the extents are only partly known.
+        // Once the geometry is in (GEOMETRY_LOADED_EVENT): objects that aren't the building (property-map "ignore":
+        // model lines, level datums, imported site CAD, sometimes miles from the site) are hidden and left out of
+        // everything; the middle and size of the building come from its walls (fitToView measures them, then the
+        // camera goes back, unless the model's extents run far past the building, when it stays on the walls).
+        // Viewer3D fitToView / hide, Navigation getTarget / setView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
         const walls = [...this.wallsByLevel.values()].flat();
-        const frameWalls = () => {
+        const ignoredP = findIgnored(model3d, map).catch(() => []);
+        const frameWalls = async () => {
             if (this.viewer3d.model !== model3d || !walls.length) return;
+            this.ignored = await ignoredP;
+            if (this.ignored.length) this.viewer3d.hide(this.ignored, model3d);
+            const nav = this.viewer3d.navigation;
+            const eye = nav.getPosition().clone(), target = nav.getTarget().clone();
+            const up = new THREE.Vector3().fromArray(model3d.getUpVector?.() || [0, 0, 1]); // Model.getUpVector (docs above)
+            this.viewer3d.fitToView(walls, model3d, true);
+            this.building = { center: nav.getTarget().clone(), radius: nav.getEyeVector().length() };
+            setBuildingCenter(model3d, this.building.center);
             const size = model3d.getBoundingBox()?.getSize(new THREE.Vector3());
-            this.farExtents = !!(size && Math.max(size.x, size.y) > 20000);
-            if (this.farExtents) this.viewer3d.fitToView(walls, model3d, true);
+            this.farExtents = !!(size && Math.max(size.x, size.y) > Math.max(20000, this.building.radius * 20));
+            if (!this.farExtents) nav.setView(eye, target, up); // a normal model keeps its own opening view
         };
+        this.building = null;
         if (model3d.isLoadDone()) frameWalls();
         else {
             const once = (e) => { if (e.model !== model3d) return; this.viewer3d.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, once); frameWalls(); };

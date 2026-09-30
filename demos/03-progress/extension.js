@@ -4,7 +4,7 @@
 // Model (getBulkProperties with externalId): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Stage colors go through core/client/views.js (3D + 2D plan); selecting walls on the plan selects them in 3D too.
 // The schedule: p6.mjs reads the P6 export and links activities to levels and stages; schedule-views.js draws them.
-import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson, modelKey } from '../../helpers.js';
 import { readXlsx } from '../common/xlsx.mjs';
 import { readSchedulePdf } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
@@ -20,7 +20,7 @@ const EXTENSION_ID = 'Drywall.Progress';
 // Saved per model: 'progress' / 'schedule' for the sample model (Snowdon, the one with a sample schedule in
 // samples/urns.json), 'progress-<model>' / 'schedule-<model>' for every other model, so their walls and schedules
 // never mix. <model> is a short hash of its URN.
-const modelKey = (urn) => { let h = 5381; for (const ch of String(urn)) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0; return h.toString(36); };
+
 const SAMPLE = { url: 'samples/schedule/snowdon-drywall-p6.xer', file: 'snowdon-drywall-p6.xer' };
 const NOT_SET = 'Not set';
 // "Not started" walls keep their normal look (no color).

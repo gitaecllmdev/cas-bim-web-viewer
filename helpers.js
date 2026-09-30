@@ -54,6 +54,19 @@ export async function saveState(name, data) {
     return { ok: true };
 }
 
+// Saved data per model: the first model in samples/urns.json (the sample) keeps the plain names ('takeoff', 'punch',
+// 'wall-openings'...); every other model gets '<name>-<key>' (key: a short hash of its URN), so models never share or
+// overwrite each other's data, and the site build (which copies the plain names only) never publishes another model's.
+// The model is the page's #urn; pages without one (the reports) read the sample model's data.
+export const modelKey = (urn) => { let h = 5381; for (const ch of String(urn)) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0; return h.toString(36); };
+let modelList = null;
+export async function stateFor(name) {
+    modelList ??= fetchJson('samples/urns.json').catch(() => []);
+    const models = await modelList, urn = decodeURIComponent(location.hash.slice(1));
+    const entry = models.find(m => m.urn === urn);
+    return !urn || !entry || entry === models[0] ? name : `${name}-${modelKey(urn)}`;
+}
+
 // Property names for walls, levels, etc. Edit samples/property-map.json, not code.
 export const loadPropertyMap = () => fetchJson('samples/property-map.json');
 
@@ -90,6 +103,25 @@ export async function findWalls(model, map) {
 export async function findCategory(model, value, property = 'Category') {
     const results = await getBulkProperties(model, await getLeafDbIds(model), [property]);
     return results.filter(r => propValue(r, property) === value).map(r => r.dbId);
+}
+
+// Objects to leave out of everything (samples/property-map.json "ignore"): model lines, level datums, imported CAD.
+export async function findIgnored(model, map) {
+    const rule = map.ignore || {};
+    const cats = new Set(rule.categories || []), re = rule.categoryPattern ? new RegExp(rule.categoryPattern, 'i') : null;
+    if (!cats.size && !re) return [];
+    const results = await getBulkProperties(model, await getLeafDbIds(model), ['Category']);
+    return results.filter(r => { const c = propValue(r, 'Category') || ''; return cats.has(c) || (re && re.test(c)); }).map(r => r.dbId);
+}
+
+// The middle of the building for each model (views.js sets it from the walls once the model is in; the wall scan uses
+// it to tell the inside face of a wall, the punch list to aim the camera). Falls back to the middle of the model.
+const buildingCenters = new WeakMap();
+export const setBuildingCenter = (model, point) => buildingCenters.set(model, point);
+export function buildingCenter(model) {
+    if (buildingCenters.has(model)) return buildingCenters.get(model).clone();
+    const box = model.getBoundingBox();
+    return new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
 }
 
 // Walls with the properties the demos use, one record per wall:
