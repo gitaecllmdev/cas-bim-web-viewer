@@ -1,29 +1,45 @@
-// Quick-access toolbar group ("Drywall tools") added to both the 3D and the 2D viewer.
-// Actions go through core/client/views.js, so they apply to both viewers at once.
+// Quick-access toolbar groups added to both the 3D and the 2D viewer:
+// - "Drywall tools": isolate / hide / show all / zoom / whole building, through core/client/views.js so they apply to
+//   both viewers at once.
+// - "Options": fly-out menus (ComboButton) to try the viewer's settings: views, navigation, display, background and
+//   lighting, what a click selects, units, plus a screenshot. On the 2D viewer: units and the screenshot.
 // Customizing the toolbar: https://aps.autodesk.com/en/docs/viewer/v7/developers_guide/viewer_basics/toolbar-button/
-// Button / ControlGroup: https://aps.autodesk.com/en/docs/viewer/v7/reference/classes/Button/ and .../classes/ControlGroup/
-// Viewer3D (getSelection, fitToView, setGhosting): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
-// ViewCubeUi (setViewCube): https://aps.autodesk.com/en/docs/viewer/v7/reference/classes/ViewCubeUi/
+// Button / ComboButton / ControlGroup: https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/Button/,
+//   https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/ComboButton/, https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/ControlGroup/
+// Viewer3D (getSelection, fitToView, setGhosting, setDisplayEdges, setQualityLevel, setGroundShadow, setGroundReflection,
+//   setBackgroundColor, setLightPreset, setFOV, setReverseZoomDirection, setSelectionMode, setDisplayUnits,
+//   getScreenShot): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+// Navigation (getTarget, getPosition, setView): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
+// Model (getBoundingBox): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
+// ZoomWindow (adds "zoom window" to the toolbar's zoom button): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/ZoomWindow/
 
 const EXTENSION_ID = 'Drywall.Tools';
+const BACKGROUNDS = { light: [255, 255, 255, 230, 234, 238], sky: [190, 214, 240, 245, 248, 252], dark: [40, 44, 52, 20, 22, 26] };
+const LIGHTS = 8; // light presets 0-7
+const UNITS = [['ftin', 'ft-and-fractional-in', 'Feet and fractional inches'], ['ft', 'decimal-ft', 'Decimal feet'], ['in', 'fractional-in', 'Fractional inches'],
+    ['m', 'm', 'Meters'], ['mm', 'mm', 'Millimeters'], ['file', '', 'As in the file']];
 
 class DrywallToolsExtension extends Autodesk.Viewing.Extension {
     load() {
         this.views = this.options.views;
         this.ghosting = true; // viewer default: isolated views show the rest as ghosts
+        // Our own record of the settings the menus toggle (the viewer's defaults for this page).
+        this.state = { edges: true, ao: true, ground: false, reflect: false, reverse: false, bg: 'light', light: 0, fov: 45, select: 'leaf', units: 'file' };
+        this.viewer.loadExtension('Autodesk.Viewing.ZoomWindow').catch(() => {}); // a zoom-window choice on the zoom button
         if (this.viewer.toolbar) this.onToolbarCreated(this.viewer.toolbar);
         return true;
     }
 
     unload() {
-        if (this.group) this.viewer.toolbar.removeControl(this.group);
-        this.group = null;
+        this.stopOrbit();
+        for (const g of [this.group, this.optionsGroup]) if (g) this.viewer.toolbar.removeControl(g);
+        this.group = this.optionsGroup = null;
         return true;
     }
 
     onToolbarCreated(toolbar) {
         if (this.group) return;
-        const is3d = this.options.is3d;
+        const is3d = this.options.is3d, suffix = is3d ? '3d' : '2d';
         const selection = () => this.viewer.getSelection();
         const tools = [
             ['isolate', 'Isolate selection (3D + 2D)', () => { const ids = selection(); if (ids.length) this.views.isolate(ids); }],
@@ -39,19 +55,160 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
                     this.viewer.setGhosting(this.ghosting);
                     button.setState(this.ghosting ? Autodesk.Viewing.UI.Button.State.ACTIVE : Autodesk.Viewing.UI.Button.State.INACTIVE);
                 }],
-                ['top', 'Plan view (look down from the top)', () => this.viewer.getExtension('Autodesk.ViewCubeUi')?.setViewCube('top')],
+                ['top', 'Plan view (look down from the top)', () => this.look([0, 0, 1])],
             );
         }
-        this.group = new Autodesk.Viewing.UI.ControlGroup(`dw-tools-${is3d ? '3d' : '2d'}`);
+        this.group = new Autodesk.Viewing.UI.ControlGroup(`dw-tools-${suffix}`);
         for (const [id, tip, action] of tools) {
-            const button = new Autodesk.Viewing.UI.Button(`dw-${id}-${is3d ? '3d' : '2d'}`);
-            button.setIcon(`dw-icon-${id}`);
-            button.setToolTip(tip);
-            button.onClick = () => action(button);
+            const button = this.button(`dw-${id}-${suffix}`, `dw-icon-${id}`, tip, action);
             if (id === 'xray') button.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
             this.group.addControl(button);
         }
         toolbar.addControl(this.group);
+
+        this.optionsGroup = new Autodesk.Viewing.UI.ControlGroup(`dw-options-${suffix}`);
+        for (const menu of is3d ? this.menus3d() : this.menus2d()) {
+            this.optionsGroup.addControl(menu.items ? this.menu(`${menu.id}-${suffix}`, menu) : this.button(`${menu.id}-${suffix}`, menu.icon, menu.tip, menu.run));
+        }
+        toolbar.addControl(this.optionsGroup);
+    }
+
+    button(id, icon, tip, action) {
+        const button = new Autodesk.Viewing.UI.Button(id);
+        button.setIcon(icon);
+        button.setToolTip(tip);
+        button.onClick = () => action(button);
+        return button;
+    }
+
+    // A fly-out menu. Each item: { key, icon, tip, run(), on() } where on() says whether it is the current choice (or
+    // switched on); after a click the menu keeps its own icon (saveAsDefault / restoreDefault) and the choices are re-marked.
+    menu(id, { icon, tip, items }) {
+        const combo = new Autodesk.Viewing.UI.ComboButton(id);
+        combo.setIcon(icon);
+        combo.setToolTip(tip);
+        const buttons = items.map(item => {
+            const b = new Autodesk.Viewing.UI.Button(`${id}-${item.key}`);
+            b.setIcon(item.icon);
+            b.setToolTip(item.tip);
+            b.onClick = () => {
+                item.run();
+                mark();
+                combo.restoreDefault();
+            };
+            combo.addControl(b);
+            return [b, item];
+        });
+        // The current choices get a mark of their own (dw-on): the fly-out resets its buttons' states, and an active
+        // button would become the menu's icon (the toolbar's "last used tool").
+        const mark = () => buttons.forEach(([b, item]) => (item.on?.() ? b.addClass('dw-on') : b.removeClass('dw-on')));
+        combo.saveAsDefault();
+        mark();
+        combo.restoreDefault();
+        return combo;
+    }
+
+    menus3d() {
+        const s = this.state, v = this.viewer;
+        const face = (key, dir, tip) => ({ key, icon: `dw-icon-face-${key}`, tip, run: () => this.look(dir) });
+        return [
+            { id: 'dw-views', icon: 'dw-icon-views', tip: 'Views: look from a side or a corner', items: [
+                face('top', [0, 0, 1], 'Top'), face('bottom', [0, 0, -1], 'Bottom (from below)'), face('front', [0, -1, 0.1], 'Front'),
+                face('back', [0, 1, 0.1], 'Back'), face('left', [-1, 0, 0.1], 'Left'), face('right', [1, 0, 0.1], 'Right'),
+                face('iso', [1, -1, 0.8], '3/4 view (front, right, from above)'), face('iso2', [-1, 1, 0.8], '3/4 view (back, left, from above)'),
+            ] },
+            { id: 'dw-nav', icon: 'dw-icon-nav', tip: 'Navigate: orbit tour, wheel direction, lens', items: [
+                { key: 'orbit', icon: 'dw-icon-orbit', tip: 'Orbit tour: turn around what you look at (click again to stop)', run: () => (this.orbitTimer ? this.stopOrbit() : this.orbit()), on: () => !!this.orbitTimer },
+                { key: 'reverse', icon: 'dw-icon-reverse', tip: 'Reverse the mouse wheel zoom', run: () => { s.reverse = !s.reverse; v.setReverseZoomDirection(s.reverse); }, on: () => s.reverse },
+                ...[[30, 'Lens: 30° (telephoto)'], [45, 'Lens: 45° (normal)'], [70, 'Lens: 70° (wide)'], [100, 'Lens: 100° (very wide)']].map(([deg, tip]) =>
+                    ({ key: `fov${deg}`, icon: `dw-icon-fov${deg}`, tip, run: () => { s.fov = deg; v.setFOV(deg); }, on: () => s.fov === deg })),
+            ] },
+            { id: 'dw-display', icon: 'dw-icon-display', tip: 'Display: edges, shadows, reflection', items: [
+                { key: 'edges', icon: 'dw-icon-edges', tip: 'Edges (outlines)', run: () => { s.edges = !s.edges; v.setDisplayEdges(s.edges); }, on: () => s.edges },
+                { key: 'ao', icon: 'dw-icon-ao', tip: 'Ambient shadows (depth in corners)', run: () => { s.ao = !s.ao; v.setQualityLevel(s.ao, true); }, on: () => s.ao },
+                { key: 'ground', icon: 'dw-icon-ground', tip: 'Ground shadow', run: () => { s.ground = !s.ground; v.setGroundShadow(s.ground); }, on: () => s.ground },
+                { key: 'reflect', icon: 'dw-icon-reflect', tip: 'Ground reflection', run: () => { s.reflect = !s.reflect; v.setGroundReflection(s.reflect); }, on: () => s.reflect },
+            ] },
+            { id: 'dw-look', icon: 'dw-icon-look', tip: 'Background and lighting', items: [
+                ...[['light', 'Light background'], ['sky', 'Sky background'], ['dark', 'Dark background']].map(([key, tip]) =>
+                    ({ key: `bg-${key}`, icon: `dw-icon-bg-${key}`, tip, run: () => { s.bg = key; v.setBackgroundColor(...BACKGROUNDS[key]); }, on: () => s.bg === key })),
+                { key: 'lighting', icon: 'dw-icon-lighting', tip: 'Next lighting (8 environments)', run: () => { s.light = (s.light + 1) % LIGHTS; v.setLightPreset(s.light); } },
+            ] },
+            { id: 'dw-select', icon: 'dw-icon-select', tip: 'What a click selects', items: [
+                { key: 'leaf', icon: 'dw-icon-sel-leaf', tip: 'Click selects: the element (default)', run: () => this.selectMode('leaf'), on: () => s.select === 'leaf' },
+                // LAST_OBJECT: the nearest assembly in the model tree. (FIRST_OBJECT would select the whole Model in a Revit file.)
+                { key: 'last', icon: 'dw-icon-sel-last', tip: 'Click selects: the assembly it is part of (a curtain wall with its panels and doors, a stair with its runs)', run: () => this.selectMode('last'), on: () => s.select === 'last' },
+            ] },
+            this.unitsMenu(),
+            { id: 'dw-shot', icon: 'dw-icon-shot', tip: 'Screenshot: save the 3D view as a PNG', run: () => this.screenshot('3d') },
+        ];
+    }
+
+    menus2d() {
+        return [this.unitsMenu(), { id: 'dw-shot', icon: 'dw-icon-shot', tip: 'Screenshot: save the plan as a PNG', run: () => this.screenshot('plan') }];
+    }
+
+    // Units of the lengths shown in the Properties panel.
+    unitsMenu() {
+        const s = this.state;
+        return { id: 'dw-units', icon: 'dw-icon-units', tip: 'Units in the Properties panel', items: UNITS.map(([key, value, tip]) =>
+            ({ key, icon: `dw-icon-u-${key}`, tip, run: () => { s.units = key; this.viewer.setDisplayUnits(value); }, on: () => s.units === key })) };
+    }
+
+    // Look at the building from a direction, then fit what is shown (fitToView keeps the direction). Not the ViewCube's
+    // faces: those frame the whole model's extents, which stray far-off objects (site CAD) can make miles wide.
+    look(dir) {
+        const v = this.viewer, b = this.views.building, model = v.model;
+        const box = model.getBoundingBox();
+        const center = b ? b.center.clone() : new THREE.Vector3().addVectors(box.min, box.max).multiplyScalar(0.5);
+        const r = b ? b.radius : box.getSize(new THREE.Vector3()).length() / 2;
+        const d = new THREE.Vector3(...dir).normalize();
+        const up = Math.abs(d.z) > 0.99 ? new THREE.Vector3(0, d.z > 0 ? 1 : -1, 0) : new THREE.Vector3(0, 0, 1);
+        this.stopOrbit();
+        v.navigation.setView(center.clone().add(d.multiplyScalar(r * 2)), center, up);
+        const shown = this.views.isolated || [...this.views.wallsByLevel.values()].flat();
+        v.fitToView(shown.length ? shown : null, model, true);
+    }
+
+    selectMode(mode) {
+        const M = Autodesk.Viewing.SelectionMode;
+        this.state.select = mode;
+        this.viewer.setSelectionMode(mode === 'last' ? M.LAST_OBJECT : M.LEAF_OBJECT);
+    }
+
+    // Turn around the point looked at, at the same distance and height.
+    orbit() {
+        const nav = this.viewer.navigation, c = nav.getTarget().clone(), eye = nav.getPosition().clone();
+        const up = new THREE.Vector3(0, 0, 1), dist = eye.distanceTo(c);
+        let radius = Math.hypot(eye.x - c.x, eye.y - c.y), start = Math.atan2(eye.y - c.y, eye.x - c.x);
+        // Looking straight down (the top view) there is nothing to circle: tilt to a 3/4 view at the same distance.
+        if (radius < dist * 0.05) { radius = dist * 0.7; eye.z = c.z + dist * 0.7; start = -Math.PI / 4; }
+        let angle = 0;
+        this.orbitTimer = setInterval(() => {
+            angle += Math.PI / 300;
+            nav.setView(new THREE.Vector3(c.x + radius * Math.cos(start + angle), c.y + radius * Math.sin(start + angle), eye.z), c, up);
+        }, 33);
+        // A click on the model (not the toolbar) stops it, like a person taking the controls.
+        this.stopOnClick = (e) => { if (e.target.tagName === 'CANVAS') this.stopOrbit(); };
+        this.viewer.container.addEventListener('pointerdown', this.stopOnClick);
+    }
+
+    stopOrbit() {
+        clearInterval(this.orbitTimer);
+        this.orbitTimer = null;
+        if (this.stopOnClick) this.viewer.container.removeEventListener('pointerdown', this.stopOnClick);
+        this.stopOnClick = null;
+    }
+
+    screenshot(which) {
+        const model = document.getElementById('models')?.selectedOptions[0]?.text || 'model';
+        const name = `${model.replace(/[^\w-]+/g, '-').replace(/^-|-$/g, '')}-${which}.png`;
+        this.viewer.getScreenShot(0, 0, (url) => {
+            const a = Object.assign(document.createElement('a'), { href: url, download: name });
+            document.body.append(a);
+            a.click();
+            a.remove();
+        });
     }
 }
 

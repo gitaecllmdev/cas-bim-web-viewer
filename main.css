@@ -158,6 +158,48 @@ body {
 .dw-icon-xray::before { content: "◌"; }
 .dw-icon-top::before { content: "⊤"; }
 .dw-icon-building::before { content: "▦"; }
+/* "Options" menus (ComboButton fly-outs) and their choices */
+/* the current choices in an Options menu (core/client/tools.js) */
+.adsk-button.dw-on { background: rgba(31, 111, 209, 0.16); box-shadow: inset 0 -3px 0 #1f6fd1; }
+.dw-icon-views::before { content: "⬒"; }
+.dw-icon-nav::before { content: "✥"; }
+.dw-icon-display::before { content: "◐"; }
+.dw-icon-look::before { content: "☀"; }
+.dw-icon-select::before { content: "⌖"; }
+.dw-icon-units::before { content: "⇿"; }
+.dw-icon-shot::before { content: "📷"; font-size: 16px !important; }
+.dw-icon-face-top::before { content: "⊤"; }
+.dw-icon-face-bottom::before { content: "⊥"; }
+.dw-icon-face-front::before { content: "F"; }
+.dw-icon-face-back::before { content: "B"; }
+.dw-icon-face-left::before { content: "L"; }
+.dw-icon-face-right::before { content: "R"; }
+.dw-icon-face-iso::before { content: "◩"; }
+.dw-icon-face-iso2::before { content: "◪"; }
+.dw-icon-orbit::before { content: "⟳"; }
+.dw-icon-reverse::before { content: "⇅"; }
+.dw-icon-edges::before { content: "⬚"; }
+.dw-icon-ao::before { content: "◑"; }
+.dw-icon-ground::before { content: "▁"; }
+.dw-icon-reflect::before { content: "≋"; }
+.dw-icon-bg-light::before { content: "□"; }
+.dw-icon-bg-sky::before { content: "☁"; }
+.dw-icon-bg-dark::before { content: "■"; }
+.dw-icon-lighting::before { content: "☼"; }
+.dw-icon-sel-leaf::before { content: "•"; }
+.dw-icon-sel-last::before { content: "⊡"; }
+/* Text labels (lens angles, units): smaller, so they fit the button */
+[class*="dw-icon-fov"]::before, [class*="dw-icon-u-"]::before { font-size: 11px !important; font-weight: 700 !important; }
+.dw-icon-fov30::before { content: "30°"; }
+.dw-icon-fov45::before { content: "45°"; }
+.dw-icon-fov70::before { content: "70°"; }
+.dw-icon-fov100::before { content: "100°"; }
+.dw-icon-u-ftin::before { content: "ft·in"; }
+.dw-icon-u-ft::before { content: "ft"; }
+.dw-icon-u-in::before { content: "in"; }
+.dw-icon-u-m::before { content: "m"; }
+.dw-icon-u-mm::before { content: "mm"; }
+.dw-icon-u-file::before { content: "file"; }
 
 /* Helpers for demo panels */
 .demo-panel h2 { font-size: 1.1em; margin: 0 0 0.5em; }

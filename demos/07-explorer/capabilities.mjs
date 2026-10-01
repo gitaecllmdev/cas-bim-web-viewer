@@ -10,7 +10,7 @@ const ref = (name) => `${V}reference/Viewing/${name}/`;
 export const HOW = {
     try: 'Try it here',
     demo: 'In another demo',
-    on: 'Always on',
+    on: 'On the toolbar / always on',
     possible: 'Possible, not built yet',
 };
 
@@ -28,6 +28,7 @@ export const CAPABILITIES = [
         { name: 'Search any text', how: 'try', at: 'find', what: 'Find every object with a word in any property (a type, a mark, a fire rating) and isolate the results.', api: 'Viewer3D.search', doc: ref('Viewer3D') },
         { name: 'Groups from the properties', how: 'try', at: 'groups', what: 'Framing walls (from the takeoff rules), shaft walls, curtain wall, doors, MEP… counted and isolated in one click.', api: 'getBulkProperties, Viewer3D.isolate', doc: ref('Viewer3D') },
         { name: 'Isolate, ghost or hide', how: 'try', at: 'groups', what: 'Show a group alone, with the rest see-through for context, or take it away.', api: 'Viewer3D.isolate, setGhosting, hide', doc: ref('Viewer3D') },
+        { name: 'Select an element or its whole assembly', how: 'on', what: 'Toolbar Options ⌖: a click picks the element, or the assembly it is part of (a curtain wall with its panels and doors, a stair with its runs).', api: 'Viewer3D.setSelectionMode', doc: ref('Viewer3D') },
         { name: 'Model browser and properties panel', how: 'try', at: 'panels', what: 'The built-in tree of every object and the built-in properties panel.', api: 'ModelStructureExtension, PropertiesManagerExtension', doc: ext('ModelStructureExtension') },
         { name: 'Back to the Revit element', how: 'demo', demo: '06-shop-drawings', what: 'Each object carries its Revit unique ID, so a web page (the panel QR pages) can point at the exact element.', api: 'Model.getExternalIdMapping', doc: ref('Model') },
     ] },
@@ -36,6 +37,7 @@ export const CAPABILITIES = [
         { name: 'Section planes and a section box', how: 'try', at: 'cut', what: 'Cut across or along the building, a plan cut, or a box with handles to drag.', api: 'SectionExtension', doc: ext('SectionExtension') },
         { name: 'Explode', how: 'try', at: 'cut', what: 'Pull the model apart from the middle (radial) or by its object tree (hierarchy).', api: 'Viewer3D.explode, ExplodeExtension', doc: ext('ExplodeExtension') },
         { name: 'Display and lighting', how: 'try', at: 'display', what: 'Edges, ambient shadows, ground shadow and reflection, lighting environments, background.', api: 'Viewer3D.setDisplayEdges, setQualityLevel, setGroundShadow, setLightPreset', doc: ref('Viewer3D') },
+        { name: 'Display units', how: 'on', what: 'Toolbar Options ⇿: lengths in the properties in feet and inches, decimal feet, inches, meters or millimeters.', api: 'Viewer3D.setDisplayUnits', doc: ref('Viewer3D') },
         { name: 'Wireframe', how: 'possible', what: 'Lines only. Autodesk advises against it on large models like this one.', api: 'WireframesExtension', doc: ext('WireframesExtension') },
     ] },
     { group: 'Move around', items: [
@@ -44,6 +46,7 @@ export const CAPABILITIES = [
         { name: 'Walk inside', how: 'try', at: 'move', what: 'First person: W A S D to walk, the mouse to look around.', api: 'BimWalkExtension', doc: ext('BimWalkExtension') },
         { name: 'Zoom window', how: 'try', at: 'move', what: 'Drag a box to zoom into it, in 3D or on a sheet.', api: 'ZoomWindow', doc: ext('ZoomWindow') },
         { name: 'Field of view', how: 'try', at: 'move', what: 'Wide angle to telephoto.', api: 'Viewer3D.setFOV', doc: ref('Viewer3D') },
+        { name: 'Mouse wheel direction', how: 'on', what: 'Toolbar Options ✥: reverse the wheel zoom for people used to other CAD tools.', api: 'Viewer3D.setReverseZoomDirection', doc: ref('Viewer3D') },
         { name: 'Full screen', how: 'try', at: 'move', what: 'The viewer alone on the screen (a projector or a tablet on site).', api: 'FullScreenExtension', doc: ext('FullScreenExtension') },
         { name: 'Tablets and phones', how: 'demo', demo: '05-field-layout', what: 'Touch gestures; big buttons for crews in the field.', api: 'Viewer3D', doc: ref('Viewer3D') },
     ] },
