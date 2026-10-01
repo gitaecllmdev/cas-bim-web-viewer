@@ -3,26 +3,26 @@
   "mark": "X04-4832",
   "dbId": 4832,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-27T03:49:58.979Z",
+  "savedAt": "2026-10-01T17:11:07.702Z",
   "frame": {
     "lengthIn": 598.3593804836297,
     "heightIn": 832.5000076293978,
     "openings": [
       {
-        "left": 418.85156633854075,
+        "left": 421.45312886238264,
         "right": 598.3593804836297,
         "bottom": 0,
         "top": 98.85937590599099
       },
       {
         "left": 20.812500190734944,
-        "right": 70.24218814373044,
+        "right": 72.84375066757231,
         "bottom": 179.5078141450889,
         "top": 260.1562523841868
       },
       {
-        "left": 140.4843762874609,
-        "right": 189.91406424045638,
+        "left": 143.08593881130275,
+        "right": 192.51562676429825,
         "bottom": 179.5078141450889,
         "top": 260.1562523841868
       },
@@ -33,20 +33,20 @@
         "top": 260.1562523841868
       },
       {
-        "left": 288.77344014644734,
+        "left": 291.37500267028923,
         "right": 340.8046906232847,
         "bottom": 179.5078141450889,
         "top": 260.1562523841868
       },
       {
-        "left": 374.625003433229,
+        "left": 377.2265659570709,
         "right": 416.2500038146989,
         "bottom": 296.57812771797296,
         "top": 390.2343785762802
       },
       {
-        "left": 119.67187609672592,
-        "right": 169.10156404972145,
+        "left": 122.27343862056782,
+        "right": 171.70312657356328,
         "bottom": 330.3984405279173,
         "top": 390.2343785762802
       },
@@ -57,37 +57,37 @@
         "top": 390.2343785762802
       },
       {
-        "left": 124.87500114440967,
-        "right": 163.8984390020377,
+        "left": 127.47656366825154,
+        "right": 166.50000152587955,
         "bottom": 457.8750041961688,
         "top": 548.9296925306342
       },
       {
         "left": 270.56250247955427,
-        "right": 319.99219043254976,
+        "right": 322.59375295639165,
         "bottom": 494.29687952995494,
         "top": 554.1328175783178
       },
       {
-        "left": 418.85156633854075,
+        "left": 421.45312886238264,
         "right": 470.88281681537813,
         "bottom": 494.29687952995494,
         "top": 554.1328175783178
       },
       {
-        "left": 169.10156404972145,
+        "left": 171.70312657356328,
         "right": 221.1328145265588,
         "bottom": 652.9921934843089,
         "top": 712.8281315326719
       },
       {
         "left": 270.56250247955427,
-        "right": 319.99219043254976,
+        "right": 322.59375295639165,
         "bottom": 652.9921934843089,
         "top": 712.8281315326719
       },
       {
-        "left": 418.85156633854075,
+        "left": 421.45312886238264,
         "right": 470.88281681537813,
         "bottom": 652.9921934843089,
         "top": 712.8281315326719
@@ -108,7 +108,7 @@
     "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
     "board": "1 + 0 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-27",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -134,17 +134,370 @@
       ],
       [
         "LEFT END",
-        "Meets Foundation - 24\" Concrete, Core - Concrete 12\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Chase - GWB & Metal Stud 6 5/8\""
+        "Meets Foundation - 24\" Concrete, Chase - GWB & Metal Stud 4 1/4\", Core - Concrete 12\", Chase - GWB & Metal Stud 6 5/8\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
       ],
       [
         "RIGHT END",
-        "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+        "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Core - Concrete 12\""
       ],
       [
         "WITHIN 1 FT",
-        "Walls (13): Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 4 1/4\"; Floors (3): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\", Roof - Sculpture Bed; Railings (1): Handrail - Balcony; Wall Sweeps (1): Coping_Rainscreen Wall"
+        "Walls (14): Soffit - Beam Wrap 10 1/2\" (Two Sides), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Chase - GWB & Metal Stud 4 1/4\"; Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Supports (2): _Stringer - 1/4\" Plate; Railings (1): Handrail - Balcony; Stairs (1): _Stair-Metal-Plate Stringer; Wall Sweeps (1): Coping_Rainscreen Wall"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L1 - Block 35",
+          "y": 0
+        },
+        {
+          "name": "L1 - Block 37",
+          "y": 29.5
+        },
+        {
+          "name": "L1 - Block 43",
+          "y": 71
+        },
+        {
+          "name": "M1",
+          "y": 137
+        },
+        {
+          "name": "L2",
+          "y": 168
+        },
+        {
+          "name": "L3",
+          "y": 297
+        },
+        {
+          "name": "L4",
+          "y": 457
+        },
+        {
+          "name": "L5",
+          "y": 617
+        },
+        {
+          "name": "R1",
+          "y": 703
+        },
+        {
+          "name": "Block 39 - Parapet",
+          "y": 727
+        },
+        {
+          "name": "R2",
+          "y": 777
+        },
+        {
+          "name": "Green Roof Hardscape",
+          "y": 790
+        },
+        {
+          "name": "Parapet",
+          "y": 833
+        }
+      ],
+      "context": [
+        {
+          "name": "Coping_Rainscreen Wall",
+          "category": "Wall Sweeps",
+          "rects": [
+            [
+              0,
+              832.5000076293978,
+              598.3593804836296,
+              833.5000076293978
+            ],
+            [
+              0,
+              833.5000076293978,
+              598.3593804836296,
+              834.5000076293978
+            ],
+            [
+              0,
+              834.5000076293978,
+              598.3593804836296,
+              835.5000076293978
+            ],
+            [
+              0,
+              835.5000076293978,
+              598.3593804836296,
+              836.5000076293978
+            ],
+            [
+              0,
+              836.5000076293978,
+              598.3593804836296,
+              837.5000076293978
+            ]
+          ]
+        },
+        {
+          "name": "Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              837.5000076293978,
+              6.648437560929218,
+              838.5000076293978
+            ],
+            [
+              0,
+              838.5000076293978,
+              6.648437560929218,
+              839.5000076293978
+            ],
+            [
+              0,
+              839.5000076293978,
+              6.648437560929218,
+              840.5000076293978
+            ],
+            [
+              0,
+              840.5000076293978,
+              6.648437560929218,
+              841.5000076293978
+            ],
+            [
+              0,
+              841.5000076293978,
+              6.648437560929218,
+              842.5000076293978
+            ],
+            [
+              0,
+              842.5000076293978,
+              6.648437560929218,
+              843.5000076293978
+            ],
+            [
+              0,
+              843.5000076293978,
+              6.648437560929218,
+              844.5000076293978
+            ]
+          ]
+        },
+        {
+          "name": "Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)",
+          "category": "Walls",
+          "rects": [
+            [
+              591.7109429227004,
+              837.5000076293978,
+              598.3593804836296,
+              838.5000076293978
+            ],
+            [
+              591.7109429227004,
+              838.5000076293978,
+              598.3593804836296,
+              839.5000076293978
+            ],
+            [
+              591.7109429227004,
+              839.5000076293978,
+              598.3593804836296,
+              840.5000076293978
+            ],
+            [
+              591.7109429227004,
+              840.5000076293978,
+              598.3593804836296,
+              841.5000076293978
+            ],
+            [
+              591.7109429227004,
+              841.5000076293978,
+              598.3593804836296,
+              842.5000076293978
+            ],
+            [
+              591.7109429227004,
+              842.5000076293978,
+              598.3593804836296,
+              843.5000076293978
+            ],
+            [
+              591.7109429227004,
+              843.5000076293978,
+              598.3593804836296,
+              844.5000076293978
+            ]
+          ]
+        },
+        {
+          "name": "Foundation - 24\" Concrete",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              -1,
+              412.20312877761154,
+              0
+            ],
+            [
+              0,
+              -2,
+              412.20312877761154,
+              -1
+            ],
+            [
+              0,
+              -3,
+              412.20312877761154,
+              -2
+            ],
+            [
+              0,
+              -4,
+              412.20312877761154,
+              -3
+            ],
+            [
+              0,
+              -5,
+              591.7109429227004,
+              -4
+            ],
+            [
+              0,
+              -6,
+              591.7109429227004,
+              -5
+            ],
+            [
+              0,
+              -7,
+              591.7109429227004,
+              -6
+            ],
+            [
+              0,
+              -8,
+              591.7109429227004,
+              -7
+            ],
+            [
+              0,
+              -9,
+              591.7109429227004,
+              -8
+            ],
+            [
+              0,
+              -10,
+              591.7109429227004,
+              -9
+            ],
+            [
+              0,
+              -11,
+              591.7109429227004,
+              -10
+            ],
+            [
+              0,
+              -12,
+              591.7109429227004,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Concrete Slab 4\"",
+          "category": "Floors",
+          "rects": [
+            [
+              412.20312877761154,
+              -1,
+              598.3593804836296,
+              0
+            ],
+            [
+              412.20312877761154,
+              -2,
+              598.3593804836296,
+              -1
+            ],
+            [
+              412.20312877761154,
+              -3,
+              598.3593804836296,
+              -2
+            ],
+            [
+              412.20312877761154,
+              -4,
+              598.3593804836296,
+              -3
+            ]
+          ]
+        },
+        {
+          "name": "Core - Concrete 18\"",
+          "category": "Walls",
+          "rects": [
+            [
+              591.7109429227004,
+              -5,
+              598.3593804836296,
+              -4
+            ],
+            [
+              591.7109429227004,
+              -6,
+              598.3593804836296,
+              -5
+            ],
+            [
+              591.7109429227004,
+              -7,
+              598.3593804836296,
+              -6
+            ],
+            [
+              591.7109429227004,
+              -8,
+              598.3593804836296,
+              -7
+            ],
+            [
+              591.7109429227004,
+              -9,
+              598.3593804836296,
+              -8
+            ],
+            [
+              591.7109429227004,
+              -10,
+              598.3593804836296,
+              -9
+            ],
+            [
+              591.7109429227004,
+              -11,
+              598.3593804836296,
+              -10
+            ],
+            [
+              591.7109429227004,
+              -12,
+              598.3593804836296,
+              -11
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -169,18 +522,19 @@
     ],
     [
       "LEFT END",
-      "Meets Foundation - 24\" Concrete, Core - Concrete 12\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Chase - GWB & Metal Stud 6 5/8\""
+      "Meets Foundation - 24\" Concrete, Chase - GWB & Metal Stud 4 1/4\", Core - Concrete 12\", Chase - GWB & Metal Stud 6 5/8\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
     ],
     [
       "RIGHT END",
-      "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls)"
+      "Meets Soffit - Beam Wrap 10 1/2\" (Two Sides), Core - Concrete 18\", Exterior - 5 3/8\" Rainscreen w Insultation (for Concrete Core Walls), Core - Concrete 12\""
     ],
     [
       "WITHIN 1 FT",
-      "Walls (13): Soffit - Beam Wrap 10 1/2\" (Two Sides), Chase - GWB & Metal Stud 4 1/4\"; Floors (3): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\", Roof - Sculpture Bed; Railings (1): Handrail - Balcony; Wall Sweeps (1): Coping_Rainscreen Wall"
+      "Walls (14): Soffit - Beam Wrap 10 1/2\" (Two Sides), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Chase - GWB & Metal Stud 4 1/4\"; Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Supports (2): _Stringer - 1/4\" Plate; Railings (1): Handrail - Balcony; Stairs (1): _Stair-Metal-Plate Stringer; Wall Sweeps (1): Coping_Rainscreen Wall"
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

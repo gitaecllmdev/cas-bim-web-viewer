@@ -18,7 +18,7 @@ import { assemblyFor, boardFor } from '../02-takeoff/calc.mjs';
 import { frameWall, fmtFtIn, flipLayout } from '../common/framing.mjs';
 import { renderSheet, renderSheetPdf, sheetSize, SHEETS } from './sheet.mjs';
 import { scanWall, lookAtWall, saveScan, ensure3dShown } from '../common/wallscan.js';
-import { roomsBeside, probeSlabs, probeNearby, contextBox, wallPoint, wallSize } from './context.js';
+import { roomsBeside, probeSlabs, probeNearby, probeBands, contextBox, wallPoint, wallSize } from './context.js';
 import { headOfWall, baseOfWall, summarizeNearby, conditionLines } from './conditions.mjs';
 import { CONFIG } from '../../config.js';
 import { INDEX_STATE, indexEntry } from './panels.mjs';
@@ -539,11 +539,12 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         for (let i = 0; i < 300 && models.some(m => !m.isLoadDone()); i++) await new Promise(r => setTimeout(r, 100));
         v.isolate([c.dbId], v.model);
         await lookAtWall(v, this.elevation); // frame the wall before the probes
-        let slabs, near;
+        let slabs, near, bands;
         try {
             slabs = await probeSlabs(v, g, c.dbId);
             v.isolate([], v.model); // other walls count for the ends and "within 1 ft"
             near = await probeNearby(v, g, c.dbId, CONTEXT_FT);
+            bands = await probeBands(v, g, c.dbId, 1).catch(err => { console.warn('Context bands not read:', err.message); return []; });
         } finally {
             v.setCutPlanes([]);
             models.forEach(m => v.hideModel(m));
@@ -551,8 +552,16 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         }
         const { L, base, top } = wallSize(g);
         this.setContextStatus('');
+        // The levels within 1 ft of the panel, in panel inches from its bottom (levels at one height named together).
+        const levels = [];
+        for (const l of this.views.levels) {
+            const y = Math.round((l.z - g.origin.z) * 12 * 16) / 16;
+            if (y < -12 || y > g.heightIn + 12) continue;
+            const same = levels.find(o => Math.abs(o.y - y) < 0.5);
+            if (same) same.name += ` / ${l.name}`; else levels.push({ name: l.name, y });
+        }
         return {
-            level: wall.level, rooms,
+            level: wall.level, rooms, elev: { levels, context: bands },
             head: headOfWall({ topZ: top, baseZ: base, above: slabs.above, revit: wall.revit }),
             base: baseOfWall({ baseZ: base, below: slabs.below }),
             nearby: summarizeNearby(near, L),
@@ -627,6 +636,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             date: new Date().toISOString().slice(0, 10), drawnBy: 'CAS BIM Web Viewer', logoHref: this.logo,
             sourceNote: 'Revit model via APS Viewer; framing laid out from the wall geometry',
             conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c), sheet: this.sheetPref(c),
+            elev: c.ctx?.elev || null, // levels and what is above and below the panel (sheet.mjs draws them on the elevation)
         };
     }
 

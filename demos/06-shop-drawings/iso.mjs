@@ -72,13 +72,15 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     }
     faces.sort((a, b) => b.depth - a.depth); // far first
 
-    // One label per cut-list mark, on the front face of its middle member.
+    // One label per cut-list mark, beside its middle member (never over it, so the member reads unbroken): a stud's
+    // just left of its front edge, a track's just above it (below it for a bottom track).
     const byMark = new Map();
     for (const m of members) if (m.mark) (byMark.get(m.mark) || byMark.set(m.mark, []).get(m.mark)).push(m);
     const labels = [...byMark].map(([mark, ms]) => {
         const sorted = [...ms].sort((a, b) => (a.x - b.x) || (a.y - b.y)), m = sorted[Math.floor(sorted.length / 2)];
-        const at = m.orient === 'h' ? [m.x + m.w / 2, m.y + m.h / 2, D] : [m.x + m.w / 2, m.y + m.h * 0.62, D];
-        return { mark, at: project(at), hi: highlight != null && mark === highlight };
+        const low = m.orient === 'h' && m.y < 1;
+        const at = m.orient === 'h' ? [m.x + m.w / 2, low ? m.y : m.y + m.h, D] : [m.x, m.y + m.h * 0.62, D];
+        return { mark, at: project(at), kind: m.orient === 'h' ? (low ? 'below' : 'above') : 'left', hi: highlight != null && mark === highlight };
     });
     const opens = openings.map(o => ({ o, pts: [[o.left, o.bottom, D], [o.right, o.bottom, D], [o.right, o.top, D], [o.left, o.top, D]].map(project),
         label: project([(o.left + o.right) / 2, Math.min(o.top - 6, o.bottom + (o.top - o.bottom) * 0.55), D]) }));
@@ -104,15 +106,15 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
         const [x, y] = T(label), txt = `${isDoor(o) ? 'DOOR' : 'OPENING'} ${fmtFtIn(o.right - o.left)} x ${fmtFtIn(o.top - o.bottom)}`;
         out.push({ t: 'text', x, y, s: txt, size: 0.06, anchor: 'middle', weight: 'normal', rotate: 0, fill: '#6b7178' });
     }
-    // Labels: a white tag, moved up when it would cover one already placed.
+    // Labels: plain text (no box), moved up when it would sit on one already placed.
     const placed = [];
     for (const l of labels) {
         let [x, y] = T(l.at);
-        const w = 0.07 * Math.max(2, l.mark.length) + 0.06, h = 0.12;
+        const w = 0.06 * Math.max(2, l.mark.length), h = 0.1;
+        if (l.kind === 'left') { x -= 0.02 + w / 2; y += 0.03; } else if (l.kind === 'above') y -= 0.035; else y += 0.09;
         for (let k = 0; k < 6 && placed.some(r => Math.abs(r.x - x) < (r.w + w) / 2 && Math.abs(r.y - y) < h); k++) y -= h * 1.05;
         placed.push({ x, y, w });
-        out.push({ t: 'rect', x: x - w / 2, y: y - h / 2 - 0.03, w, h, fill: l.hi ? '#ff8a3d' : '#ffffff', stroke: '#3a3a3a', width: 0.004 });
-        out.push({ t: 'text', x, y: y + 0.01, s: l.mark, size: 0.075, anchor: 'middle', weight: 'bold', rotate: 0, fill: '#111' });
+        out.push({ t: 'text', x, y, s: l.mark, size: 0.075, anchor: 'middle', weight: 'bold', rotate: 0, fill: l.hi ? '#b34700' : '#111' });
     }
     return out;
 }

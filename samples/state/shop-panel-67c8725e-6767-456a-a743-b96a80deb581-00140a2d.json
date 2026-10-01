@@ -3,14 +3,14 @@
   "mark": "P07-11880",
   "dbId": 11880,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T22:31:44.050Z",
+  "savedAt": "2026-10-01T17:10:24.265Z",
   "frame": {
-    "lengthIn": 110,
+    "lengthIn": 111,
     "heightIn": 154,
     "openings": [
       {
         "left": 108,
-        "right": 110,
+        "right": 111,
         "bottom": 0,
         "top": 96
       }
@@ -30,7 +30,7 @@
     "assembly": "6\" stud, 2 layers each side",
     "board": "2 + 2 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-26",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -60,13 +60,238 @@
       ],
       [
         "RIGHT END",
-        "Meets Interior - 8 1/2\" Partition (2-hr), Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\", Interior - 7 1/4\" Partition (NR)"
+        "Meets Interior - 8 1/2\" Partition (2-hr), Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\""
       ],
       [
         "WITHIN 1 FT",
         "Floors (3): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space; Walls (1): Interior - 4 7/8\" Partition (NR)"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L3",
+          "y": 0
+        },
+        {
+          "name": "L4",
+          "y": 160
+        }
+      ],
+      "context": [
+        {
+          "name": "Finish Floor - Polished Concrete (Brown)",
+          "category": "Floors",
+          "rects": [
+            [
+              0,
+              154,
+              111,
+              155
+            ],
+            [
+              0,
+              155,
+              111,
+              156
+            ],
+            [
+              0,
+              156,
+              111,
+              157
+            ],
+            [
+              0,
+              157,
+              111,
+              158
+            ],
+            [
+              0,
+              158,
+              111,
+              159
+            ],
+            [
+              0,
+              159,
+              111,
+              160
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 8 1/2\" Partition (2-hr)",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              160,
+              108,
+              161
+            ],
+            [
+              0,
+              161,
+              108,
+              162
+            ],
+            [
+              0,
+              162,
+              108,
+              163
+            ],
+            [
+              0,
+              163,
+              108,
+              164
+            ],
+            [
+              0,
+              164,
+              108,
+              165
+            ],
+            [
+              0,
+              165,
+              108,
+              166
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 7 1/4\" Partition (NR)",
+          "category": "Walls",
+          "rects": [
+            [
+              108,
+              160,
+              111,
+              161
+            ],
+            [
+              108,
+              161,
+              111,
+              162
+            ],
+            [
+              108,
+              162,
+              111,
+              163
+            ],
+            [
+              108,
+              163,
+              111,
+              164
+            ],
+            [
+              108,
+              164,
+              111,
+              165
+            ],
+            [
+              108,
+              165,
+              111,
+              166
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Polished Concrete (Brown)",
+          "category": "Floors",
+          "rects": [
+            [
+              0,
+              -1,
+              111,
+              0
+            ],
+            [
+              0,
+              -2,
+              111,
+              -1
+            ],
+            [
+              0,
+              -3,
+              111,
+              -2
+            ],
+            [
+              0,
+              -4,
+              111,
+              -3
+            ],
+            [
+              0,
+              -5,
+              111,
+              -4
+            ],
+            [
+              0,
+              -6,
+              111,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 8 1/2\" Partition (2-hr)",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              -7,
+              111,
+              -6
+            ],
+            [
+              0,
+              -8,
+              111,
+              -7
+            ],
+            [
+              0,
+              -9,
+              111,
+              -8
+            ],
+            [
+              0,
+              -10,
+              111,
+              -9
+            ],
+            [
+              0,
+              -11,
+              111,
+              -10
+            ],
+            [
+              0,
+              -12,
+              111,
+              -11
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -95,7 +320,7 @@
     ],
     [
       "RIGHT END",
-      "Meets Interior - 8 1/2\" Partition (2-hr), Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\", Interior - 7 1/4\" Partition (NR)"
+      "Meets Interior - 8 1/2\" Partition (2-hr), Core - Concrete 12\", Chase - GWB & Metal Stud 3 1/8\""
     ],
     [
       "WITHIN 1 FT",
@@ -103,6 +328,7 @@
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

@@ -3,16 +3,16 @@
   "mark": "X04-4836",
   "dbId": 4836,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-27T04:54:53.414Z",
+  "savedAt": "2026-10-01T17:08:14.743Z",
   "frame": {
-    "lengthIn": 566.3929286377991,
-    "heightIn": 215.93730404316085,
+    "lengthIn": 581.9288011528523,
+    "heightIn": 217.0831577968321,
     "openings": [
       {
-        "left": 555.7730612258404,
-        "right": 566.3929286377991,
-        "bottom": 69.02913817773175,
-        "top": 72.569093981718
+        "left": 561.8622907682712,
+        "right": 581.9288011528523,
+        "bottom": 69.32067223764385,
+        "top": 72.96912867120406
       }
     ],
     "studIn": 6,
@@ -20,7 +20,9 @@
     "spacingIn": 16,
     "mils": 43,
     "member": "stud",
-    "notes": []
+    "notes": [
+      "Gap across the wall from 17'-11 1/4\" to 18'-1 1/8\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ]
   },
   "info": {
     "mark": "X04-4836",
@@ -30,7 +32,7 @@
     "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
     "board": "1 + 0 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-27",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -52,7 +54,7 @@
       ],
       [
         "BASE OF WALL",
-        "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\" (beside side A)."
+        "27'-2\" ABOVE SLAB. Base of wall 27'-2\" above floor \"Finish Floor - Laminate\" (beside side A) (curb, soffit or stacked wall?). Verify."
       ],
       [
         "LEFT END",
@@ -60,14 +62,428 @@
       ],
       [
         "RIGHT END",
-        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud (Alley), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
       ],
       [
         "WITHIN 1 FT",
-        "Walls (4): Planter Wall - Steel Plate 1/2\", Interior - 6 1/8\" Partition (2-hr), Chase - GWB & Metal Stud 4 1/4\"; Roofs (2): Concrete - 6\", TPO Roof, 5\" Min. Rigid Insulation w 5/8\" Protection Board; Floors (1): Finish Floor - Laminate"
+        "Walls (5): Planter Wall - Steel Plate 1/2\", Chase - GWB & Metal Stud 4 1/4\", Interior - 6 1/8\" Partition (2-hr); Wall Sweeps (2): Coping_Rainscreen Wall; Floors (1): Finish Floor - Laminate"
       ]
     ],
-    "sheet": "auto"
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L5",
+          "y": 0
+        },
+        {
+          "name": "R1",
+          "y": 86
+        },
+        {
+          "name": "Block 39 - Parapet",
+          "y": 110
+        },
+        {
+          "name": "R2",
+          "y": 160
+        },
+        {
+          "name": "Green Roof Hardscape",
+          "y": 173
+        },
+        {
+          "name": "Parapet",
+          "y": 216
+        }
+      ],
+      "context": [
+        {
+          "name": "Coping_Rainscreen Wall",
+          "category": "Wall Sweeps",
+          "rects": [
+            [
+              0,
+              217.0831577968321,
+              581.9288011528524,
+              218.0831577968321
+            ],
+            [
+              0,
+              218.0831577968321,
+              581.9288011528524,
+              219.0831577968321
+            ],
+            [
+              0,
+              219.0831577968321,
+              581.9288011528524,
+              220.0831577968321
+            ],
+            [
+              0,
+              220.0831577968321,
+              581.9288011528524,
+              221.0831577968321
+            ]
+          ]
+        },
+        {
+          "name": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              -1,
+              122.8516357989355,
+              0
+            ],
+            [
+              0,
+              -2,
+              122.8516357989355,
+              -1
+            ],
+            [
+              0,
+              -3,
+              122.8516357989355,
+              -2
+            ],
+            [
+              0,
+              -4,
+              122.8516357989355,
+              -3
+            ],
+            [
+              0,
+              -5,
+              122.8516357989355,
+              -4
+            ],
+            [
+              0,
+              -6,
+              122.8516357989355,
+              -5
+            ],
+            [
+              0,
+              -7,
+              122.8516357989355,
+              -6
+            ],
+            [
+              0,
+              -8,
+              122.8516357989355,
+              -7
+            ],
+            [
+              0,
+              -9,
+              122.8516357989355,
+              -8
+            ],
+            [
+              0,
+              -10,
+              122.8516357989355,
+              -9
+            ],
+            [
+              0,
+              -11,
+              122.8516357989355,
+              -10
+            ],
+            [
+              0,
+              -12,
+              122.8516357989355,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Laminate",
+          "category": "Floors",
+          "rects": [
+            [
+              122.8516357989355,
+              -1,
+              426.74778751209175,
+              0
+            ],
+            [
+              484.940667627377,
+              -1,
+              581.9288011528524,
+              0
+            ],
+            [
+              122.8516357989355,
+              -2,
+              426.74778751209175,
+              -1
+            ],
+            [
+              484.940667627377,
+              -2,
+              581.9288011528524,
+              -1
+            ],
+            [
+              122.8516357989355,
+              -3,
+              426.74778751209175,
+              -2
+            ],
+            [
+              484.940667627377,
+              -3,
+              581.9288011528524,
+              -2
+            ],
+            [
+              122.8516357989355,
+              -4,
+              426.74778751209175,
+              -3
+            ],
+            [
+              484.940667627377,
+              -4,
+              581.9288011528524,
+              -3
+            ],
+            [
+              122.8516357989355,
+              -5,
+              426.74778751209175,
+              -4
+            ],
+            [
+              484.940667627377,
+              -5,
+              581.9288011528524,
+              -4
+            ],
+            [
+              122.8516357989355,
+              -6,
+              426.74778751209175,
+              -5
+            ],
+            [
+              484.940667627377,
+              -6,
+              581.9288011528524,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Chase - GWB & Metal Stud 4 1/4\"",
+          "category": "Walls",
+          "rects": [
+            [
+              426.74778751209175,
+              -1,
+              433.2136630804568,
+              0
+            ],
+            [
+              426.74778751209175,
+              -2,
+              433.2136630804568,
+              -1
+            ],
+            [
+              426.74778751209175,
+              -3,
+              433.2136630804568,
+              -2
+            ],
+            [
+              426.74778751209175,
+              -4,
+              433.2136630804568,
+              -3
+            ],
+            [
+              426.74778751209175,
+              -5,
+              433.2136630804568,
+              -4
+            ],
+            [
+              426.74778751209175,
+              -6,
+              433.2136630804568,
+              -5
+            ],
+            [
+              426.74778751209175,
+              -7,
+              433.2136630804568,
+              -6
+            ],
+            [
+              426.74778751209175,
+              -8,
+              433.2136630804568,
+              -7
+            ],
+            [
+              426.74778751209175,
+              -9,
+              433.2136630804568,
+              -8
+            ],
+            [
+              426.74778751209175,
+              -10,
+              433.2136630804568,
+              -9
+            ],
+            [
+              426.74778751209175,
+              -11,
+              433.2136630804568,
+              -10
+            ],
+            [
+              426.74778751209175,
+              -12,
+              433.2136630804568,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 6 1/8\" Partition (2-hr)",
+          "category": "Walls",
+          "rects": [
+            [
+              472.0089164906469,
+              -1,
+              478.474792059012,
+              0
+            ],
+            [
+              472.0089164906469,
+              -2,
+              478.474792059012,
+              -1
+            ],
+            [
+              472.0089164906469,
+              -3,
+              478.474792059012,
+              -2
+            ],
+            [
+              472.0089164906469,
+              -4,
+              478.474792059012,
+              -3
+            ],
+            [
+              472.0089164906469,
+              -5,
+              478.474792059012,
+              -4
+            ],
+            [
+              472.0089164906469,
+              -6,
+              478.474792059012,
+              -5
+            ],
+            [
+              472.0089164906469,
+              -7,
+              478.474792059012,
+              -6
+            ],
+            [
+              472.0089164906469,
+              -8,
+              478.474792059012,
+              -7
+            ],
+            [
+              472.0089164906469,
+              -9,
+              478.474792059012,
+              -8
+            ],
+            [
+              472.0089164906469,
+              -10,
+              478.474792059012,
+              -9
+            ],
+            [
+              472.0089164906469,
+              -11,
+              478.474792059012,
+              -10
+            ],
+            [
+              472.0089164906469,
+              -12,
+              478.474792059012,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud (Alley)",
+          "category": "Walls",
+          "rects": [
+            [
+              562.5311744477573,
+              -7,
+              581.9288011528524,
+              -6
+            ],
+            [
+              562.5311744477573,
+              -8,
+              581.9288011528524,
+              -7
+            ],
+            [
+              562.5311744477573,
+              -9,
+              581.9288011528524,
+              -8
+            ],
+            [
+              562.5311744477573,
+              -10,
+              581.9288011528524,
+              -9
+            ],
+            [
+              562.5311744477573,
+              -11,
+              581.9288011528524,
+              -10
+            ],
+            [
+              562.5311744477573,
+              -12,
+              581.9288011528524,
+              -11
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -88,7 +504,7 @@
     ],
     [
       "BASE OF WALL",
-      "ON SLAB. Bottom track on floor \"Finish Floor - Laminate\" (beside side A)."
+      "27'-2\" ABOVE SLAB. Base of wall 27'-2\" above floor \"Finish Floor - Laminate\" (beside side A) (curb, soffit or stacked wall?). Verify."
     ],
     [
       "LEFT END",
@@ -96,11 +512,11 @@
     ],
     [
       "RIGHT END",
-      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud (Alley), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
+      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
     ],
     [
       "WITHIN 1 FT",
-      "Walls (4): Planter Wall - Steel Plate 1/2\", Interior - 6 1/8\" Partition (2-hr), Chase - GWB & Metal Stud 4 1/4\"; Roofs (2): Concrete - 6\", TPO Roof, 5\" Min. Rigid Insulation w 5/8\" Protection Board; Floors (1): Finish Floor - Laminate"
+      "Walls (5): Planter Wall - Steel Plate 1/2\", Chase - GWB & Metal Stud 4 1/4\", Interior - 6 1/8\" Partition (2-hr); Wall Sweeps (2): Coping_Rainscreen Wall; Floors (1): Finish Floor - Laminate"
     ]
   ],
   "view": {

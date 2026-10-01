@@ -237,3 +237,60 @@ export async function probeNearby(viewer, g, dbId, pad = 1) {
     const info = await describe(list);
     return list.map(it => ({ dbId: it.dbId, s: it.s, ...(info.get(it.dbId) || {}) }));
 }
+
+// --- What is right above and below the panel, for the elevation: the 1 ft bands over its top and under its bottom ---
+// Fine elevation hit tests from side A, then side B where A saw nothing, with the wall hidden and the context box cut.
+// Returns [{ name, category, rects: [[x0, y0, x1, y1], ...] }]: each object's silhouette in the bands, in panel inches
+// from side A (x from the left end, y from the bottom of the panel). Navigation.setView(from, to, up), setVerticalFov.
+export async function probeBands(viewer, g, dbId, pad = 1) {
+    const v = viewer, nav = v.navigation, { L, H, D, base } = wallSize(g);
+    const ds = Math.max(L / 90, 0.25), dz = 1 / 12; // feet: about 90 columns along the wall, 1" rows
+    const cols = Math.max(1, Math.round(L / ds)), rows = Math.round(pad / dz);
+    const bands = [{ z0: base + H, sign: 1 }, { z0: base, sign: -1 }]; // rows outward from the panel's top and bottom
+    const owner = new Map(); // "col,row,band" -> { dbId, model }
+    v.hide(dbId, v.model);
+    v.setCutPlanes(contextBox(g, pad));
+    try {
+        for (const side of [1, -1]) {
+            const target = wallPoint(g, L / 2, D / 2, base + H / 2);
+            nav.setView(target.clone().add(g.n.clone().multiplyScalar(200 * side)), target, Z());
+            nav.setVerticalFov(2 * Math.atan((Math.max(L, H) + 2 * pad + 2) / 2 / 200) * 180 / Math.PI * 1.1, false);
+            await frame();
+            const W = v.container.clientWidth, Hc = v.container.clientHeight;
+            bands.forEach((b, bi) => {
+                for (let c = 0; c < cols; c++) {
+                    for (let r = 0; r < rows; r++) {
+                        const key = `${c},${r},${bi}`;
+                        if (owner.has(key)) continue;
+                        const sc = v.worldToClient(wallPoint(g, (c + 0.5) * (L / cols), side > 0 ? -pad : D + pad, b.z0 + b.sign * (r + 0.5) * dz));
+                        if (sc.x < 0 || sc.y < 0 || sc.x >= W || sc.y >= Hc) continue;
+                        const h = v.clientToWorld(sc.x, sc.y, true);
+                        if (h?.model && h.dbId > 0 && h.dbId !== dbId) owner.set(key, { dbId: h.dbId, model: h.model });
+                    }
+                }
+            });
+        }
+    } finally {
+        v.setCutPlanes([]);
+        v.show(dbId, v.model);
+    }
+    const info = await describe([...owner.values()]);
+    // Cells to runs: per object, per row, adjacent columns merged.
+    const objects = new Map();
+    const colW = (L / cols) * 12;
+    bands.forEach((b, bi) => {
+        for (let r = 0; r < rows; r++) {
+            let run = null;
+            const flush = () => { if (run) { (objects.get(run.id) || objects.set(run.id, []).get(run.id)).push(run.rect); run = null; } };
+            for (let c = 0; c <= cols; c++) {
+                const hit = c < cols ? owner.get(`${c},${r},${bi}`) : null;
+                const y0 = b.sign > 0 ? H * 12 + r : -(r + 1), y1 = y0 + 1;
+                if (hit && run && run.id === hit.dbId) { run.rect[2] = (c + 1) * colW; continue; }
+                flush();
+                if (hit) run = { id: hit.dbId, rect: [c * colW, y0, (c + 1) * colW, y1] };
+            }
+            flush();
+        }
+    });
+    return [...objects].map(([id, rects]) => ({ name: info.get(id)?.name || '', category: (info.get(id)?.category || '').replace(/^Revit /, ''), rects }));
+}

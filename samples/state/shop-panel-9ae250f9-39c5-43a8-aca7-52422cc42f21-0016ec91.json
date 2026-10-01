@@ -3,14 +3,14 @@
   "mark": "S04-14333",
   "dbId": 14333,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-27T03:50:18.907Z",
+  "savedAt": "2026-10-01T17:12:52.617Z",
   "frame": {
     "lengthIn": 166,
     "heightIn": 253.99999999999997,
     "openings": [
       {
-        "left": 24,
-        "right": 51,
+        "left": 23,
+        "right": 49.99999999999999,
         "bottom": 44,
         "top": 146
       },
@@ -21,8 +21,8 @@
         "top": 146
       },
       {
-        "left": 116,
-        "right": 143,
+        "left": 114.99999999999999,
+        "right": 142,
         "bottom": 44,
         "top": 146
       }
@@ -42,7 +42,7 @@
     "assembly": "6\" stud chase, 1 layer one side",
     "board": "1 + 0 layers, 5/8\" Type X",
     "fireRating": "1 HR",
-    "date": "2026-09-27",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -68,17 +68,31 @@
       ],
       [
         "LEFT END",
-        "Meets Chase - GWB & Metal Stud 6 5/8\""
+        "Meets Chase - GWB & Metal Stud 6 5/8\", Chase - GWB & Metal Stud 3 1/8\", Soffit - Beam Wrap 9 1/4\" (One Side)"
       ],
       [
         "RIGHT END",
-        "Meets Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+        "Meets Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
       ],
       [
         "WITHIN 1 FT",
         "Nothing else in the model"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L3",
+          "y": 100
+        },
+        {
+          "name": "L4",
+          "y": 260
+        }
+      ],
+      "context": []
+    }
   },
   "conditions": [
     [
@@ -103,11 +117,11 @@
     ],
     [
       "LEFT END",
-      "Meets Chase - GWB & Metal Stud 6 5/8\""
+      "Meets Chase - GWB & Metal Stud 6 5/8\", Chase - GWB & Metal Stud 3 1/8\", Soffit - Beam Wrap 9 1/4\" (One Side)"
     ],
     [
       "RIGHT END",
-      "Meets Soffit - Beam Wrap 9 1/4\" (One Side), Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
+      "Meets Chase - GWB & Metal Stud 3 1/8\", Chase - GWB & Metal Stud 6 5/8\""
     ],
     [
       "WITHIN 1 FT",
@@ -115,6 +129,7 @@
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

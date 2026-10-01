@@ -3,13 +3,13 @@
   "mark": "W-22240",
   "dbId": 22240,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T22:32:34.043Z",
+  "savedAt": "2026-10-01T17:12:07.052Z",
   "frame": {
     "lengthIn": 161,
     "heightIn": 23,
     "openings": [
       {
-        "left": 49,
+        "left": 48,
         "right": 161,
         "bottom": 11,
         "top": 15
@@ -30,7 +30,7 @@
     "assembly": "Beam-wrap soffit, 3 5/8\" framing, 2 sides",
     "board": "1 + 1 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-26",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -56,7 +56,7 @@
       ],
       [
         "BASE OF WALL",
-        "0'-5 1/4\" ABOVE SLAB. Base of wall 0'-5 1/4\" above slab edge \"Crown Molding - Cabinets\" (beside side B) (curb, soffit or stacked wall?). Verify."
+        "8'-4\" ABOVE SLAB. Base of wall 8'-4\" above floor \"Finish Floor - Laminate\" (curb, soffit or stacked wall?). Verify."
       ],
       [
         "LEFT END",
@@ -64,13 +64,132 @@
       ],
       [
         "RIGHT END",
-        "Meets Interior - 7 1/4\" Partition (NR), Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 10\""
+        "Meets Interior - 7 1/4\" Partition (NR), Core - Concrete 10\""
       ],
       [
         "WITHIN 1 FT",
         "Nothing else in the model"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L3",
+          "y": 29
+        }
+      ],
+      "context": [
+        {
+          "name": "Interior - 7 1/4\" Partition (NR)",
+          "category": "Walls",
+          "rects": [
+            [
+              50.68518518518518,
+              -5,
+              59.629629629629626,
+              -4
+            ],
+            [
+              50.68518518518518,
+              -6,
+              59.629629629629626,
+              -5
+            ],
+            [
+              50.68518518518518,
+              -7,
+              59.629629629629626,
+              -6
+            ],
+            [
+              50.68518518518518,
+              -8,
+              59.629629629629626,
+              -7
+            ],
+            [
+              50.68518518518518,
+              -9,
+              59.629629629629626,
+              -8
+            ],
+            [
+              50.68518518518518,
+              -10,
+              59.629629629629626,
+              -9
+            ],
+            [
+              50.68518518518518,
+              -11,
+              59.629629629629626,
+              -10
+            ],
+            [
+              50.68518518518518,
+              -12,
+              59.629629629629626,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 7 1/4\" Partition (NR)",
+          "category": "Walls",
+          "rects": [
+            [
+              59.629629629629626,
+              -5,
+              161,
+              -4
+            ],
+            [
+              59.629629629629626,
+              -6,
+              161,
+              -5
+            ],
+            [
+              59.629629629629626,
+              -7,
+              161,
+              -6
+            ],
+            [
+              59.629629629629626,
+              -8,
+              161,
+              -7
+            ],
+            [
+              59.629629629629626,
+              -9,
+              161,
+              -8
+            ],
+            [
+              59.629629629629626,
+              -10,
+              161,
+              -9
+            ],
+            [
+              59.629629629629626,
+              -11,
+              161,
+              -10
+            ],
+            [
+              59.629629629629626,
+              -12,
+              161,
+              -11
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -95,7 +214,7 @@
     ],
     [
       "BASE OF WALL",
-      "0'-5 1/4\" ABOVE SLAB. Base of wall 0'-5 1/4\" above slab edge \"Crown Molding - Cabinets\" (beside side B) (curb, soffit or stacked wall?). Verify."
+      "8'-4\" ABOVE SLAB. Base of wall 8'-4\" above floor \"Finish Floor - Laminate\" (curb, soffit or stacked wall?). Verify."
     ],
     [
       "LEFT END",
@@ -103,7 +222,7 @@
     ],
     [
       "RIGHT END",
-      "Meets Interior - 7 1/4\" Partition (NR), Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 10\""
+      "Meets Interior - 7 1/4\" Partition (NR), Core - Concrete 10\""
     ],
     [
       "WITHIN 1 FT",
@@ -111,6 +230,7 @@
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

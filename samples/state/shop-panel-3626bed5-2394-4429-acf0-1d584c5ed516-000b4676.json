@@ -3,7 +3,7 @@
   "mark": "P01-5282",
   "dbId": 5282,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T22:32:29.885Z",
+  "savedAt": "2026-10-01T17:08:42.645Z",
   "frame": {
     "lengthIn": 244,
     "heightIn": 131,
@@ -30,7 +30,7 @@
     "assembly": "3 5/8\" stud, 1 layer each side",
     "board": "1 + 1 layers, 5/8\" Type X",
     "fireRating": "1 HR",
-    "date": "2026-09-26",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -52,11 +52,11 @@
       ],
       [
         "BASE OF WALL",
-        "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+        "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Grey)\"."
       ],
       [
         "LEFT END",
-        "Meets Core - Concrete 10\", Core - Concrete 18\""
+        "Meets Core - Concrete 10\", Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 18\""
       ],
       [
         "RIGHT END",
@@ -66,7 +66,192 @@
         "WITHIN 1 FT",
         "Floors (2): Finish Floor - Polished Concrete (Grey), Finish Floor - Ceramic Tile (Wood)"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L1 - Block 35",
+          "y": 0
+        },
+        {
+          "name": "L1 - Block 37",
+          "y": 29.5
+        },
+        {
+          "name": "L1 - Block 43",
+          "y": 71
+        },
+        {
+          "name": "M1",
+          "y": 137
+        }
+      ],
+      "context": [
+        {
+          "name": "Chase - GWB & Metal Stud 3 1/8\"",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              137,
+              3.0123456790123453,
+              138
+            ],
+            [
+              0,
+              138,
+              3.0123456790123453,
+              139
+            ],
+            [
+              0,
+              139,
+              3.0123456790123453,
+              140
+            ],
+            [
+              0,
+              140,
+              3.0123456790123453,
+              141
+            ],
+            [
+              0,
+              141,
+              3.0123456790123453,
+              142
+            ],
+            [
+              0,
+              142,
+              3.0123456790123453,
+              143
+            ]
+          ]
+        },
+        {
+          "name": "Core - Concrete 18\"",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              -1,
+              6.024691358024691,
+              0
+            ],
+            [
+              0,
+              -2,
+              6.024691358024691,
+              -1
+            ],
+            [
+              0,
+              -3,
+              6.024691358024691,
+              -2
+            ],
+            [
+              0,
+              -4,
+              6.024691358024691,
+              -3
+            ],
+            [
+              0,
+              -5,
+              6.024691358024691,
+              -4
+            ],
+            [
+              0,
+              -6,
+              6.024691358024691,
+              -5
+            ],
+            [
+              0,
+              -7,
+              6.024691358024691,
+              -6
+            ],
+            [
+              0,
+              -8,
+              6.024691358024691,
+              -7
+            ],
+            [
+              0,
+              -9,
+              6.024691358024691,
+              -8
+            ],
+            [
+              0,
+              -10,
+              6.024691358024691,
+              -9
+            ],
+            [
+              0,
+              -11,
+              6.024691358024691,
+              -10
+            ],
+            [
+              0,
+              -12,
+              6.024691358024691,
+              -11
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Polished Concrete (Grey)",
+          "category": "Floors",
+          "rects": [
+            [
+              6.024691358024691,
+              -1,
+              237.9753086419753,
+              0
+            ],
+            [
+              6.024691358024691,
+              -2,
+              237.9753086419753,
+              -1
+            ],
+            [
+              6.024691358024691,
+              -3,
+              237.9753086419753,
+              -2
+            ],
+            [
+              6.024691358024691,
+              -4,
+              237.9753086419753,
+              -3
+            ],
+            [
+              6.024691358024691,
+              -5,
+              237.9753086419753,
+              -4
+            ],
+            [
+              6.024691358024691,
+              -6,
+              237.9753086419753,
+              -5
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -87,11 +272,11 @@
     ],
     [
       "BASE OF WALL",
-      "ON SLAB. Bottom track on floor \"Finish Floor - Ceramic Tile (Wood)\"."
+      "ON SLAB. Bottom track on floor \"Finish Floor - Polished Concrete (Grey)\"."
     ],
     [
       "LEFT END",
-      "Meets Core - Concrete 10\", Core - Concrete 18\""
+      "Meets Core - Concrete 10\", Chase - GWB & Metal Stud 3 1/8\", Core - Concrete 18\""
     ],
     [
       "RIGHT END",
@@ -103,6 +288,7 @@
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

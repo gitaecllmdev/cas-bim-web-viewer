@@ -3,14 +3,14 @@
   "mark": "X04-5239",
   "dbId": 5239,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-27T03:51:02.889Z",
+  "savedAt": "2026-10-01T17:08:21.875Z",
   "frame": {
-    "lengthIn": 190,
+    "lengthIn": 189,
     "heightIn": 131,
     "openings": [
       {
         "left": 96,
-        "right": 190,
+        "right": 189,
         "bottom": 108,
         "top": 131
       }
@@ -30,7 +30,7 @@
     "assembly": "6\" CFS, exterior sheathing + 1 layer inside",
     "board": "1 + 0 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-27",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -56,7 +56,7 @@
       ],
       [
         "LEFT END",
-        "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Interior - 7 1/4\" Partition (1 hr)"
+        "Meets Interior - 7 1/4\" Partition (1 hr), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
       ],
       [
         "RIGHT END",
@@ -64,9 +64,278 @@
       ],
       [
         "WITHIN 1 FT",
-        "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Walls (2): Interior - 4 7/8\" Partition (NR), Interior - 4 7/8\" Partition (1-hr); Stairs (1): 7\" max riser 11\" tread; Supports (1): Stringer - 2\" Width"
+        "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Supports (2): Stringer - 2\" Width; Stairs (1): 7\" max riser 11\" tread; Walls (1): Interior - 4 7/8\" Partition (1-hr)"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L1 - Block 35",
+          "y": 0
+        },
+        {
+          "name": "L1 - Block 37",
+          "y": 29.5
+        },
+        {
+          "name": "L1 - Block 43",
+          "y": 71
+        },
+        {
+          "name": "M1",
+          "y": 137
+        }
+      ],
+      "context": [
+        {
+          "name": "Stringer - 2\" Width",
+          "category": "Supports",
+          "rects": [
+            [
+              93,
+              131,
+              105,
+              132
+            ],
+            [
+              93,
+              132,
+              105,
+              133
+            ],
+            [
+              93,
+              133,
+              102,
+              134
+            ],
+            [
+              93,
+              134,
+              102,
+              135
+            ],
+            [
+              93,
+              135,
+              99,
+              136
+            ],
+            [
+              93,
+              136,
+              99,
+              137
+            ],
+            [
+              93,
+              137,
+              96,
+              138
+            ]
+          ]
+        },
+        {
+          "name": "Glass Panel - Bottom Fill (Extension Bottom)",
+          "category": "Railings",
+          "rects": [
+            [
+              126,
+              131,
+              129,
+              132
+            ],
+            [
+              126,
+              132,
+              129,
+              133
+            ],
+            [
+              126,
+              133,
+              129,
+              134
+            ],
+            [
+              126,
+              134,
+              129,
+              135
+            ],
+            [
+              126,
+              135,
+              129,
+              136
+            ],
+            [
+              126,
+              136,
+              129,
+              137
+            ],
+            [
+              90,
+              137,
+              93,
+              138
+            ],
+            [
+              126,
+              137,
+              129,
+              138
+            ],
+            [
+              90,
+              138,
+              96,
+              139
+            ],
+            [
+              126,
+              138,
+              129,
+              139
+            ],
+            [
+              90,
+              139,
+              96,
+              140
+            ],
+            [
+              126,
+              139,
+              129,
+              140
+            ],
+            [
+              90,
+              140,
+              96,
+              141
+            ],
+            [
+              126,
+              140,
+              132,
+              141
+            ],
+            [
+              90,
+              141,
+              96,
+              142
+            ],
+            [
+              126,
+              141,
+              129,
+              142
+            ],
+            [
+              90,
+              142,
+              96,
+              143
+            ],
+            [
+              126,
+              142,
+              129,
+              143
+            ]
+          ]
+        },
+        {
+          "name": "Metal - Circular",
+          "category": "Supports",
+          "rects": [
+            [
+              177,
+              139,
+              180,
+              140
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Polished Concrete (Grey)",
+          "category": "Floors",
+          "rects": [
+            [
+              0,
+              -1,
+              180,
+              0
+            ],
+            [
+              0,
+              -2,
+              180,
+              -1
+            ],
+            [
+              0,
+              -3,
+              180,
+              -2
+            ],
+            [
+              0,
+              -4,
+              180,
+              -3
+            ],
+            [
+              0,
+              -5,
+              180,
+              -4
+            ],
+            [
+              0,
+              -6,
+              180,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Concrete Slab 4\"",
+          "category": "Floors",
+          "rects": [
+            [
+              180,
+              -1,
+              189,
+              0
+            ],
+            [
+              180,
+              -2,
+              189,
+              -1
+            ],
+            [
+              180,
+              -3,
+              189,
+              -2
+            ],
+            [
+              180,
+              -4,
+              189,
+              -3
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -91,7 +360,7 @@
     ],
     [
       "LEFT END",
-      "Meets Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud, Interior - 7 1/4\" Partition (1 hr)"
+      "Meets Interior - 7 1/4\" Partition (1 hr), Exterior - 12 5/8\" Rainscreen w Insultation on Metal Stud"
     ],
     [
       "RIGHT END",
@@ -99,10 +368,11 @@
     ],
     [
       "WITHIN 1 FT",
-      "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Walls (2): Interior - 4 7/8\" Partition (NR), Interior - 4 7/8\" Partition (1-hr); Stairs (1): 7\" max riser 11\" tread; Supports (1): Stringer - 2\" Width"
+      "Floors (2): Finish Floor - Polished Concrete (Grey), Concrete Slab 4\"; Supports (2): Stringer - 2\" Width; Stairs (1): 7\" max riser 11\" tread; Walls (1): Interior - 4 7/8\" Partition (1-hr)"
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

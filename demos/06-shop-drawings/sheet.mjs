@@ -33,7 +33,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<
 const n = (v) => Number(v.toFixed(4));
 const COLORS = { track: '#f2d64b', trackStroke: '#6b5a00', stud: '#ffffff', studStroke: '#1c1c1c', dim: '#1b6aa5', opening: '#9aa0a6', text: '#111',
     hi: '#ff8a3d', hiStroke: '#b34700', hiRow: '#ffe3cc', // hi*: the highlighted mark (on-screen preview only)
-    openingDim: '#a01818' };
+    openingDim: '#a01818', context: '#e4e4e4', contextText: '#8d8d8d', level: '#5b5b5b' };
 // Member fill by function, as in the CAS legend: tracks yellow, headers and sills salmon, studs light grey.
 const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', EV: '#ededed', SV: '#ededed', SD: '#ededed', CR: '#ededed' };
 
@@ -184,6 +184,69 @@ export function sheetOps(layout, info) {
     const elevTop = 2.35, elevBottom = elevTop + HT * s;
     const X = (x) => ex + x * s, Y = (y) => elevBottom - y * s; // wall inches -> sheet inches
 
+    // Context (info.elev, read from the model by Demo 6): what is within 1 ft above and below the panel, halftone, and
+    // the levels there, as dash-dot lines named with their height from the bottom of the panel. Drawn first, under the
+    // framing; mirrored for a panel seen from side B. The bands stop short of the track plans. Their names go where
+    // they miss the track tags (left end, right end or middle of the band).
+    const stripHt = Math.max(0.1, Math.min(0.25, (layout.studIn || 6) * s));
+    const bandUp = Math.min(12, (0.75 - stripHt - 0.1) / s), bandDown = Math.min(12, 0.3 / s);
+    const ctxX = (x) => (layout.flipped ? L - x : x);
+    const hTagY = (m) => (m.role === 'top track' || m.role === 'sill track' ? Y(m.y + m.h) - 0.035 : Y(m.y) + 0.095);
+    const textBox = (x, y, str, size, anchor) => {
+        const w = textWidth(str, size, false), x0 = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
+        return { x0: x0 - 0.02, x1: x0 + w + 0.02, y0: y - size * 0.85, y1: y + size * 0.25 };
+    };
+    const taken = members.filter(m => m.orient === 'h').map(m => textBox(X(m.x + m.w / 2), hTagY(m), m.mark, 0.075, 'middle'));
+    const isFree = (bx) => !taken.some(t => bx.x0 < t.x1 && t.x0 < bx.x1 && bx.y0 < t.y1 && t.y0 < bx.y1);
+    // The first of the candidate spots [x, anchor] where the text misses everything placed so far; null if none.
+    const place = (str, size, y, spots) => {
+        for (const [x, anchor] of spots) {
+            const bx = textBox(x, y, str, size, anchor);
+            if (isFree(bx)) { taken.push(bx); return { x, anchor }; }
+        }
+        return null;
+    };
+    // Halftone first (under the level lines and every name).
+    for (const obj of info.elev?.context || []) {
+        for (const [x0, y0, x1, y1] of obj.rects || []) {
+            const ya = Math.max(y0, -bandDown), yb = Math.min(y1, HT + bandUp);
+            const xa = Math.max(0, Math.min(ctxX(x0), ctxX(x1))), xb = Math.min(L, Math.max(ctxX(x0), ctxX(x1)));
+            if (yb > ya && xb > xa) out.push(rect(X(xa), Y(yb), (xb - xa) * s, (yb - ya) * s, { fill: COLORS.context, stroke: 'none', width: 0 }));
+        }
+    }
+    for (const lv of info.elev?.levels || []) {
+        if (lv.y < -bandDown || lv.y > HT + bandUp) continue;
+        const y = Y(lv.y), below = lv.y < HT / 2; // the name in the band the line is in
+        out.push(line(X(0) - 0.15, y, X(L) + 0.15, y, { stroke: COLORS.level, width: 0.006, dash: '0.14 0.04 0.02 0.04' }));
+        const str = `${lv.name.toUpperCase()} @ ${lv.y < 0 ? '-' : ''}${fmtFtIn(Math.abs(lv.y))}`, ty = below ? y + 0.085 : y - 0.03;
+        const at = place(str, 0.065, ty, [[X(0) + 0.17, 'start'], [X(L) - 0.05, 'end'], [X(L / 2), 'middle'], [X(L * 0.25), 'middle'], [X(L * 0.75), 'middle']]);
+        if (!at) continue;
+        const tx = at.anchor === 'start' ? at.x - 0.12 : at.anchor === 'end' ? at.x - textWidth(str, 0.065, false) - 0.12 : at.x - textWidth(str, 0.065, false) / 2 - 0.12;
+        out.push({ t: 'poly', pts: [[tx, y - 0.07], [tx + 0.08, y - 0.07], [tx + 0.04, y]], fill: COLORS.level, stroke: 'none', width: 0 });
+        out.push(text(at.x, ty, str, { size: 0.065, anchor: at.anchor, weight: 'bold', fill: COLORS.level }));
+    }
+    // Context names stay off the level lines.
+    for (const lv of info.elev?.levels || []) if (lv.y >= -bandDown && lv.y <= HT + bandUp) taken.push({ x0: X(0) - 0.15, x1: X(L) + 0.15, y0: Y(lv.y) - 0.02, y1: Y(lv.y) + 0.02 });
+    const labelled = new Set();
+    for (const obj of info.elev?.context || []) {
+        let best = null;
+        for (const [x0, y0, x1, y1] of obj.rects || []) {
+            const ya = Math.max(y0, -bandDown), yb = Math.min(y1, HT + bandUp);
+            const xa = Math.max(0, Math.min(ctxX(x0), ctxX(x1))), xb = Math.min(L, Math.max(ctxX(x0), ctxX(x1)));
+            if (yb <= ya || xb <= xa) continue;
+            if (!best || xb - xa > best.xb - best.xa) best = { xa, xb, ya, yb };
+        }
+        const name = [obj.category, obj.name].filter(Boolean).join(': ').toUpperCase().slice(0, 48);
+        if (!best || !name || labelled.has(name)) continue; // one label per kind of thing (three door frames: one)
+        const w = textWidth(name, 0.06, false);
+        if (w > (best.xb - best.xa) * s) continue;
+        const y = Y((best.ya + best.yb) / 2) + 0.02, xa = X(best.xa) + w / 2 + 0.03, xb = X(best.xb) - w / 2 - 0.03;
+        const at = place(name, 0.06, y, [[(xa + xb) / 2, 'middle'], [xa, 'middle'], [xb, 'middle'], [xa + (xb - xa) / 4, 'middle'], [xb - (xb - xa) / 4, 'middle']]);
+        if (!at) continue;
+        labelled.add(name);
+        out.push(text(at.x, y, name, { size: 0.06, anchor: 'middle', fill: COLORS.contextText }));
+    }
+
     // Openings: outline with an X (sizes come from the ordinates)
     for (const o of openings) {
         out.push(rect(X(o.left), Y(o.top), (o.right - o.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.opening, width: 0.008 }));
@@ -195,25 +258,31 @@ export function sheetOps(layout, info) {
         out.push(rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
             : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 }));
     }
-    // Tags on every member. Verticals: at mid-height, level text when the studs are far enough apart, else along the stud.
+    // Tags on every member. Verticals: at mid-height, beside the stud (no box over it, so the member reads unbroken):
+    // left of it, or right of it when a stud stands right against its left side (a jamb pair); level text when the
+    // studs are far enough apart, else along the stud.
     const verticals = members.filter(m => m.orient === 'v').sort((a, b) => a.x - b.x);
     const minGap = verticals.slice(1).reduce((g, m, i) => Math.min(g, (m.x - verticals[i].x) * s), Infinity);
     const level = minGap >= 0.22;
+    const overlapsY = (a, b) => a.y < b.y + b.h && b.y < a.y + a.h;
     for (const m of verticals) {
-        const mx = X(m.x + m.w / 2), my = Y(m.y + m.h / 2), fill = hi(m) ? COLORS.hiStroke : COLORS.text;
+        const my = Y(m.y + m.h / 2), fill = hi(m) ? COLORS.hiStroke : COLORS.text;
+        const gap = (side) => {
+            const others = verticals.filter(o => o !== m && overlapsY(o, m) && (side < 0 ? o.x + o.w <= m.x + 0.01 : o.x >= m.x + m.w - 0.01));
+            const near = side < 0 ? Math.max(-Infinity, ...others.map(o => o.x + o.w)) : Math.min(Infinity, ...others.map(o => o.x));
+            return Number.isFinite(near) ? Math.abs(side < 0 ? m.x - near : near - (m.x + m.w)) * s : Infinity;
+        };
+        const right = gap(-1) < 0.08 && gap(1) > gap(-1);
         if (level) {
-            out.push(rect(mx - 0.1, my - 0.07, 0.2, 0.1, { fill: 'white', stroke: 'none', width: 0 }));
-            out.push(text(mx, my, m.mark, { size: 0.075, anchor: 'middle', weight: 'bold', fill }));
+            out.push(text(right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025, my + 0.025, m.mark, { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
         } else {
-            out.push(rect(mx - 0.055, my - 0.1, 0.11, 0.2, { fill: 'white', stroke: 'none', width: 0 }));
-            out.push(text(mx + 0.03, my, m.mark, { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
+            // Rotated a quarter turn, the letters stand to the left of the baseline.
+            out.push(text(right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, my, m.mark, { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
         }
     }
-    // Horizontals: centered on the member, above top and head tracks, below bottom and sill tracks.
+    // Horizontals: centered on the member (hTagY: outside the panel for its tracks, inside the opening for heads and sills).
     for (const m of members.filter(m => m.orient === 'h')) {
-        const above = m.role === 'top track' || m.role === 'head track';
-        out.push(text(X(m.x + m.w / 2), above ? Y(m.y + m.h) - 0.035 : Y(m.y) + 0.095, m.mark,
-            { size: 0.075, anchor: 'middle', weight: 'bold', fill: hi(m) ? COLORS.hiStroke : COLORS.trackStroke }));
+        out.push(text(X(m.x + m.w / 2), hTagY(m), m.mark, { size: 0.075, anchor: 'middle', weight: 'bold', fill: hi(m) ? COLORS.hiStroke : COLORS.trackStroke }));
     }
     // Panel mark, above mid-height so it does not cover the stud tags there
     const pmX = X(L / 2), pmY = Y(HT * 0.72);
@@ -258,10 +327,20 @@ export function sheetOps(layout, info) {
     const topStrip = elevTop - 0.75, botStrip = elevBottom + 0.4;
     const trackLeg = members.find(m => m.role === 'top track')?.h ?? 1.25;
     const studsAt = (atTop) => members.filter(m => m.orient === 'v' && (atTop ? m.y + m.h >= HT - trackLeg - 0.01 : m.y <= trackLeg + 0.01));
+    // A C stud in plan: web across the track, flanges along its two faces, lips turned in. The web goes on the side of
+    // the opening or panel end the stud closes (jamb and end studs), else on its left face.
+    const studSymbol = (m, y0) => {
+        const fw = Math.max(m.w * s, 0.035), inset = stripH * 0.12, top = y0 + inset, bot = y0 + stripH - inset;
+        const lip = Math.min(0.03, (bot - top) * 0.22);
+        const webRight = m.x + m.w >= L - 0.5 || openings.some(o => Math.abs(o.left - (m.x + m.w)) < 0.5);
+        const xw = webRight ? X(m.x + m.w) : X(m.x), xf = webRight ? xw - fw : xw + fw;
+        const st = { stroke: COLORS.studStroke, width: 0.006 };
+        return [line(xw, top, xw, bot, st), line(xw, top, xf, top, st), line(xw, bot, xf, bot, st), line(xf, top, xf, top + lip, st), line(xf, bot, xf, bot - lip, st)];
+    };
     const plan = (y0, atTop) => {
         const segs = atTop ? members.filter(m => m.role === 'top track' && m.y + m.h >= HT - 0.01) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
         for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke }));
-        for (const m of studsAt(atTop)) out.push(rect(X(m.x), y0 + stripH * 0.1, Math.max(m.w * s, 0.01), stripH * 0.8, { fill: 'white', stroke: COLORS.studStroke, width: 0.005 }));
+        for (const m of studsAt(atTop)) out.push(...studSymbol(m, y0));
         out.push(text(X(0) - 0.08, y0 + stripH / 2 + 0.03, atTop ? 'TOP' : 'BTM', { size: 0.075, anchor: 'end', weight: 'bold' }));
         // Ordinates: both wall ends, the studs (left face), and on the bottom plan the opening edges. Where two would
         // overlap, the wall end wins, then the opening edge, then the stud.

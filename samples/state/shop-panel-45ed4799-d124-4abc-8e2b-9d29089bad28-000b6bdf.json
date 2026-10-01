@@ -3,22 +3,22 @@
   "mark": "P06-5337",
   "dbId": 5337,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-27T03:50:58.002Z",
+  "savedAt": "2026-10-01T17:09:01.117Z",
   "frame": {
-    "lengthIn": 413.09356753911993,
-    "heightIn": 123.40845571137228,
+    "lengthIn": 412.95462946320856,
+    "heightIn": 123.36694905347426,
     "openings": [
       {
-        "left": 172.7718379959212,
-        "right": 210.4438928972875,
+        "left": 172.71372867486394,
+        "right": 210.37311312276665,
         "bottom": 0,
-        "top": 85.736400810006
+        "top": 85.70756460557159
       },
       {
-        "left": 244.21883867092623,
-        "right": 283.18992994820167,
+        "left": 244.13669917950693,
+        "right": 283.0946830911304,
         "bottom": 0,
-        "top": 85.736400810006
+        "top": 85.70756460557159
       }
     ],
     "studIn": 3.625,
@@ -36,7 +36,7 @@
     "assembly": "3 5/8\" stud, 2 layers each side",
     "board": "2 + 2 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-27",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -54,7 +54,7 @@
       ],
       [
         "HEAD OF WALL",
-        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+        "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\" (beside side A); 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
       ],
       [
         "BASE OF WALL",
@@ -66,13 +66,388 @@
       ],
       [
         "RIGHT END",
-        "Meets Interior - 8 1/2\" Partition (2-hr)"
+        "Meets Interior - 6 1/8\" Partition (2-hr), Interior - 8 1/2\" Partition (2-hr)"
       ],
       [
         "WITHIN 1 FT",
-        "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (3): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space"
+        "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (4): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space, Finish Floor - Laminate; Lighting Fixtures (1): 4\" Trimmed Downlight"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L2",
+          "y": 0
+        },
+        {
+          "name": "L3",
+          "y": 129
+        }
+      ],
+      "context": [
+        {
+          "name": "Finish Floor - Polished Concrete (Brown)",
+          "category": "Floors",
+          "rects": [
+            [
+              4.588384771813428,
+              123.36694905347426,
+              114.7096192953357,
+              124.36694905347426
+            ],
+            [
+              229.4192385906714,
+              123.36694905347426,
+              403.77785991958166,
+              124.36694905347426
+            ],
+            [
+              4.588384771813428,
+              124.36694905347426,
+              114.7096192953357,
+              125.36694905347426
+            ],
+            [
+              229.4192385906714,
+              124.36694905347426,
+              403.77785991958166,
+              125.36694905347426
+            ],
+            [
+              4.588384771813428,
+              125.36694905347426,
+              114.7096192953357,
+              126.36694905347426
+            ],
+            [
+              229.4192385906714,
+              125.36694905347426,
+              403.77785991958166,
+              126.36694905347426
+            ],
+            [
+              4.588384771813428,
+              126.36694905347426,
+              114.7096192953357,
+              127.36694905347426
+            ],
+            [
+              229.4192385906714,
+              126.36694905347426,
+              403.77785991958166,
+              127.36694905347426
+            ],
+            [
+              4.588384771813428,
+              127.36694905347426,
+              114.7096192953357,
+              128.36694905347426
+            ],
+            [
+              229.4192385906714,
+              127.36694905347426,
+              403.77785991958166,
+              128.36694905347426
+            ],
+            [
+              4.588384771813428,
+              128.36694905347426,
+              114.7096192953357,
+              129.36694905347426
+            ],
+            [
+              229.4192385906714,
+              128.36694905347426,
+              403.77785991958166,
+              129.36694905347426
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Laminate",
+          "category": "Floors",
+          "rects": [
+            [
+              114.7096192953357,
+              123.36694905347426,
+              229.4192385906714,
+              124.36694905347426
+            ],
+            [
+              114.7096192953357,
+              124.36694905347426,
+              229.4192385906714,
+              125.36694905347426
+            ],
+            [
+              114.7096192953357,
+              125.36694905347426,
+              229.4192385906714,
+              126.36694905347426
+            ],
+            [
+              114.7096192953357,
+              126.36694905347426,
+              229.4192385906714,
+              127.36694905347426
+            ],
+            [
+              114.7096192953357,
+              127.36694905347426,
+              229.4192385906714,
+              128.36694905347426
+            ],
+            [
+              114.7096192953357,
+              128.36694905347426,
+              229.4192385906714,
+              129.36694905347426
+            ]
+          ]
+        },
+        {
+          "name": "Interior - 6 1/8\" Partition (2-hr)",
+          "category": "Walls",
+          "rects": [
+            [
+              0,
+              129.36694905347426,
+              165.1818517852834,
+              130.36694905347426
+            ],
+            [
+              201.88892995979083,
+              129.36694905347426,
+              408.3662446913951,
+              130.36694905347426
+            ],
+            [
+              0,
+              130.36694905347426,
+              165.1818517852834,
+              131.36694905347426
+            ],
+            [
+              201.88892995979083,
+              130.36694905347426,
+              408.3662446913951,
+              131.36694905347426
+            ],
+            [
+              0,
+              131.36694905347426,
+              165.1818517852834,
+              132.36694905347426
+            ],
+            [
+              201.88892995979083,
+              131.36694905347426,
+              408.3662446913951,
+              132.36694905347426
+            ],
+            [
+              0,
+              132.36694905347426,
+              165.1818517852834,
+              133.36694905347426
+            ],
+            [
+              201.88892995979083,
+              132.36694905347426,
+              408.3662446913951,
+              133.36694905347426
+            ],
+            [
+              0,
+              133.36694905347426,
+              165.1818517852834,
+              134.36694905347426
+            ],
+            [
+              201.88892995979083,
+              133.36694905347426,
+              408.3662446913951,
+              134.36694905347426
+            ],
+            [
+              0,
+              134.36694905347426,
+              165.1818517852834,
+              135.36694905347426
+            ],
+            [
+              201.88892995979083,
+              134.36694905347426,
+              408.3662446913951,
+              135.36694905347426
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Polished Concrete (Brown)",
+          "category": "Floors",
+          "rects": [
+            [
+              0,
+              -1,
+              114.7096192953357,
+              0
+            ],
+            [
+              238.59600813429824,
+              -1,
+              412.9546294632085,
+              0
+            ],
+            [
+              0,
+              -2,
+              114.7096192953357,
+              -1
+            ],
+            [
+              238.59600813429824,
+              -2,
+              412.9546294632085,
+              -1
+            ],
+            [
+              0,
+              -3,
+              114.7096192953357,
+              -2
+            ],
+            [
+              238.59600813429824,
+              -3,
+              412.9546294632085,
+              -2
+            ],
+            [
+              0,
+              -4,
+              114.7096192953357,
+              -3
+            ],
+            [
+              238.59600813429824,
+              -4,
+              412.9546294632085,
+              -3
+            ],
+            [
+              0,
+              -5,
+              114.7096192953357,
+              -4
+            ],
+            [
+              238.59600813429824,
+              -5,
+              412.9546294632085,
+              -4
+            ],
+            [
+              0,
+              -6,
+              114.7096192953357,
+              -5
+            ],
+            [
+              238.59600813429824,
+              -6,
+              412.9546294632085,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Laminate",
+          "category": "Floors",
+          "rects": [
+            [
+              114.7096192953357,
+              -1,
+              229.4192385906714,
+              0
+            ],
+            [
+              114.7096192953357,
+              -2,
+              229.4192385906714,
+              -1
+            ],
+            [
+              114.7096192953357,
+              -3,
+              229.4192385906714,
+              -2
+            ],
+            [
+              114.7096192953357,
+              -4,
+              229.4192385906714,
+              -3
+            ],
+            [
+              114.7096192953357,
+              -5,
+              229.4192385906714,
+              -4
+            ],
+            [
+              114.7096192953357,
+              -6,
+              229.4192385906714,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Party - 6 1/8\" (2-hr)",
+          "category": "Walls",
+          "rects": [
+            [
+              229.4192385906714,
+              -1,
+              238.59600813429824,
+              0
+            ],
+            [
+              229.4192385906714,
+              -2,
+              238.59600813429824,
+              -1
+            ],
+            [
+              229.4192385906714,
+              -3,
+              238.59600813429824,
+              -2
+            ],
+            [
+              229.4192385906714,
+              -4,
+              238.59600813429824,
+              -3
+            ],
+            [
+              229.4192385906714,
+              -5,
+              238.59600813429824,
+              -4
+            ],
+            [
+              229.4192385906714,
+              -6,
+              238.59600813429824,
+              -5
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -89,7 +464,7 @@
     ],
     [
       "HEAD OF WALL",
-      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\"; 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
+      "FULL HEIGHT TO SLAB ABOVE. Top of wall at the underside of floor \"Finish Floor - Polished Concrete (Brown)\" (beside side A); 10'-3\" base to slab. Deflection head (slip track) per framing engineer. Revit: Up to level: L3, offset -0'-6\"."
     ],
     [
       "BASE OF WALL",
@@ -101,14 +476,15 @@
     ],
     [
       "RIGHT END",
-      "Meets Interior - 8 1/2\" Partition (2-hr)"
+      "Meets Interior - 6 1/8\" Partition (2-hr), Interior - 8 1/2\" Partition (2-hr)"
     ],
     [
       "WITHIN 1 FT",
-      "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (3): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space"
+      "Walls (7): Interior - 4 7/8\" Partition (NR), Chase - GWB & Metal Stud 4 1/4\", Party - 6 1/8\" (2-hr), ...; Floors (4): Finish Floor - Polished Concrete (Brown), Cores - Mechanical Space, Finish Floor - Laminate; Lighting Fixtures (1): 4\" Trimmed Downlight"
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }

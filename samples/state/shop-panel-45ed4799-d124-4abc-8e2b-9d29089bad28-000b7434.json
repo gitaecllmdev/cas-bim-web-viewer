@@ -3,16 +3,16 @@
   "mark": "P06-5352",
   "dbId": 5352,
   "urn": "dXJuOmFkc2sub2JqZWN0czpvcy5vYmplY3Q6bnBkemdlcXpibTdidmM0Mmxzc2gycjIyYW5vM216YXZ4dmN4MHdqOXl5aXdsY2d1LWRyeXdhbGwtZGVtb3MvU25vd2Rvbi1Ub3dlcnMtU2FtcGxlLUFyY2hpdGVjdHVyYWwucnZ0",
-  "savedAt": "2026-09-26T22:31:32.723Z",
+  "savedAt": "2026-10-01T17:09:29.458Z",
   "frame": {
-    "lengthIn": 339.81736656443235,
-    "heightIn": 132.50740079870948,
+    "lengthIn": 339.7033617894199,
+    "heightIn": 133.5311956719418,
     "openings": [
       {
-        "left": 219.06465454625356,
-        "right": 257.53454510071765,
+        "left": 218.99116090198453,
+        "right": 257.44814525550373,
         "bottom": 0,
-        "top": 85.48864567658677
+        "top": 85.45996523004274
       }
     ],
     "studIn": 3.625,
@@ -20,7 +20,9 @@
     "spacingIn": 16,
     "mils": 43,
     "member": "stud",
-    "notes": []
+    "notes": [
+      "Gap across the wall from 11'-0 1/2\" to 11'-1 1/2\" (beam, slab or stepped top?): not framed as an opening. Verify the top of wall."
+    ]
   },
   "info": {
     "mark": "P06-5352",
@@ -30,7 +32,7 @@
     "assembly": "3 5/8\" stud, 2 layers each side",
     "board": "2 + 2 layers, 5/8\" Type X",
     "fireRating": "2 HR",
-    "date": "2026-09-26",
+    "date": "2026-10-01",
     "drawnBy": "CAS BIM Web Viewer",
     "sourceNote": "Revit model via APS Viewer; framing laid out from the wall geometry",
     "conditions": [
@@ -48,7 +50,7 @@
       ],
       [
         "HEAD OF WALL",
-        "PARTIAL HEIGHT. Top of wall 1'-9 1/2\" below floor \"Finish Floor - Polished Concrete (Brown)\" (12'-10\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -2'-3 1/2\"."
+        "PARTIAL HEIGHT. Top of wall 1'-8 1/2\" below floor \"Finish Floor - Polished Concrete (Brown)\" (12'-10\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -2'-3 1/2\"."
       ],
       [
         "BASE OF WALL",
@@ -64,9 +66,182 @@
       ],
       [
         "WITHIN 1 FT",
-        "Walls (2): Interior - 5 1/2\" Partition (1-hr Smoke); Floors (1): Finish Floor - Polished Concrete (Brown)"
+        "Floors (2): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown); Walls (1): Interior - 5 1/2\" Partition (1-hr Smoke)"
       ]
-    ]
+    ],
+    "sheet": "auto",
+    "elev": {
+      "levels": [
+        {
+          "name": "L3",
+          "y": 0
+        }
+      ],
+      "context": [
+        {
+          "name": "Soffit - Beam Wrap (Both Sides)",
+          "category": "Walls",
+          "rects": [
+            [
+              7.548963595320442,
+              133.5311956719418,
+              332.1543981940995,
+              134.5311956719418
+            ],
+            [
+              7.548963595320442,
+              134.5311956719418,
+              332.1543981940995,
+              135.5311956719418
+            ],
+            [
+              7.548963595320442,
+              135.5311956719418,
+              332.1543981940995,
+              136.5311956719418
+            ],
+            [
+              7.548963595320442,
+              136.5311956719418,
+              332.1543981940995,
+              137.5311956719418
+            ],
+            [
+              7.548963595320442,
+              137.5311956719418,
+              332.1543981940995,
+              138.5311956719418
+            ],
+            [
+              7.548963595320442,
+              138.5311956719418,
+              332.1543981940995,
+              139.5311956719418
+            ],
+            [
+              7.548963595320442,
+              139.5311956719418,
+              332.1543981940995,
+              140.5311956719418
+            ],
+            [
+              7.548963595320442,
+              140.5311956719418,
+              332.1543981940995,
+              141.5311956719418
+            ],
+            [
+              7.548963595320442,
+              141.5311956719418,
+              332.1543981940995,
+              142.5311956719418
+            ],
+            [
+              7.548963595320442,
+              142.5311956719418,
+              332.1543981940995,
+              143.5311956719418
+            ],
+            [
+              7.548963595320442,
+              143.5311956719418,
+              332.1543981940995,
+              144.5311956719418
+            ],
+            [
+              7.548963595320442,
+              144.5311956719418,
+              332.1543981940995,
+              145.5311956719418
+            ]
+          ]
+        },
+        {
+          "name": "Finish Floor - Laminate",
+          "category": "Floors",
+          "rects": [
+            [
+              0,
+              -1,
+              339.7033617894199,
+              0
+            ],
+            [
+              0,
+              -2,
+              339.7033617894199,
+              -1
+            ],
+            [
+              0,
+              -3,
+              339.7033617894199,
+              -2
+            ],
+            [
+              0,
+              -4,
+              339.7033617894199,
+              -3
+            ],
+            [
+              0,
+              -5,
+              339.7033617894199,
+              -4
+            ],
+            [
+              0,
+              -6,
+              339.7033617894199,
+              -5
+            ]
+          ]
+        },
+        {
+          "name": "Soffit - Beam Wrap (Both Sides)",
+          "category": "Walls",
+          "rects": [
+            [
+              7.548963595320442,
+              -7,
+              332.1543981940995,
+              -6
+            ],
+            [
+              7.548963595320442,
+              -8,
+              332.1543981940995,
+              -7
+            ],
+            [
+              7.548963595320442,
+              -9,
+              332.1543981940995,
+              -8
+            ],
+            [
+              7.548963595320442,
+              -10,
+              332.1543981940995,
+              -9
+            ],
+            [
+              7.548963595320442,
+              -11,
+              332.1543981940995,
+              -10
+            ],
+            [
+              7.548963595320442,
+              -12,
+              332.1543981940995,
+              -11
+            ]
+          ]
+        }
+      ]
+    }
   },
   "conditions": [
     [
@@ -83,7 +258,7 @@
     ],
     [
       "HEAD OF WALL",
-      "PARTIAL HEIGHT. Top of wall 1'-9 1/2\" below floor \"Finish Floor - Polished Concrete (Brown)\" (12'-10\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -2'-3 1/2\"."
+      "PARTIAL HEIGHT. Top of wall 1'-8 1/2\" below floor \"Finish Floor - Polished Concrete (Brown)\" (12'-10\" base to slab); wall height per the modeled wall. Brace the top track to structure per framing engineer. Revit: Up to level: L4, offset -2'-3 1/2\"."
     ],
     [
       "BASE OF WALL",
@@ -99,10 +274,11 @@
     ],
     [
       "WITHIN 1 FT",
-      "Walls (2): Interior - 5 1/2\" Partition (1-hr Smoke); Floors (1): Finish Floor - Polished Concrete (Brown)"
+      "Floors (2): Finish Floor - Laminate, Finish Floor - Polished Concrete (Brown); Walls (1): Interior - 5 1/2\" Partition (1-hr Smoke)"
     ]
   ],
   "view": {
-    "flip": false
+    "flip": false,
+    "sheet": "auto"
   }
 }
