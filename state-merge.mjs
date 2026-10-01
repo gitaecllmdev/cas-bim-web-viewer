@@ -8,7 +8,10 @@ const MERGED = {
     'shop-panel-index': 'panels',  // { panels: { <panel key>: { mark, level, ..., savedAt } } }
 };
 
-export const isMergedState = (name) => Object.prototype.hasOwnProperty.call(MERGED, name);
+// A model's own copy is '<name>-<model key>' (helpers.js stateFor): merged the same way as the plain name.
+const baseOf = (name) => (Object.prototype.hasOwnProperty.call(MERGED, name) ? name
+    : Object.keys(MERGED).find(k => name.startsWith(`${k}-`) && /^[a-z0-9]+$/.test(name.slice(k.length + 1))) ?? null);
+export const isMergedState = (name) => baseOf(name) !== null;
 
 const stamp = (entry) => Date.parse(entry?.at ?? entry?.savedAt ?? '') || 0;
 
@@ -22,7 +25,7 @@ function mergeEntries(published, local) {
 
 export function mergeState(name, published, local) {
     if (!isMergedState(name)) return local ?? published;
-    const key = MERGED[name];
+    const key = MERGED[baseOf(name)];
     if (key === null) return mergeEntries(published, local);
     return { ...(isObject(published) ? published : {}), ...(isObject(local) ? local : {}), [key]: mergeEntries(published?.[key], local?.[key]) };
 }
