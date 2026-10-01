@@ -13,6 +13,9 @@ import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, fi
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
 const PLAN_ISOLATED = '#1f3b57';    // isolated walls without a color of their own
+const PLAN_CONTEXT = 3;              // a picked wall on the plan: shown in a frame this many times its own,
+const PLAN_MIN_FRAME = 1 / 6;        // and at least this share of the sheet (a short wall still shows its rooms)
+const MODEL_CONTEXT = 2.5;           // in 3D: this many times its own frame
 
 export class Views {
     constructor(viewer3d) {
@@ -24,6 +27,9 @@ export class Views {
         this.level = null; // level object from getLevels(), or null for the whole building
         this.levels = [];
         this.wallsByLevel = new Map(); // level name -> wall dbIds (used to frame the 2D plan)
+        this.wallLevel = new Map(); // wall dbId -> level name
+        // One wall picked: zoom to it in 3D and on its floor's plan (Options > Navigate on the toolbar turns it off).
+        this.zoomPick = (() => { try { return localStorage.getItem('drywall-demos:zoom-pick') !== 'off'; } catch { return true; } })();
         this.sheets = []; // { node, folder, levelName }
         this.masters = {}; // level name -> master 2D view name (samples/level-views.json, then the user's ★ choices)
         this.extensions2d = new Map(); // extension id -> options, (re)loaded on the 2D viewer after each sheet
@@ -176,17 +182,70 @@ export class Views {
     // Selecting in one viewer selects the same dbIds in the other.
     syncSelection(viewer) {
         viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, () => {
+            // Swapping the plan's sheet clears its selection: that isn't the user's, so it isn't mirrored to 3D.
+            if (viewer === this.viewer2d && this.swappingSheet) return;
+            if (this.syncing || performance.now() < (this.quietUntil || 0)) return; // the plan's own highlight: not mirrored
             const other = viewer === this.viewer3d ? this.viewer2d : this.viewer3d;
-            if (this.syncing || !other?.model || performance.now() < (this.quietUntil || 0)) return; // the plan's own highlight: not mirrored
             const ids = viewer.getSelection();
-            const current = other.getSelection();
-            if (ids.length === current.length && ids.every(id => current.includes(id))) return;
-            this.syncing = true;
-            try {
-                if (ids.length) other.select(ids, other.model); else other.clearSelection();
-            } finally {
-                this.syncing = false;
+            const current = other?.model ? other.getSelection() : [];
+            if (other?.model && !(ids.length === current.length && ids.every(id => current.includes(id)))) {
+                this.syncing = true;
+                try {
+                    if (ids.length) other.select(ids, other.model); else other.clearSelection();
+                } finally {
+                    this.syncing = false;
+                }
             }
+            this.zoomToPick(ids);
+        });
+    }
+
+    // Fly to an object with room around it: fit it (immediately, to measure its frame), put the camera back before
+    // anything is drawn, then animate to a box `factor` times that frame (on a sheet, at least `minShare` of the
+    // sheet). Viewer3D fitToView / clientToWorld; Navigation getPosition / getTarget / getEyeVector / setView / fitBounds;
+    // Model getBoundingBox: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
+    frameWithContext(viewer, model, id, factor, minShare) {
+        const nav = viewer.navigation, from = nav.getPosition().clone(), to = nav.getTarget().clone();
+        viewer.fitToView([id], model, true);
+        const center = nav.getTarget().clone();
+        let half;
+        if (model.is2d()) {
+            const c = viewer.container, a = viewer.clientToWorld(0, 0, true), b = viewer.clientToWorld(c.clientWidth, c.clientHeight, true);
+            const sheet = model.getBoundingBox().getSize(new THREE.Vector3());
+            const w = a && b ? Math.abs(b.point.x - a.point.x) : sheet.x / 20, h = a && b ? Math.abs(b.point.y - a.point.y) : sheet.y / 20;
+            half = new THREE.Vector3(Math.max(w * factor, sheet.x * minShare) / 2, Math.max(h * factor, sheet.y * minShare) / 2, 1);
+        } else {
+            const r = nav.getEyeVector().length() * 0.5 * factor;
+            half = new THREE.Vector3(r, r, r);
+        }
+        nav.setView(from, to); // nothing has been drawn at the tight fit
+        nav.fitBounds(false, new THREE.Box3(center.clone().sub(half), center.clone().add(half)));
+    }
+
+    setZoomPick(on) {
+        this.zoomPick = on;
+        try { localStorage.setItem('drywall-demos:zoom-pick', on ? 'on' : 'off'); } catch { /* storage blocked */ }
+    }
+
+    // One wall picked (in either viewer, or by a demo): zoom to it in 3D, and on the plan of its floor (opened if another
+    // floor's is showing) with room around it to see where it is. Viewer3D fitToView, GEOMETRY_LOADED_EVENT;
+    // Navigation getPosition / getTarget / setView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    // and https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
+    async zoomToPick(ids) {
+        if (!this.zoomPick || this.applyingSheet || ids.length !== 1 || !this.wallLevel.has(ids[0])) return;
+        const id = ids[0], token = (this.pickToken = (this.pickToken || 0) + 1);
+        if (this.viewer3d.model) this.frameWithContext(this.viewer3d, this.viewer3d.model, id, MODEL_CONTEXT, 0);
+        if (!this.showing2d) return;
+        const plan = this.planFor(this.wallLevel.get(id));
+        if (plan && plan !== this.model2d?.getDocumentNode()) await this.openSheet(plan);
+        const viewer = this.viewer2d, model = this.model2d;
+        if (!model || token !== this.pickToken) return;
+        const zoom = () => { if (viewer.model === model && token === this.pickToken) this.frameWithContext(viewer, model, id, PLAN_CONTEXT, PLAN_MIN_FRAME); };
+        if (model.isLoadDone()) zoom();
+        else viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function once(ev) {
+            if (ev.model !== model) return;
+            viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, once);
+            zoom();
         });
     }
 
@@ -412,11 +471,14 @@ export class Views {
         const viewer = this.ensureViewer2d();
         this.setSheetStatus('Loading the plan…', 'loading');
         let model;
+        this.swappingSheet = true; // the old sheet's selection goes with it (see syncSelection)
         try {
             model = await viewer.loadDocumentNode(this.doc, node);
         } catch (err) {
             this.setSheetStatus(`The plan didn't load (${err?.message || err}). Pick it again to retry.`, 'error');
             throw err;
+        } finally {
+            this.swappingSheet = false;
         }
         for (const [id, options] of this.extensions2d) {
             if (!viewer.getExtension(id)) await viewer.loadExtension(id, options);
@@ -429,7 +491,12 @@ export class Views {
             this.applyColors(viewer, model); // with the isolated walls highlighted (no Viewer isolation on plans)
             if (this.hidden.length) viewer.hide(this.hidden, model);
             const selection = this.viewer3d.getSelection();
-            if (selection.length) viewer.select(selection, model);
+            this.applyingSheet = true; // re-selecting what 3D has selected is not a new pick (no zoomToPick)
+            try {
+                if (selection.length) viewer.select(selection, model);
+            } finally {
+                this.applyingSheet = false;
+            }
             this.frame2d();
         };
         apply();
@@ -460,10 +527,12 @@ export class Views {
         this.masters = { ...masterFile.masterViews, ...this.userMasters };
         this.levels = await getLevels(model3d, map).catch(() => []);
         this.wallsByLevel = new Map();
+        this.wallLevel = new Map();
         for (const r of await getBulkProperties(model3d, await findWalls(model3d, map), [map.level]).catch(() => [])) {
             const level = propValue(r, map.level);
             if (!this.wallsByLevel.has(level)) this.wallsByLevel.set(level, []);
             this.wallsByLevel.get(level).push(r.dbId);
+            this.wallLevel.set(r.dbId, level);
         }
         this.el.levels.innerHTML = '<option value="">All levels</option>' +
             this.levels.map(l => `<option value="${escapeHtml(l.name)}">${escapeHtml(l.name)}</option>`).join('');

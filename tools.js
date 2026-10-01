@@ -119,6 +119,7 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
             ] },
             { id: 'dw-nav', icon: 'dw-icon-nav', tip: 'Navigate: orbit tour, wheel direction, lens', items: [
                 { key: 'orbit', icon: 'dw-icon-orbit', tip: 'Orbit tour: turn around what you look at (click again to stop)', run: () => (this.orbitTimer ? this.stopOrbit() : this.orbit()), on: () => !!this.orbitTimer },
+                { key: 'zoompick', icon: 'dw-icon-zoompick', tip: 'Zoom to a picked wall, in 3D and on its plan', run: () => this.views.setZoomPick(!this.views.zoomPick), on: () => this.views.zoomPick },
                 { key: 'reverse', icon: 'dw-icon-reverse', tip: 'Reverse the mouse wheel zoom', run: () => { s.reverse = !s.reverse; v.setReverseZoomDirection(s.reverse); }, on: () => s.reverse },
                 ...[[30, 'Lens: 30° (telephoto)'], [45, 'Lens: 45° (normal)'], [70, 'Lens: 70° (wide)'], [100, 'Lens: 100° (very wide)']].map(([deg, tip]) =>
                     ({ key: `fov${deg}`, icon: `dw-icon-fov${deg}`, tip, run: () => { s.fov = deg; v.setFOV(deg); }, on: () => s.fov === deg })),

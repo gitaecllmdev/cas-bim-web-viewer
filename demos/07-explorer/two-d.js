@@ -83,12 +83,15 @@ export class TwoD {
         const sheet = this.views.planFor(o.level);
         if (sheet && sheet !== this.views.model2d?.getDocumentNode()) await this.views.openSheet(sheet);
         const model2d = this.views.model2d;
+        // A wall: views.zoomToPick frames it in 3D and on the plan when it is selected. Anything else: framed here the
+        // same way (views.frameWithContext), with room around it.
         const show = () => {
             this.views.select([o.dbId]); // mirrored to the plan (views.syncSelection)
-            if (model2d && this.views.model2d === model2d) viewer2d.fitToView([o.dbId], model2d);
+            if (this.views.zoomPick && this.views.wallLevel.has(o.dbId)) return;
+            this.views.frameWithContext(this.tour.viewer, this.tour.model, o.dbId, 2.5, 0);
+            if (model2d && this.views.model2d === model2d && model2d.isLoadDone()) this.views.frameWithContext(viewer2d, model2d, o.dbId, 3, 1 / 6);
         };
         show();
-        this.tour.viewer.fitToView([o.dbId], this.tour.model);
         // Once the plan's objects are all there, select and zoom it there too.
         if (model2d && !model2d.isLoadDone()) viewer2d.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function once(ev) {
             if (ev.model !== model2d) return;

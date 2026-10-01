@@ -15,7 +15,7 @@ import { CONFIG } from '../../config.js';
 import { loadPropertyMap, onModelReady, getBulkProperties, getLeafDbIds, propValue, escapeHtml, fetchJson } from '../../helpers.js';
 import { assemblyFor } from '../02-takeoff/calc.mjs';
 import { depthColor } from '../02-takeoff/colors.mjs';
-import { CAPABILITIES, HOW, allCapabilities, capabilityTable } from './capabilities.mjs';
+import { CAPABILITIES, HOW, SOURCES, allCapabilities, capabilityTable } from './capabilities.mjs';
 import { TwoD } from './two-d.js';
 import { Review } from './review.js';
 
@@ -581,12 +581,12 @@ class ExplorerExtension extends Autodesk.Viewing.Extension {
             if (i.how === 'demo') return `<a class="pg-btn ex-try" href="index.html?demo=${encodeURIComponent(i.demo)}&layout=split${location.hash}">${escapeHtml(demos[i.demo] || i.demo)} ›</a>`;
             return `<span class="ex-badge ${i.how}">${HOW[i.how]}</span>`;
         };
-        return `<section class="ex-sec ex-caps"><h3>What the APS Viewer can do</h3>
-            <p class="ex-note">Everything below is a documented part of the APS Viewer. "Try it" opens it in this demo; others are shown in another demo, always on, or possible but not built yet.</p>
+        return `<section class="ex-sec ex-caps"><h3>What APS can and can't do</h3>
+            <p class="ex-note">What APS can and can't do for these models, from the APS docs, the APS blog and Autodesk's samples (marked). "Try it" opens it in this demo; others are in another demo, always on, possible but not built yet, or not possible (with the other way to do it).</p>
             <div class="ex-row"><div class="tk-tabs">${[['', 'All'], ...Object.entries(HOW)].map(([k, l]) => `<button data-cap-filter="${k}" class="${k ? '' : 'active'}">${k ? `${l} (${counts[k]})` : 'All'}</button>`).join('')}</div>
                 <button class="pg-btn" data-cap-copy title="Copy the list as a table, to paste into Teams, Outlook or Excel">⧉ Copy as table</button><span class="muted" data-cap-copied></span></div>
             ${CAPABILITIES.map(g => `<div class="ex-cap-group"><h4>${escapeHtml(g.group)}</h4>${g.items.map(i => `<div class="ex-cap" data-how="${i.how}">
-                <div><b>${escapeHtml(i.name)}</b><p>${escapeHtml(i.what)}</p><small><a href="${escapeHtml(i.doc)}" target="_blank" rel="noopener">${escapeHtml(i.api)} ↗</a></small></div>
+                <div><b>${escapeHtml(i.name)}</b><p>${escapeHtml(i.what)}</p><small><a href="${escapeHtml(i.doc)}" target="_blank" rel="noopener">${escapeHtml(i.api)} ↗</a>${i.src ? ` <span class="ex-src">${SOURCES[i.src]}</span>` : ""}</small></div>
                 <div class="ex-cap-do">${status(i)}</div></div>`).join('')}</div>`).join('')}</section>`;
     }
 

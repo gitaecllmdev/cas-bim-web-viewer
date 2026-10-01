@@ -178,6 +178,7 @@ body {
 .dw-icon-face-iso2::before { content: "◪"; }
 .dw-icon-orbit::before { content: "⟳"; }
 .dw-icon-reverse::before { content: "⇅"; }
+.dw-icon-zoompick::before { content: "⊕"; }
 .dw-icon-edges::before { content: "⬚"; }
 .dw-icon-ao::before { content: "◑"; }
 .dw-icon-ground::before { content: "▁"; }
@@ -603,6 +604,8 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .ex .ex-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; }
 .ex .ex-badge.on { background: #e6f4ea; color: #1e6b34; }
 .ex .ex-badge.possible { background: #f1f3f5; color: #5a6b7b; }
+.ex .ex-badge.not { background: #fdecea; color: #a12a1f; }
+.ex .ex-src { margin-left: 4px; padding: 0 6px; border-radius: 999px; background: #fff4e0; color: #8a5a00; font-size: 10.5px; }
 
 /* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
 @media (max-width: 900px) {
