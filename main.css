@@ -508,6 +508,7 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 
 /* Demo 7: 3D Model Explorer */
 .demo-panel.ex { font-size: 13px; }
+.demo-panel.ex [hidden] { display: none !important; } /* rows and cards are flex: keep the hidden attribute working */
 .ex .ex-sec { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #e1e6eb; border-radius: 8px; background: #fbfcfd; }
 .ex .ex-sec h3 { margin: 0 0 8px; font-size: 13.5px; color: #1f3b57; display: flex; align-items: center; gap: 7px; }
 .ex .ex-sec h3 span { display: inline-grid; place-items: center; width: 20px; height: 20px; border-radius: 50%; background: #1f3b57; color: #fff; font-size: 11.5px; }
@@ -532,6 +533,34 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel.ex .pg-btn.active { background: #1f3b57; border-color: #1f3b57; color: #fff; }
 .ex .pg-check { display: inline-flex; align-items: center; gap: 4px; }
 .ex select { height: 27px; font-size: 12.5px; }
+.ex .ex-stats { margin: 0 0 8px; font-size: 12.5px; color: #5a6b7b; }
+.ex .ex-stats b { color: #1f3b57; }
+.demo-panel.ex .ex-tabs { display: flex; flex-wrap: wrap; margin: 0 0 4px; position: sticky; top: 0; z-index: 2; background: #fff; padding: 4px 0; }
+.demo-panel.ex .ex-tabs button { flex: 1 1 auto; font-weight: 600; padding: 0.4em 0.7em; }
+.demo-panel.ex .tk-tabs button.active { background: #1f3b57; border-color: #1f3b57; color: #fff; }
+.ex .ex-input { flex: 1 1 180px; min-width: 0; height: 27px; padding: 0 8px; font-size: 12.5px; border: 1px solid #c9d1da; border-radius: 5px; }
+.demo-panel.ex .pg-btn.primary { background: #1f3b57; border-color: #1f3b57; color: #fff; }
+.ex .ex-list { margin: 6px 0 0; padding: 0; list-style: none; max-height: 190px; overflow: auto; }
+.ex .ex-list li { display: flex; align-items: center; gap: 8px; padding: 3px 0; border-top: 1px solid #eef1f4; font-size: 12.5px; }
+.ex .ex-list li:first-child { border-top: none; }
+.ex .ex-list li .muted { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.demo-panel.ex .ex-link { border: none; background: none; padding: 0; color: #1f5fa8; font-weight: 600; cursor: pointer; text-align: left; }
+.demo-panel.ex .ex-x { border: none; background: none; color: #8a96a3; cursor: pointer; padding: 0 4px; }
+.demo-panel.ex .ex-x:hover { color: #c0392b; }
+.demo-panel.ex .ex-key { border: 1px solid transparent; background: none; border-radius: 4px; padding: 1px 4px; cursor: pointer; font-size: 12px; }
+.demo-panel.ex .ex-key:hover { border-color: #c9d1da; background: #fff; }
+@keyframes ex-flash { from { box-shadow: 0 0 0 3px #f5b041; } to { box-shadow: 0 0 0 3px transparent; } }
+.ex .ex-flash { animation: ex-flash 1.6s ease-out; }
+.ex .ex-cap-group h4 { margin: 12px 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: #5a6b7b; }
+.ex .ex-cap { display: flex; gap: 10px; align-items: center; justify-content: space-between; padding: 7px 0; border-top: 1px solid #eef1f4; }
+.ex .ex-cap b { font-size: 13px; color: #1d2b38; }
+.ex .ex-cap p { margin: 2px 0; font-size: 12.5px; color: #4b5866; line-height: 1.4; }
+.ex .ex-cap small a { color: #6b7a89; font-size: 11.5px; }
+.ex .ex-cap-do { flex: 0 0 auto; text-align: right; max-width: 45%; }
+.demo-panel.ex a.ex-try { text-decoration: none; color: #1f3b57; height: auto; min-height: 27px; white-space: normal; text-align: left; }
+.ex .ex-badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11.5px; white-space: nowrap; }
+.ex .ex-badge.on { background: #e6f4ea; color: #1e6b34; }
+.ex .ex-badge.possible { background: #f1f3f5; color: #5a6b7b; }
 
 /* Tablet / narrow screens: panel moves under the viewers (3D and 2D stay side by side) */
 @media (max-width: 900px) {
