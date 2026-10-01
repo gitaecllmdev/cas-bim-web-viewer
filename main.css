@@ -159,6 +159,37 @@ body {
 .dw-icon-top::before { content: "⊤"; }
 .dw-icon-building::before { content: "▦"; }
 /* "Options" menus (ComboButton fly-outs) and their choices */
+/* Each demo's own toolbar buttons (core/client/toolbar.js DemoToolbar) */
+/* a strip of the stage colors: "color the walls" */
+.dw-icon-colors::before { content: "" !important; width: 18px; height: 14px; margin: 7px auto; border-radius: 3px;
+    background: linear-gradient(90deg, #f2c14e 0 25%, #4e79a7 25% 50%, #b07aa1 50% 75%, #59a14f 75%); }
+.dw-icon-cm-actual::before { content: "■"; color: #4e79a7; }
+.dw-icon-cm-planned::before { content: "◷"; }
+.dw-icon-cm-compare::before { content: "±"; }
+.dw-icon-show-stage::before { content: "◎"; color: #4e79a7; }
+.dw-icon-set-stage::before { content: "✎"; }
+.dw-icon-stage-0::before { content: "□"; }
+.dw-icon-stage-1::before { content: "■"; color: #f2c14e; }
+.dw-icon-stage-2::before { content: "■"; color: #4e79a7; }
+.dw-icon-stage-3::before { content: "■"; color: #b07aa1; }
+.dw-icon-stage-4::before { content: "■"; color: #59a14f; }
+.dw-icon-stage-wip::before { content: "◧"; color: #f2c14e; }
+.dw-icon-mode-wallType::before { content: "▤"; color: #1f77b4; }
+.dw-icon-mode-fireRating::before { content: "▲"; color: #f78154; }
+.dw-icon-mode-off::before { content: "○"; }
+.dw-icon-iso-same::before { content: "◎"; color: #1f77b4; }
+.dw-icon-select-grow::before { content: "⊞"; }
+.dw-icon-sel-type::before { content: "T"; }
+.dw-icon-sel-typelevel::before { content: "T₁"; font-size: 14px !important; }
+.dw-icon-sel-level::before { content: "≡"; }
+.dw-icon-sel-clear::before { content: "✕"; }
+.dw-icon-pin-add::before { content: "📍"; font-size: 16px !important; }
+.dw-icon-pin-next::before { content: "⏭"; }
+.dw-icon-panel-prev::before { content: "◀"; }
+.dw-icon-panel-next::before { content: "▶"; }
+.dw-icon-panel-face::before { content: "▭"; }
+.dw-icon-panel-context::before { content: "⧈"; }
+.dw-icon-panel-flip::before { content: "⇄"; }
 /* the current choices in an Options menu (core/client/tools.js) */
 .adsk-button.dw-on { background: rgba(31, 111, 209, 0.16); box-shadow: inset 0 -3px 0 #1f6fd1; }
 .dw-icon-views::before { content: "⬒"; }

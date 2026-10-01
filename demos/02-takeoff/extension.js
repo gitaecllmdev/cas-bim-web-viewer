@@ -19,6 +19,7 @@ import { colorMap, NOT_OURS, NEEDS_REVIEW } from './colors.mjs';
 import { fmtFtIn } from '../common/framing.mjs';
 import { loadScans, scanWalls } from '../common/wallscan.js';
 import { CONFIG } from '../../config.js';
+import { DemoToolbar } from '../../toolbar.js';
 
 const EXTENSION_ID = 'Drywall.Takeoff';
 const STATE_NAME = 'takeoff';
@@ -121,6 +122,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
 
     unload() {
         this.stops.forEach(stop => stop());
+        this.bar?.remove();
         this.views.clearColors();
         this.views.isolate(null, { fit: false });
         this.panel.classList.remove('wide');
@@ -359,6 +361,33 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             const rows = [...this.panel.querySelectorAll('tr.picked')], row = rows.find(r => r.classList.contains('tk-i')) || rows[rows.length - 1];
             if (row) { const left = this.panel.scrollLeft; row.scrollIntoView({ block: 'center' }); this.panel.scrollLeft = left; }
         }
+    }
+
+    // --- The 3D toolbar: grow the selection from a picked wall (its rows are marked in the list) --------------------
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    // Viewer3D select / clearSelection: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    onToolbarCreated() {
+        if (this.bar) return;
+        this.bar = new DemoToolbar(this.viewer, 'dw-takeoff', [
+            { key: 'select', icon: 'dw-icon-select-grow', tip: 'Select more walls like the picked one', items: [
+                { key: 'type', icon: 'dw-icon-sel-type', tip: 'Select every wall of the same type', run: () => this.selectLike({ type: true }) },
+                { key: 'typelevel', icon: 'dw-icon-sel-typelevel', tip: 'Select the walls of the same type on the same level', run: () => this.selectLike({ type: true, level: true }) },
+                { key: 'level', icon: 'dw-icon-sel-level', tip: 'Select every wall on the same level', run: () => this.selectLike({ level: true }) },
+                { key: 'clear', icon: 'dw-icon-sel-clear', tip: 'Clear the selection', run: () => this.viewer.clearSelection() },
+            ] },
+        ]);
+    }
+
+    // Walls like the picked ones (same type and/or level; the header's level when nothing is picked), selected in 3D and
+    // on the plan: their rows are marked in the list (onPick).
+    selectLike({ type = false, level = false }) {
+        if (!this.walls) return;
+        const picked = [...this.picked].map(id => this.wallById.get(id)).filter(Boolean);
+        const levels = new Set(picked.length ? picked.map(w => w.level) : this.views.level ? [this.views.level.name] : []);
+        if ((type && !picked.length) || (level && !levels.size)) return;
+        const types = new Set(picked.map(w => w.wallType));
+        const ids = this.walls.filter(w => (!type || types.has(w.wallType)) && (!level || levels.has(w.level))).map(w => w.dbId);
+        if (ids.length) this.views.select(ids);
     }
 
     // --- Plan to list: a wall picked on the plan or in 3D is marked in the list (QC from the drawing) ---------------

@@ -17,6 +17,8 @@
 // Model (getBoundingBox): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // ZoomWindow (adds "zoom window" to the toolbar's zoom button): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/ZoomWindow/
 
+import { toolbarButton, toolbarMenu } from './toolbar.js';
+
 const EXTENSION_ID = 'Drywall.Tools';
 // The viewer's own tool buttons a demo can do without (each from its extension; the reference lists them all:
 // https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/).
@@ -90,7 +92,7 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
         const shown = wanted.map(key => tools.find(t => t[0] === key)).filter(Boolean);
         this.group = new Autodesk.Viewing.UI.ControlGroup(`dw-tools-${suffix}`);
         for (const [id, tip, action] of shown) {
-            const button = this.button(`dw-${id}-${suffix}`, `dw-icon-${id === 'zoompick' ? 'zoompick' : id}`, tip, action);
+            const button = toolbarButton(`dw-${id}-${suffix}`, `dw-icon-${id === 'zoompick' ? 'zoompick' : id}`, tip, action);
             if (id === 'xray' || (id === 'zoompick' && this.views.zoomPick)) button.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
             this.group.addControl(button);
         }
@@ -100,44 +102,9 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
 
         this.optionsGroup = new Autodesk.Viewing.UI.ControlGroup(`dw-options-${suffix}`);
         for (const menu of is3d ? this.menus3d() : this.menus2d()) {
-            this.optionsGroup.addControl(menu.items ? this.menu(`${menu.id}-${suffix}`, menu) : this.button(`${menu.id}-${suffix}`, menu.icon, menu.tip, menu.run));
+            this.optionsGroup.addControl(menu.items ? toolbarMenu(`${menu.id}-${suffix}`, menu).control : toolbarButton(`${menu.id}-${suffix}`, menu.icon, menu.tip, menu.run));
         }
         toolbar.addControl(this.optionsGroup);
-    }
-
-    button(id, icon, tip, action) {
-        const button = new Autodesk.Viewing.UI.Button(id);
-        button.setIcon(icon);
-        button.setToolTip(tip);
-        button.onClick = () => action(button);
-        return button;
-    }
-
-    // A fly-out menu. Each item: { key, icon, tip, run(), on() } where on() says whether it is the current choice (or
-    // switched on); after a click the menu keeps its own icon (saveAsDefault / restoreDefault) and the choices are re-marked.
-    menu(id, { icon, tip, items }) {
-        const combo = new Autodesk.Viewing.UI.ComboButton(id);
-        combo.setIcon(icon);
-        combo.setToolTip(tip);
-        const buttons = items.map(item => {
-            const b = new Autodesk.Viewing.UI.Button(`${id}-${item.key}`);
-            b.setIcon(item.icon);
-            b.setToolTip(item.tip);
-            b.onClick = () => {
-                item.run();
-                mark();
-                combo.restoreDefault();
-            };
-            combo.addControl(b);
-            return [b, item];
-        });
-        // The current choices get a mark of their own (dw-on): the fly-out resets its buttons' states, and an active
-        // button would become the menu's icon (the toolbar's "last used tool").
-        const mark = () => buttons.forEach(([b, item]) => (item.on?.() ? b.addClass('dw-on') : b.removeClass('dw-on')));
-        combo.saveAsDefault();
-        mark();
-        combo.restoreDefault();
-        return combo;
     }
 
     menus3d() {

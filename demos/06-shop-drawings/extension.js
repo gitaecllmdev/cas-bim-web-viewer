@@ -22,6 +22,7 @@ import { roomsBeside, probeSlabs, probeNearby, contextBox, wallPoint, wallSize }
 import { headOfWall, baseOfWall, summarizeNearby, conditionLines } from './conditions.mjs';
 import { CONFIG } from '../../config.js';
 import { INDEX_STATE, indexEntry } from './panels.mjs';
+import { DemoToolbar } from '../../toolbar.js';
 
 const EXTENSION_ID = 'Drywall.ShopDrawings';
 const STATE_NAME = 'shop-drawings';
@@ -46,6 +47,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         this.onCamera = () => { if (!this.drawPending) { this.drawPending = true; requestAnimationFrame(() => { this.drawPending = false; this.drawOverlay(); }); } };
         this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
         this.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.onCamera);
+        this.plainBackdrop();
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', () => { if (this.walls && !this.busy) this.render(); }),
@@ -55,6 +57,8 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     unload() {
         this.stops.forEach(stop => stop());
+        this.bar?.remove();
+        this.viewer.setGhosting(true);
         this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
         this.viewer.removeEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.onCamera);
         this.clearContext();
@@ -219,6 +223,28 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         return this.isFlipped(c) ? flipLayout(c.layout) : c.layout;
     }
 
+    // The 3D toolbar: walk through the walls, look at the picked one square on, its surroundings, the other side.
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    onToolbarCreated() {
+        if (this.bar) return;
+        this.bar = new DemoToolbar(this.viewer, 'dw-shop', [
+            { key: 'prev', icon: 'dw-icon-panel-prev', tip: 'Previous wall', run: () => this.step(-1) },
+            { key: 'next', icon: 'dw-icon-panel-next', tip: 'Next wall', run: () => this.step(1) },
+            { key: 'face', icon: 'dw-icon-panel-face', tip: 'Look at the wall square on (as drawn)', run: () => { if (this.current?.geom) { this.setContext(false); this.elevationCamera(); } } },
+            { key: 'context', icon: 'dw-icon-panel-context', tip: 'Show what is around the wall (rooms, slabs, walls it meets)', run: () => this.setContext(!this.context), on: () => !!this.context },
+            { key: 'flip', icon: 'dw-icon-panel-flip', tip: 'Draw the panel from the other side', run: () => this.setFlip(!this.isFlipped()), on: () => !!this.current && this.isFlipped() },
+        ]);
+    }
+
+    // The panel on a clean white page: the rest of the model hidden, not ghosted (isolate without ghosting), and a
+    // plain background instead of the lighting environment's. Viewer3D setGhosting, setEnvMapBackground,
+    // setBackgroundColor: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    plainBackdrop() {
+        this.viewer.setGhosting(false);
+        this.viewer.setEnvMapBackground(false);
+        this.viewer.setBackgroundColor(255, 255, 255, 255, 255, 255);
+    }
+
     async setFlip(on) {
         const c = this.current;
         if (!c?.wall?.externalId) return;
@@ -228,6 +254,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         if (!this.contextShown) await this.elevationCamera();
         this.drawOverlay();
         if (this.modal) this.refreshSheetPreview();
+        this.bar?.refresh();
     }
 
     // --- Pick a wall: scan its geometry, lay out the framing, show it in elevation ------------------------------
@@ -246,6 +273,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         try {
             await ensure3dShown(this.viewer, this.views); // picked on the plan with the 2D-only layout: bring the 3D view back
             const geom = await this.scan(dbId);
+            this.plainBackdrop(); // the scan puts ghosting back on
             this.current = { dbId, wall, geom, mark: `${wall.typeMark}-${dbId}` };
             this.highlight = null;
             this.relayout(false);
@@ -440,6 +468,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         }
         this.render();
         this.drawOverlay();
+        this.bar?.refresh();
     }
 
     // The document's other 3D viewables, loaded once next to the walls with the same global offset so they line up.

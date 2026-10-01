@@ -15,6 +15,7 @@ import {
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
+import { DemoToolbar } from '../../toolbar.js';
 
 const EXTENSION_ID = 'Drywall.Progress';
 // Saved per model: 'progress' / 'schedule' for the sample model (Snowdon, the one with a sample schedule in
@@ -83,11 +84,71 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.stopPlay();
         this.resizer.disconnect();
         this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
+        this.bar?.remove();
         this.views.clearColors();
-        if (this.isolatedBySchedule) this.views.showAll();
+        if (this.isolatedBySchedule || this.isolatedStage !== undefined) this.views.showAll();
         this.panel.classList.remove('wide', 'xwide');
         this.panel.innerHTML = '';
         return true;
+    }
+
+    // --- The 3D toolbar: how the walls are colored, show only a stage, set the stage of the picked walls ------------
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    onToolbarCreated() {
+        if (this.bar) return;
+        const stage = (s, i) => ({ key: `s${i}`, icon: `dw-icon-stage-${i}`, name: s.name });
+        this.bar = new DemoToolbar(this.viewer, 'dw-progress', [
+            { key: 'colors', icon: 'dw-icon-colors', tip: 'Color the walls: as installed, as planned on a date (4D), or installed vs plan', items:
+                Object.entries(COLOR_MODES).map(([k, label]) => ({ key: k, icon: `dw-icon-cm-${k}`, tip: label.replace(/^Colors: /, 'Color: ') + (k === 'actual' ? '' : ' (with a schedule)'),
+                    run: () => this.setColorMode(k), on: () => this.colorMode === k })) },
+            { key: 'show', icon: 'dw-icon-show-stage', tip: 'Show only the walls at a stage', items: [
+                ...STAGES.map(stage).map(({ key, icon, name }) => ({ key, icon, tip: `Show only: ${name}`, run: () => this.isolateStage(name), on: () => this.isolatedStage === name })),
+                { key: 'wip', icon: 'dw-icon-stage-wip', tip: 'Show only: in progress (framed, boarded or taped)', run: () => this.isolateStage('wip'), on: () => this.isolatedStage === 'wip' },
+                { key: 'all', icon: 'dw-icon-showall', tip: 'Show all walls', run: () => this.isolateStage(null) },
+            ] },
+            { key: 'set', icon: 'dw-icon-set-stage', tip: 'Set the stage of the picked walls (pick them in 3D or on the plan, Ctrl+click for several)', items:
+                STAGES.map(stage).map(({ key, icon, name }) => ({ key, icon, tip: `Picked walls: ${name}`, run: () => this.setStageFromToolbar(name) })) },
+        ]);
+    }
+
+    setColorMode(mode) {
+        if (mode !== 'actual' && !this.schedule) {
+            this.message('Planned and installed-vs-plan colors come from a schedule: load the sample or upload one in the Gantt tab.', 'warn');
+            return;
+        }
+        this.colorMode = mode;
+        this.clearFocus();
+        this.refresh();
+        this.renderBody();
+        const select = this.panel.querySelector('[data-color-mode]');
+        if (select) select.value = mode;
+        this.bar?.refresh();
+    }
+
+    // Show only the walls at a stage ('wip': framed, boarded or taped; null: all walls again).
+    isolateStage(name) {
+        if (!this.walls) return;
+        this.isolatedStage = name;
+        if (!name) { this.views.showAll(); this.bar?.refresh(); return; }
+        const ids = this.walls.filter(w => (name === 'wip' ? [1, 2, 3].includes(this.stageIndex(w)) : this.stageOf(w) === name)).map(w => w.dbId);
+        if (!ids.length) {
+            this.message(`No walls are ${name === 'wip' ? 'in progress' : name.toLowerCase()} yet.`);
+            this.isolatedStage = null;
+            this.views.showAll();
+        } else {
+            this.views.isolate(ids);
+            this.message(`Showing ${ids.length.toLocaleString()} wall${ids.length === 1 ? '' : 's'}: ${name === 'wip' ? 'in progress' : name}.`);
+        }
+        this.bar?.refresh();
+    }
+
+    setStageFromToolbar(name) {
+        if (!this.selected.length) {
+            this.message('Pick the walls first, in 3D or on the plan (Ctrl+click for several), then set their stage.', 'warn');
+            return;
+        }
+        this.setStage(name);
+        this.message(`${this.selected.length.toLocaleString()} wall${this.selected.length === 1 ? '' : 's'} set to ${name}.`);
     }
 
     async init(model) {
@@ -364,7 +425,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             <button class="pg-btn" data-play title="Play the plan day by day">▶</button>
             <button class="pg-btn" data-cursor-dd title="Back to the schedule's data date">Data date</button>
             <span class="pg-legend" data-color-legend></span>`;
-        el.querySelector('[data-color-mode]').onchange = (e) => { this.colorMode = e.target.value; this.clearFocus(); this.refresh(); this.renderBody(); };
+        el.querySelector('[data-color-mode]').onchange = (e) => this.setColorMode(e.target.value);
         el.querySelector('[data-cursor]').oninput = (e) => this.setCursor(addDays(this.span[0], Number(e.target.value)));
         el.querySelector('[data-play]').onclick = () => (this.playTimer ? this.stopPlay() : this.play());
         el.querySelector('[data-cursor-dd]').onclick = () => this.setCursor(this.schedule.project.dataDate || localToday(), { move: true });

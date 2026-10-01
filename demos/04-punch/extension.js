@@ -9,6 +9,7 @@
 // Viewer3D (clientToWorld, hitTest, getState, restoreState, fitToView): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Navigation (setView, getTarget, setPivotPoint) for "Jump to 3D": https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
 import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, downloadCsv, escapeHtml, buildingCenter, stateFor } from '../../helpers.js';
+import { DemoToolbar } from '../../toolbar.js';
 
 const EXTENSION_ID = 'Drywall.Punch';
 const STATE_NAME = 'punch';
@@ -58,6 +59,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
     unload() {
         this.stops.forEach(stop => stop());
         this.setAdding(false);
+        this.bar?.remove();
         if (this.dataViz) this.viewer.removeEventListener(Autodesk.DataVisualization.Core.MOUSE_CLICK, this.onSprite3d);
         this.viewer2dClickBound?.removeEventListener('DATAVIZ_OBJECT_CLICK', this.onSprite2d);
         this.dataViz?.removeAllViewables();
@@ -173,6 +175,23 @@ class PunchExtension extends Autodesk.Viewing.Extension {
         if ($('[data-markup-cancel]')) $('[data-markup-cancel]').onclick = () => this.finishMarkup(false);
     }
 
+    // --- The 3D toolbar: add a pin, go to the next open item ------------------------------------------------------
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    onToolbarCreated() {
+        if (this.bar) return;
+        this.bar = new DemoToolbar(this.viewer, 'dw-punch', [
+            { key: 'add', icon: 'dw-icon-pin-add', tip: 'Add a punch item: click it on, then click a wall (3D or plan)', run: () => this.setAdding(!this.adding), on: () => !!this.adding },
+            { key: 'next', icon: 'dw-icon-pin-next', tip: 'Go to the next open item', run: () => this.nextOpen() },
+        ]);
+    }
+
+    nextOpen() {
+        const open = (this.items || []).filter(i => i.status === 'open');
+        if (!open.length) return;
+        const at = open.findIndex(i => i.id === this.selectedId);
+        this.selectItem(open[(at + 1) % open.length].id, true);
+    }
+
     // --- Adding pins (3D or 2D) ------------------------------------------------------------------
 
     setAdding(on) {
@@ -192,6 +211,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
         }
         const btn = this.panel.querySelector('[data-add]');
         if (btn) { btn.classList.toggle('active', on); btn.textContent = on ? 'Adding… (click a wall)' : '+ Add pin'; }
+        this.bar?.refresh();
     }
 
     // A tap (not a drag) while adding: find the wall and point under the cursor.

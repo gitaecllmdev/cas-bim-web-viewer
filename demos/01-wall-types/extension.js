@@ -4,6 +4,7 @@
 // Viewer3D (setThemingColor, clearThemingColors, isolate, fitToView): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // Model (getBulkProperties, getObjectTree): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 import { loadPropertyMap, getWallData, onModelReady, paletteColor, NOT_SET_COLOR, escapeHtml } from '../../helpers.js';
+import { DemoToolbar } from '../../toolbar.js';
 
 const EXTENSION_ID = 'Drywall.WallTypes';
 const NOT_SET = 'Not set';
@@ -29,10 +30,40 @@ class WallTypesExtension extends Autodesk.Viewing.Extension {
 
     unload() {
         this.stops.forEach(stop => stop());
+        this.bar?.remove();
         this.views.clearColors();
         this.views.isolate(null, { fit: false });
         this.panel.innerHTML = '';
         return true;
+    }
+
+    // The 3D toolbar: color by wall type or fire rating, and isolate the picked wall's type or rating.
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    onToolbarCreated() {
+        if (this.bar) return;
+        this.bar = new DemoToolbar(this.viewer, 'dw-walltypes', [
+            { key: 'color', icon: 'dw-icon-colors', tip: 'Color the walls by wall type or fire rating', items: [
+                ...Object.entries(MODES).map(([k, label]) => ({ key: k, icon: `dw-icon-mode-${k}`, tip: `Color by ${label.toLowerCase()}`, run: () => this.setMode(k), on: () => this.colored && this.mode === k })),
+                { key: 'off', icon: 'dw-icon-mode-off', tip: 'No colors', run: () => { this.colored = false; this.render(); }, on: () => !this.colored },
+            ] },
+            { key: 'same', icon: 'dw-icon-iso-same', tip: 'Show only the walls like the picked one (same wall type, or same fire rating when coloring by rating)', run: () => this.isolateLikePicked() },
+        ]);
+    }
+
+    setMode(mode) {
+        this.mode = mode;
+        this.colored = true;
+        this.render();
+        this.bar?.refresh();
+    }
+
+    // The picked wall's type (or fire rating), all levels or the header's level: isolated in 3D and on the plan.
+    isolateLikePicked() {
+        if (!this.walls) return;
+        const picked = this.walls.find(w => w.dbId === this.viewer.getSelection()[0]);
+        if (!picked) return;
+        const key = picked[this.mode] ?? NOT_SET;
+        this.views.isolate(this.walls.filter(w => (w[this.mode] ?? NOT_SET) === key && (!this.level || (w.level ?? NOT_SET) === this.level)).map(w => w.dbId));
     }
 
     async init(model) {
@@ -72,7 +103,7 @@ class WallTypesExtension extends Autodesk.Viewing.Extension {
             <h3>${MODES[this.mode]} legend <span class="muted">(click a row to isolate)</span></h3>
             <table><thead><tr><th>${MODES[this.mode]}</th><th class="num">Walls</th></tr></thead><tbody data-legend></tbody></table>
             <p class="note">Property names from samples/property-map.json: ${escapeHtml(this.map[this.mode])}, level = ${escapeHtml(this.map.level)}.</p></div>`;
-        this.panel.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => { this.mode = b.dataset.mode; this.colored = true; this.render(); });
+        this.panel.querySelectorAll('[data-mode]').forEach(b => b.onclick = () => this.setMode(b.dataset.mode));
         this.panel.querySelector('[data-level]').onchange = (e) => this.views.setLevel(e.target.value || null);
         this.panel.querySelector('[data-reset]').onclick = () => this.reset();
         this.apply();
@@ -109,6 +140,7 @@ class WallTypesExtension extends Autodesk.Viewing.Extension {
         if (!entries.length) legend.innerHTML = '<tr><td colspan="2" class="muted">No walls on this level.</td></tr>';
         this.views.setColors(colors);
         this.views.isolate(null, { fit: false });
+        this.bar?.refresh();
     }
 
     // Clear colors, isolation and the level section.

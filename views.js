@@ -465,7 +465,16 @@ export class Views {
         if (this.viewer2d) this.viewer2d.loadExtension(id, options);
     }
 
-    async openSheet(node) {
+    // One sheet load at a time, in order, and only the latest wanted: two loads at once (the opening plan still
+    // streaming while a picked wall asks for its floor's) would leave whichever finished last on screen.
+    openSheet(node) {
+        this.sheetWanted = node;
+        const run = () => (node === this.sheetWanted ? this.loadSheet(node) : this.model2d);
+        this.sheetQueue = (this.sheetQueue || Promise.resolve()).then(run, run);
+        return this.sheetQueue;
+    }
+
+    async loadSheet(node) {
         if (!node || !this.doc) return null;
         if (!this.showing2d) this.setLayout('split', { open: false });
         const viewer = this.ensureViewer2d();
