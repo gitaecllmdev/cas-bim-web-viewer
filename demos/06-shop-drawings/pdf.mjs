@@ -1,4 +1,4 @@
-// Minimal vector PDF writer for the shop drawing primitives in ./sheet.mjs (text, line, rect, circle, image).
+// Minimal vector PDF writer for the shop drawing primitives in ./sheet.mjs (text, line, rect, poly, circle, image).
 // No dependencies: standard Helvetica fonts (not embedded), one page, uncompressed content, a JPEG logo.
 // Sheet coordinates are inches with y down; PDF uses points (72 per inch) with y up.
 // PDF reference: ISO 32000-1 (PDF 1.7), §7 file structure, §8 graphics, §9 text.
@@ -43,6 +43,11 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
             const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
             if (!fill && !stroke) continue;
             const path = `${X(o.x)} ${num(Hpt - (o.y + o.h) * P)} ${num(o.w * P)} ${num(o.h * P)} re`;
+            c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+        } else if (o.t === 'poly') {
+            const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
+            if ((!fill && !stroke) || o.pts.length < 3) continue;
+            const path = o.pts.map((p, k) => `${X(p[0])} ${Y(p[1])} ${k ? 'l' : 'm'}`).join(' ') + ' h';
             c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
         } else if (o.t === 'circle') {
             const k = 0.5523 * o.r * P, cx = X(o.cx), cy = Y(o.cy), r = o.r * P;

@@ -4,9 +4,11 @@
 // Layout follows the CAS panel shops (e.g. P2001): kept to the minimum. FRAMING CUT LIST (label, qty, function, member
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
+// Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
 import { fmtFtIn, FUNCTIONS, isDoor } from '../common/framing.mjs';
 import { toPdf, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
+import { isoView } from './iso.mjs';
 
 // Sheet sizes (landscape, inches). 'auto' takes the smallest one that draws the panel at 1/4" = 1'-0" or larger, so
 // long exterior walls stay readable; past 36 x 48 the sheet is 36" tall and as wide as the panel needs (a roll plot).
@@ -89,6 +91,7 @@ function toSvg(ops) {
         if (o.t === 'text') return `<text x="${n(o.x)}" y="${n(o.y)}" font-size="${o.size}" text-anchor="${o.anchor}" font-weight="${o.weight}" fill="${o.fill}"${o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : ''}>${esc(o.s)}</text>`;
         if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
         if (o.t === 'rect') return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
+        if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
         if (o.t === 'circle') return `<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${o.r}" fill="none" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
@@ -167,6 +170,13 @@ export function sheetOps(layout, info) {
             for (const ln of wrap(issue.message.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
         }
         if (issues.length > 8) { ly += 0.12; out.push(text(cx, ly, `+ ${issues.length - 8} MORE (SEE THE PANEL PAGE)`, { size: 0.068, weight: 'bold', fill: '#b00020' })); }
+    }
+
+    // --- 3D view of the panel in the rest of the column, down to the title block (when there is room for it)
+    const isoTop = ly + 0.42, isoBottom = tbY - 0.2;
+    if (isoBottom - isoTop >= 1.6) {
+        out.push(text(cx, isoTop, `3D VIEW - ${info.mark}${layout.flipped ? ' (SIDE B)' : ' (SIDE A)'} - NOT TO SCALE`, { size: 0.085, weight: 'bold' }));
+        out.push(...isoView(layout, { x: cx, y: isoTop + 0.08, w: tableW, h: isoBottom - isoTop - 0.08 }, { highlight: info.highlight }));
     }
 
     // --- Elevation, centered in the drawing area

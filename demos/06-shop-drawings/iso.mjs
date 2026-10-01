@@ -1,0 +1,118 @@
+// 3D view of a framed panel for the shop drawing (pure; tested in tests/shop-drawings.test.js): every member as a box
+// (studs their flange wide and the stud depth deep, tracks and headers the same depth), seen in perspective from
+// side A, from the left and above; one label per cut-list mark; the openings outlined. The view is cropped to the
+// members and fitted in a box on the sheet, so it fills its space whatever the panel's shape.
+// Returns sheet primitives (sheet.mjs): 'poly' (filled faces), 'line' (edges, openings), 'rect' + 'text' (labels).
+import { fmtFtIn, isDoor } from '../common/framing.mjs';
+
+const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0' };
+const STUD = '#e4e4e4';
+const SEG = 16; // long members are drawn in pieces this long, so near and far parts sort in front of / behind their neighbours
+
+// Camera: from side A (+z), the left (-x) and above (+y), mild perspective.
+const AZIMUTH = 32, ELEVATION = 24, DISTANCE = 2.4; // degrees, degrees, times the panel's diagonal
+
+const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+const unit = (a) => { const l = Math.hypot(...a) || 1; return a.map(v => v / l); };
+
+function shade(hex, f) {
+    const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
+    const out = c.map(v => Math.max(0, Math.min(255, Math.round(f >= 1 ? v + (255 - v) * (f - 1) * 2 : v * f))));
+    return `#${out.map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// The six faces of a box: corners (counter-clockwise seen from outside), outward normal, light factor.
+function boxFaces([x0, y0, z0], [x1, y1, z1]) {
+    return [
+        { n: [0, 0, 1], k: 1.0, c: [[x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1]] }, // front (side A)
+        { n: [0, 0, -1], k: 0.7, c: [[x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0]] },
+        { n: [0, 1, 0], k: 1.06, c: [[x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0]] }, // top
+        { n: [0, -1, 0], k: 0.65, c: [[x0, y0, z0], [x1, y0, z0], [x1, y0, z1], [x0, y0, z1]] },
+        { n: [-1, 0, 0], k: 0.82, c: [[x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0]] }, // left
+        { n: [1, 0, 0], k: 0.75, c: [[x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1]] },
+    ];
+}
+
+// layout: frameWall() output; box: { x, y, w, h } on the sheet (inches); opts: { flangeIn, highlight }.
+export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}) {
+    const { lengthIn: L, heightIn: H, members, openings = [] } = layout;
+    const D = layout.studIn || 3.625;
+    if (!members?.length || !(L > 0) || !(H > 0)) return [];
+    const az = (AZIMUTH * Math.PI) / 180, el = (ELEVATION * Math.PI) / 180;
+    const center = [L / 2, H / 2, D / 2];
+    const dir = [-Math.sin(az) * Math.cos(el), Math.sin(el), Math.cos(az) * Math.cos(el)];
+    const eye = center.map((v, i) => v + dir[i] * Math.hypot(L, H) * DISTANCE);
+    const fwd = unit(sub(center, eye)), right = unit(cross(fwd, [0, 1, 0])), up = cross(right, fwd);
+    const project = (p) => { const v = sub(p, eye), z = dot(v, fwd); return [dot(v, right) / z, -dot(v, up) / z]; };
+
+    // Faces of every member, long members in pieces; an edge is drawn only where it is a real edge of the member.
+    const faces = [];
+    for (const m of members) {
+        const long = m.orient === 'h' ? 0 : 1; // the axis the member runs along
+        const lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
+        const pieces = Math.max(1, Math.ceil(len / SEG - 1e-9));
+        const color = (highlight != null && m.mark === highlight) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
+        for (let i = 0; i < pieces; i++) {
+            const a = lo + (len * i) / pieces, b = lo + (len * (i + 1)) / pieces;
+            const min = long === 0 ? [a, m.y, 0] : [m.x, a, 0], max = long === 0 ? [b, m.y + m.h, D] : [m.x + m.w, b, D];
+            for (const f of boxFaces(min, max)) {
+                // A cut face between two pieces is inside the member: never drawn.
+                if (f.n[long] !== 0 && ((f.n[long] < 0 && i > 0) || (f.n[long] > 0 && i < pieces - 1))) continue;
+                const centroid = f.c.reduce((s, p) => s.map((v, k) => v + p[k] / 4), [0, 0, 0]);
+                if (dot(f.n, sub(eye, centroid)) <= 0) continue; // facing away
+                const edges = f.c.map((p, k) => [p, f.c[(k + 1) % 4]]).filter(([p, q]) => {
+                    const along = p[long] !== q[long];
+                    return along || Math.abs(p[long] - lo) < 1e-6 || Math.abs(p[long] - (lo + len)) < 1e-6;
+                });
+                faces.push({ pts: f.c.map(project), edges: edges.map(([p, q]) => [project(p), project(q)]), fill: shade(color, f.k), depth: Math.hypot(...sub(centroid, eye)) });
+            }
+        }
+    }
+    faces.sort((a, b) => b.depth - a.depth); // far first
+
+    // One label per cut-list mark, on the front face of its middle member.
+    const byMark = new Map();
+    for (const m of members) if (m.mark) (byMark.get(m.mark) || byMark.set(m.mark, []).get(m.mark)).push(m);
+    const labels = [...byMark].map(([mark, ms]) => {
+        const sorted = [...ms].sort((a, b) => (a.x - b.x) || (a.y - b.y)), m = sorted[Math.floor(sorted.length / 2)];
+        const at = m.orient === 'h' ? [m.x + m.w / 2, m.y + m.h / 2, D] : [m.x + m.w / 2, m.y + m.h * 0.62, D];
+        return { mark, at: project(at), hi: highlight != null && mark === highlight };
+    });
+    const opens = openings.map(o => ({ o, pts: [[o.left, o.bottom, D], [o.right, o.bottom, D], [o.right, o.top, D], [o.left, o.top, D]].map(project),
+        label: project([(o.left + o.right) / 2, Math.min(o.top - 6, o.bottom + (o.top - o.bottom) * 0.55), D]) }));
+
+    // Crop to what is drawn and fit the box (a little margin for the labels).
+    const all = faces.flatMap(f => f.pts);
+    const xs = all.map(p => p[0]), ys = all.map(p => p[1]);
+    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    const pad = 0.12, s = Math.min((box.w - 2 * pad) / (maxX - minX || 1), (box.h - 2 * pad) / (maxY - minY || 1));
+    const ox = box.x + (box.w - (maxX - minX) * s) / 2 - minX * s, oy = box.y + (box.h - (maxY - minY) * s) / 2 - minY * s;
+    const T = (p) => [ox + p[0] * s, oy + p[1] * s];
+
+    const out = [];
+    for (const o of opens) {
+        const p = o.pts.map(T);
+        for (let k = 0; k < 4; k++) out.push({ t: 'line', x1: p[k][0], y1: p[k][1], x2: p[(k + 1) % 4][0], y2: p[(k + 1) % 4][1], stroke: '#9aa0a6', width: 0.006, dash: '0.04 0.03' });
+    }
+    for (const f of faces) {
+        out.push({ t: 'poly', pts: f.pts.map(T), fill: f.fill, stroke: 'none', width: 0 });
+        for (const [p, q] of f.edges) { const [a, b] = [T(p), T(q)]; out.push({ t: 'line', x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#3a3a3a', width: 0.004 }); }
+    }
+    for (const { o, label } of opens) {
+        const [x, y] = T(label), txt = `${isDoor(o) ? 'DOOR' : 'OPENING'} ${fmtFtIn(o.right - o.left)} x ${fmtFtIn(o.top - o.bottom)}`;
+        out.push({ t: 'text', x, y, s: txt, size: 0.06, anchor: 'middle', weight: 'normal', rotate: 0, fill: '#6b7178' });
+    }
+    // Labels: a white tag, moved up when it would cover one already placed.
+    const placed = [];
+    for (const l of labels) {
+        let [x, y] = T(l.at);
+        const w = 0.07 * Math.max(2, l.mark.length) + 0.06, h = 0.12;
+        for (let k = 0; k < 6 && placed.some(r => Math.abs(r.x - x) < (r.w + w) / 2 && Math.abs(r.y - y) < h); k++) y -= h * 1.05;
+        placed.push({ x, y, w });
+        out.push({ t: 'rect', x: x - w / 2, y: y - h / 2 - 0.03, w, h, fill: l.hi ? '#ff8a3d' : '#ffffff', stroke: '#3a3a3a', width: 0.004 });
+        out.push({ t: 'text', x, y: y + 0.01, s: l.mark, size: 0.075, anchor: 'middle', weight: 'bold', rotate: 0, fill: '#111' });
+    }
+    return out;
+}
