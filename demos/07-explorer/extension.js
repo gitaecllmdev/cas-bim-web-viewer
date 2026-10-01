@@ -45,6 +45,8 @@ const PALETTE = ['#1f77b4', '#ff7f0e', '#2ca02c', '#d62728', '#9467bd', '#17becf
 const OTHER_COLOR = '#c7ccd1';
 const VIEWS = { top: 'Top', front: 'Front', side: 'Side', iso: '3/4 view' };
 const LEVEL_PROPS = ['Base Constraint', 'Level', 'Reference Level', 'Schedule Level'];
+// Light presets by index (Viewer3D.setLightPreset, https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/GuiViewer3D/).
+const LIGHTS = ['Simple Grey', 'Sharp Highlights', 'Dark Sky', 'Grey Room', 'Photo Booth', 'Tranquility', 'Infinity Pool', 'Simple White', 'Riverbank', 'Contrast', 'Rim Highlights', 'Cool Light', 'Warm Light', 'Soft Light', 'Grid Light', 'Plaza', 'Snow Field'];
 const TABS = { model: '3D model', both: '2D + 3D', review: 'Review', all: 'All capabilities' };
 // Built-in tools of the 3D view, one at a time: [extension id, how to start it].
 const TOOLS = {
@@ -185,7 +187,7 @@ class ExplorerExtension extends Autodesk.Viewing.Extension {
                     <label class="pg-check"><input type="checkbox" data-disp="ao" checked> Ambient shadows</label>
                     <label class="pg-check"><input type="checkbox" data-disp="ground"> Ground shadow</label>
                     <label class="pg-check"><input type="checkbox" data-disp="reflect"> Ground reflection</label></div>
-                <div class="ex-row"><select data-light title="Lighting">${[0, 1, 2, 3, 4, 5, 6, 7].map(i => `<option value="${i}">Lighting ${i + 1}</option>`).join('')}</select>
+                <div class="ex-row"><select data-light title="Lighting environment">${LIGHTS.map((name, i) => `<option value="${i}">${name}</option>`).join('')}</select>
                     <select data-bg title="Background"><option value="light">Light background</option><option value="sky">Sky</option><option value="dark">Dark</option></select></div></section>
             <section class="ex-sec" data-sec="pick"><h3>Picked object</h3><div data-pick class="muted">Click anything in the model to see what it is.</div></section>
             <details class="ex-sec ex-howto"><summary>How it works: 3D concepts</summary>

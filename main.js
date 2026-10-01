@@ -38,8 +38,9 @@ if (offline) {
 } else {
     const views = new Views(viewer);
     setupDockSplit(views);
-    viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true });
-    views.use2d(TOOLS_EXTENSION_ID, { views, is3d: false });
+    // The demo's own toolbar set (demos.json "toolbar"; tools.js): only the tools it uses.
+    viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true, toolbar: demo?.toolbar });
+    views.use2d(TOOLS_EXTENSION_ID, { views, is3d: false, toolbar: demo?.toolbar });
     onModelReady(viewer, (model) => views.setModel(model).catch(err => console.error(err)));
     if (demo) {
         try {

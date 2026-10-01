@@ -3,6 +3,10 @@
 //   both viewers at once.
 // - "Options": fly-out menus (ComboButton) to try the viewer's settings: views, navigation, display, background and
 //   lighting, what a click selects, units, plus a screenshot. On the 2D viewer: units and the screenshot.
+// Each demo keeps only the tools it uses (demos.json "toolbar"): { builtin: the viewer's own tool buttons kept,
+// tools: our quick buttons }. "all" (the APS Viewer demo) keeps everything and adds the Options menus. The viewer's
+// other tool buttons go by unloading their extensions (Viewer3D.unloadExtension); Section and navigation always stay
+// (the Level picker cuts the model with Section).
 // Customizing the toolbar: https://aps.autodesk.com/en/docs/viewer/v7/developers_guide/viewer_basics/toolbar-button/
 // Button / ComboButton / ControlGroup: https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/Button/,
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/ComboButton/, https://aps.autodesk.com/en/docs/viewer/v7/reference/UI/ControlGroup/
@@ -14,8 +18,13 @@
 // ZoomWindow (adds "zoom window" to the toolbar's zoom button): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/ZoomWindow/
 
 const EXTENSION_ID = 'Drywall.Tools';
+// The viewer's own tool buttons a demo can do without (each from its extension; the reference lists them all:
+// https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/).
+const REMOVABLE = ['Autodesk.BimWalk', 'Autodesk.Measure', 'Autodesk.DocumentBrowser', 'Autodesk.Explode', 'Autodesk.ModelStructure',
+    'Autodesk.PropertiesManager', 'Autodesk.ViewerSettings', 'Autodesk.FullScreen'];
+const ALL_TOOLS = ['isolate', 'hide', 'showall', 'fit', 'building', 'xray', 'top'];
 const BACKGROUNDS = { light: [255, 255, 255, 230, 234, 238], sky: [190, 214, 240, 245, 248, 252], dark: [40, 44, 52, 20, 22, 26] };
-const LIGHTS = 8; // light presets 0-7
+const LIGHTS = 17; // light presets 0-16 (Simple Grey ... Snow Field: Viewer3D.setLightPreset)
 const UNITS = [['ftin', 'ft-and-fractional-in', 'Feet and fractional inches'], ['ft', 'decimal-ft', 'Decimal feet'], ['in', 'fractional-in', 'Fractional inches'],
     ['m', 'm', 'Meters'], ['mm', 'mm', 'Millimeters'], ['file', '', 'As in the file']];
 
@@ -25,13 +34,25 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
         this.ghosting = true; // viewer default: isolated views show the rest as ghosts
         // Our own record of the settings the menus toggle (the viewer's defaults for this page).
         this.state = { edges: true, ao: true, ground: false, reflect: false, reverse: false, bg: 'light', light: 0, fov: 45, select: 'leaf', units: 'file' };
-        this.viewer.loadExtension('Autodesk.Viewing.ZoomWindow').catch(() => {}); // a zoom-window choice on the zoom button
+        this.all = !this.options.toolbar || this.options.toolbar === 'all';
+        if (this.all) this.viewer.loadExtension('Autodesk.Viewing.ZoomWindow').catch(() => {}); // a zoom-window choice on the zoom button
         if (this.viewer.toolbar) this.onToolbarCreated(this.viewer.toolbar);
+        // The viewer adds its own tools as the toolbar and the model come in: take out the ones this demo doesn't use,
+        // then and once the geometry is in (Viewer3D GEOMETRY_LOADED_EVENT).
+        this.onGeometry = () => { this.trim(); setTimeout(() => this.trim(), 1500); };
+        this.viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, this.onGeometry);
         return true;
+    }
+
+    trim() {
+        if (this.all) return;
+        const keep = new Set(this.options.toolbar.builtin || []);
+        for (const id of REMOVABLE) if (!keep.has(id) && this.viewer.getExtension(id)) this.viewer.unloadExtension(id);
     }
 
     unload() {
         this.stopOrbit();
+        this.viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, this.onGeometry);
         for (const g of [this.group, this.optionsGroup]) if (g) this.viewer.toolbar.removeControl(g);
         this.group = this.optionsGroup = null;
         return true;
@@ -58,13 +79,24 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
                 ['top', 'Plan view (look down from the top)', () => this.look([0, 0, 1])],
             );
         }
+        tools.push(
+            ['zoompick', 'Zoom to a picked wall, in 3D and on its plan (click to turn off or on)', (button) => {
+                this.views.setZoomPick(!this.views.zoomPick);
+                button.setState(this.views.zoomPick ? Autodesk.Viewing.UI.Button.State.ACTIVE : Autodesk.Viewing.UI.Button.State.INACTIVE);
+            }],
+            ['shot', `Screenshot: save the ${is3d ? '3D view' : 'plan'} as a PNG`, () => this.screenshot(is3d ? '3d' : 'plan')],
+        );
+        const wanted = this.all ? ALL_TOOLS : this.options.toolbar.tools || [];
+        const shown = wanted.map(key => tools.find(t => t[0] === key)).filter(Boolean);
         this.group = new Autodesk.Viewing.UI.ControlGroup(`dw-tools-${suffix}`);
-        for (const [id, tip, action] of tools) {
-            const button = this.button(`dw-${id}-${suffix}`, `dw-icon-${id}`, tip, action);
-            if (id === 'xray') button.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
+        for (const [id, tip, action] of shown) {
+            const button = this.button(`dw-${id}-${suffix}`, `dw-icon-${id === 'zoompick' ? 'zoompick' : id}`, tip, action);
+            if (id === 'xray' || (id === 'zoompick' && this.views.zoomPick)) button.setState(Autodesk.Viewing.UI.Button.State.ACTIVE);
             this.group.addControl(button);
         }
-        toolbar.addControl(this.group);
+        if (shown.length) toolbar.addControl(this.group);
+        this.trim();
+        if (!this.all) return;
 
         this.optionsGroup = new Autodesk.Viewing.UI.ControlGroup(`dw-options-${suffix}`);
         for (const menu of is3d ? this.menus3d() : this.menus2d()) {
@@ -133,7 +165,7 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
             { id: 'dw-look', icon: 'dw-icon-look', tip: 'Background and lighting', items: [
                 ...[['light', 'Light background'], ['sky', 'Sky background'], ['dark', 'Dark background']].map(([key, tip]) =>
                     ({ key: `bg-${key}`, icon: `dw-icon-bg-${key}`, tip, run: () => { s.bg = key; v.setBackgroundColor(...BACKGROUNDS[key]); }, on: () => s.bg === key })),
-                { key: 'lighting', icon: 'dw-icon-lighting', tip: 'Next lighting (8 environments)', run: () => { s.light = (s.light + 1) % LIGHTS; v.setLightPreset(s.light); } },
+                { key: 'lighting', icon: 'dw-icon-lighting', tip: 'Next lighting (17 environments)', run: () => { s.light = (s.light + 1) % LIGHTS; v.setLightPreset(s.light); } },
             ] },
             { id: 'dw-select', icon: 'dw-icon-select', tip: 'What a click selects', items: [
                 { key: 'leaf', icon: 'dw-icon-sel-leaf', tip: 'Click selects: the element (default)', run: () => this.selectMode('leaf'), on: () => s.select === 'leaf' },
