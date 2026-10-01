@@ -5,8 +5,13 @@ import { CONFIG } from './config.js';
 import { isMergedState, mergeState } from './state-merge.mjs';
 import { readBrowserSchedule, writeBrowserSchedule } from './schedule-store.mjs';
 
+// On the published site, the site's own JSON (samples, demo data, panel pages) carries the build's id, so the first visit
+// after a publish gets the new data instead of a copy GitHub Pages cached for up to 10 minutes (CONFIG.build: build-site.js).
+const versioned = (url) => (CONFIG.mode === 'static' && CONFIG.build && !/^[a-z]+:/i.test(url) && /\.json$/i.test(url.split('?')[0])
+    ? `${url}${url.includes('?') ? '&' : '?'}v=${CONFIG.build}` : url);
+
 export async function fetchJson(url, options) {
-    const resp = await fetch(url, options);
+    const resp = await fetch(versioned(url), options);
     const body = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(body.error || resp.statusText);
     return body;
