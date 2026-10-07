@@ -14,7 +14,7 @@ if (new URLSearchParams(location.search).get('dock') === 'bottom') document.body
 
 const demoSelect = document.getElementById('demos');
 const modelSelect = document.getElementById('models');
-const panel = document.getElementById('panel');
+let panel = document.getElementById('panel'); // a fresh one for each demo switched to in place (setupDemoSwitch)
 
 const demos = await fetchJson('demos/demos.json');
 const demoId = new URLSearchParams(location.search).get('demo');
@@ -51,7 +51,40 @@ if (offline) {
             console.error(err);
         }
     }
+    setupDemoSwitch(viewer, views, demo);
     await setupModelSelection(location.hash.substring(1));
+}
+
+// A demo hands over to another in place (Install Progress ⇄ Panel Tracker): document.dispatchEvent(new CustomEvent(
+// 'switch-demo', { detail: { id } })). The one unloads, the other loads on the same model, views and level, and the link
+// follows (no page load). A demo with another toolbar set opens the usual way (a page load).
+// Viewer3D.unloadExtension / loadExtension: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+function setupDemoSwitch(viewer, views, first) {
+    let current = first, switching = false;
+    const linkTo = (d) => { const params = new URLSearchParams(location.search); params.set('demo', d.id); return `?${params}${location.hash}`; };
+    document.addEventListener('switch-demo', async (e) => {
+        const next = demos.find(d => d.id === e.detail?.id);
+        if (!next || next === current || switching) return;
+        if (!current || JSON.stringify(next.toolbar) !== JSON.stringify(current.toolbar)) { location.href = linkTo(next); return; }
+        switching = true;
+        try {
+            viewer.unloadExtension(current.extensionId);
+            // A fresh panel element: nothing the last demo left listening on it reaches the next one.
+            const fresh = panel.cloneNode(false);
+            panel.replaceWith(fresh);
+            panel = fresh;
+            history.replaceState(null, '', linkTo(next));
+            demoSelect.value = next.id;
+            await import(`./demos/${next.id}/extension.js`);
+            await viewer.loadExtension(next.extensionId, { panel, views });
+            current = next;
+        } catch (err) {
+            console.error(err);
+            location.href = linkTo(next); // start it afresh
+        } finally {
+            switching = false;
+        }
+    });
 }
 
 async function setupModelSelection(selectedUrn) {

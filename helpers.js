@@ -62,12 +62,13 @@ export async function saveState(name, data) {
 // Saved data per model: the model marked plainState in samples/urns.json (the sample) keeps the plain names ('takeoff', 'punch',
 // 'wall-openings'...); every other model gets '<name>-<key>' (key: a short hash of its URN), so models never share or
 // overwrite each other's data, and the site build (which copies the plain names only) never publishes another model's.
-// The model is the page's #urn; pages without one (the reports) read the sample model's data.
+// The model is the page's #urn (or the urn given: a panel page, its panel's model); pages without one (the reports)
+// read the sample model's data.
 export const modelKey = (urn) => { let h = 5381; for (const ch of String(urn)) h = ((h * 33) ^ ch.charCodeAt(0)) >>> 0; return h.toString(36); };
 let modelList = null;
-export async function stateFor(name) {
+export async function stateFor(name, urn = decodeURIComponent(location.hash.slice(1))) {
     modelList ??= fetchJson('samples/urns.json').catch(() => []);
-    const models = await modelList, urn = decodeURIComponent(location.hash.slice(1));
+    const models = await modelList;
     // The page's model, or the site's first (the reports have no #urn). Plain names only for the model marked
     // "plainState" (the sample model), whichever site it is on; every other model always gets its own names.
     const entry = models.find(m => m.urn === urn) || models[0];

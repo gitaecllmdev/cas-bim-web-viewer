@@ -101,3 +101,18 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .prefab-table tr[data-mark] { cursor: pointer; }
 .prefab-table tr[data-mark]:hover td { background: #fff4ea; }
 .prefab-table tr.hi td { background: #ffe3cc; }
+/* Panel tracker card (Demo 9's steps on the panel page). */
+.tracker { border-top: 4px solid var(--c, #b8bec6); }
+.tr-head h2 { margin: 0; }
+.tr-chip { padding: 1px 10px; border-radius: 999px; background: var(--c, #b8bec6); color: #fff; font-size: 0.85em; font-weight: 600; }
+.tr-steps { list-style: none; margin: 0.6em 0; padding: 0; }
+.tr-steps li { display: flex; align-items: center; gap: 10px; padding: 6px 0; position: relative; }
+.tr-steps li > i { width: 16px; height: 16px; flex: none; border-radius: 50%; border: 2px solid var(--s); background: #fff; z-index: 1; }
+.tr-steps li:not(:last-child)::after { content: ""; position: absolute; left: 7px; top: 24px; bottom: -8px; width: 2px; background: var(--line); }
+.tr-steps li.done > i { background: var(--s); }
+.tr-steps li.skipped > i { border-style: dashed; }
+.tr-steps li.todo { color: var(--muted); }
+.tr-steps li > span { flex: 1; display: flex; flex-direction: column; }
+.tr-steps em { font-style: normal; font-size: 0.85em; color: var(--muted); }
+.tr-steps li.next button { background: var(--s); border-color: var(--s); }
+.tr-note { margin: 0.4em 0 0; font-size: 0.85em; }

@@ -432,6 +432,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>` : ''}
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
+                    <button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 9): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>
                 </div>
                 ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
                 ${s ? `<div class="pg-row pg-search" data-search ${this.tab === 'stages' ? 'hidden' : ''}>
@@ -469,16 +470,18 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             e.preventDefault();
             if (!confirm('Remove the schedule from this viewer? Wall stages stay.')) return;
             this.clearFocus();
+            // The schedule views go with it: only the linked walls, the floors apart, all floor plans.
+            this.stopPlay();
+            if (this.apartOn) await this.setApart(false);
+            if (this.allPlans.isOpen) await this.setAllPlans(false);
+            if (this.linkedOnly) this.setLinkedOnly(false);
             this.schedule = null;
             this.colorMode = 'actual';
-        // Schedule views: only the walls linked to the schedule, the floors apart (views.setLevelsApart), all floor plans.
-        this.linkedOnly = false;
-        this.apartOn = false;
-        this.allPlans = new AllPlans(this.views);
             await saveState(this.scheduleState, { removed: true, at: new Date().toISOString() }).catch(() => {});
             this.render();
         };
         p.querySelector('[data-dock]')?.addEventListener('click', () => document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })));
+        p.querySelector('[data-switch-demo]').onclick = () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '09-panel-tracker' } })); // main.js
         const lt = p.querySelector('[data-links-toggle]');
         if (lt) lt.onclick = () => { const d = p.querySelector('[data-links]'); d.hidden = !d.hidden; lt.classList.toggle('active', !d.hidden); if (!d.hidden) this.renderLinks(); this.fitGantt(); };
         this.renderInfo();

@@ -7,12 +7,17 @@
 // column); the sheet and its PDF show them, blue when longer than the drawn length, green when shorter (prefab.mjs).
 // The prefab card puts the schedule beside the elevation: hover a row for its members, click to keep them highlighted;
 // the members of a mark with a prefab length are blue / green there.
+// Panel tracker (Demo 9): the panel's steps from BIM review to framing complete, recorded here too (the QR code on the
+// sheet or a label opens this page on a phone): state 'panel-tracker' of the panel's model (tracker.mjs); framing
+// complete also from Install Progress (Demo 3).
 import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
 import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
 import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './demos/06-shop-drawings/prefab.mjs';
+import { STAGES, readTracker, statusOf, statusFor, markStage, unmarkStage, effectiveRecord } from './demos/09-panel-tracker/tracker.mjs';
+import { fmtDay } from './demos/03-progress/p6.mjs';
 
 countVisit(); // the home page's view counter (hits.js)
 
@@ -29,6 +34,7 @@ const when = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : 
 const panelUrl = () => `${location.origin}${location.pathname}?p=${encodeURIComponent(key)}`;
 
 let record = null, notes = { links: [], comments: [], prefab: {} }, layout = null, info = null;
+let tracking = null; // { name, tracker, installed }: the panel tracker of the panel's model
 const emptyNotes = () => ({ links: [], comments: [], prefab: {} });
 let pinned = null, hovered = null; // the prefab card's highlighted mark
 // The sheet's inputs with this panel's prefab lengths; edit: the -/+ click areas (on screen, not in the PDF).
@@ -59,7 +65,59 @@ async function start() {
     document.title = `${record.mark} · CAS BIM Web Viewer`;
     document.getElementById('panel-title').textContent = `${record.mark} · ${record.info?.wallType || ''} · ${record.info?.level || ''}`;
     render();
+    loadTracking().catch(err => console.warn('Panel tracker not loaded:', err.message));
     pager().catch(err => console.warn('Panel list not loaded:', err.message));
+}
+
+// --- Panel tracker ------------------------------------------------------------------------------------------------------
+
+async function loadTracking() {
+    const name = await stateFor('panel-tracker', record.urn);
+    const [saved, progress] = await Promise.all([loadState(name).catch(() => ({})), loadState(await stateFor('progress', record.urn)).catch(() => ({}))]);
+    const stage = progress?.stages?.[key];
+    tracking = { name, tracker: readTracker(saved), installed: ['Framed', 'Boarded', 'Taped', 'Finished'].includes(stage), installStage: stage || '' };
+    renderTracker();
+}
+
+function renderTracker() {
+    const el = main.querySelector('[data-tracker]');
+    if (!el || !tracking) return;
+    const real = tracking.tracker.panels[key] || {}, rec = effectiveRecord(real, null, { installed: tracking.installed }), at = statusOf(rec);
+    const day = (d) => (d ? fmtDay(d) : '');
+    el.hidden = false;
+    el.style.setProperty('--c', statusFor(at).color);
+    el.innerHTML = `<div class="row tr-head"><h2>Panel tracker</h2><span class="tr-chip">${escapeHtml(statusFor(at).name)}</span></div>
+        <ol class="tr-steps">${STAGES.map((s, i) => {
+            const r = rec[s.key], cls = r ? 'done' : i < at ? 'skipped' : i === at + 1 ? 'next' : 'todo';
+            const who = r ? (r.via === 'install' ? `Install Progress (${escapeHtml(tracking.installStage)})` : [day(r.date), r.by].filter(Boolean).map(escapeHtml).join(' · ')) : cls === 'skipped' ? 'not recorded' : '';
+            return `<li class="${cls}" style="--s:${s.color}"><i></i><span><b>${escapeHtml(s.name)}</b><em>${who}</em></span>
+                ${real[s.key] ? `<button class="link" data-tr-undo="${s.key}" title="Take this step back off">Undo</button>`
+                    : !r ? `<button class="${cls === 'next' ? '' : 'secondary'}" data-tr-rec="${s.key}">Record</button>` : ''}</li>`;
+        }).join('')}</ol>
+        <div class="row"><label class="muted">Recorded by <input type="text" data-tr-by placeholder="Your name" value="${escapeHtml(rememberedName())}"></label><span class="muted">· dated today</span></div>
+        <p class="muted tr-note">${sharedStateOn() ? 'The same steps as in the Panel Tracker of the viewer.' : 'Saved in this browser on this review site (the Panel Tracker in this browser shows them too).'}</p>`;
+    el.querySelectorAll('[data-tr-rec]').forEach(b => b.onclick = () => changeTracker(t => markStage(t, key, b.dataset.trRec, { date: new Date().toLocaleDateString('en-CA'), by: trackerName(), via: 'page' })));
+    el.querySelectorAll('[data-tr-undo]').forEach(b => b.onclick = () => {
+        const st = STAGES.find(s => s.key === b.dataset.trUndo);
+        if (confirm(`Take "${st.name}" off ${record.mark}?`)) changeTracker(t => unmarkStage(t, key, st.key));
+    });
+}
+
+function trackerName() {
+    const by = String(main.querySelector('[data-tr-by]')?.value || '').trim().slice(0, 80);
+    try { localStorage.setItem('cas-panel-name', by); } catch { /* storage blocked */ }
+    return by;
+}
+
+// On the latest saved tracker, so a step recorded meanwhile in the viewer (or another page) is kept.
+async function changeTracker(change) {
+    try {
+        const latest = readTracker(await loadState(tracking.name).catch(() => ({})));
+        change(latest);
+        await saveState(tracking.name, latest);
+        tracking.tracker = latest;
+        renderTracker();
+    } catch (err) { alert(`Not saved: ${err.message}`); }
 }
 
 // Previous / All panels / Next in the header (gallery order: level, then mark); the arrow keys do the same.
@@ -93,6 +151,7 @@ function render() {
     const shared = sharedStateOn();
     const open3d = `index.html?demo=06-shop-drawings&layout=split&panel=${encodeURIComponent(key)}${record.urn ? `#${encodeURIComponent(record.urn)}` : ''}`;
     main.innerHTML = `
+        <section class="card tracker" data-tracker hidden></section>
         <section class="card">
             <h2>Links</h2>
             <ul class="links" data-links>${notes.links.map((l, i) => `<li><a href="${escapeHtml(l.url)}" target="_blank" rel="noopener noreferrer">${escapeHtml(l.label || l.url)}</a>
@@ -139,6 +198,7 @@ function render() {
     main.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => removeLink(Number(b.dataset.remove)));
     main.querySelector('[data-add-comment]').onsubmit = (e) => { e.preventDefault(); addComment(new FormData(e.target)); };
     main.querySelector('[data-pdf]').onclick = () => downloadPdf();
+    renderTracker();
 }
 
 const sheetHtml = () => renderSheet(layout, sheetInfo(true)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');

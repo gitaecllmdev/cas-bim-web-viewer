@@ -1,0 +1,705 @@
+// Demo 09: Panel Tracker. Each prefab panel from BIM review to framing complete (BIM review, prefab review, shipped to
+// site, delivered to site, framing complete): the field records a step by scanning the panel's QR code (a phone or
+// tablet camera where the browser reads QR codes, a handheld scanner typing into the box, or the shop drawing's QR code
+// opening its panel page), by typing its mark, or by clicking its wall in 3D or on the plan. The walls in 3D and on the
+// plan in the color of their step; the pipeline, the list (Excel / CSV), QR labels to print, and the Revit exchange
+// (export by UniqueId for Revit to pull, a Revit report back in). Saved per model ('panel-tracker' state, tracker.mjs).
+// Install Progress (Demo 3) and this tracker switch in place (main.js 'switch-demo'); the tracker reads Install
+// Progress (its framed walls count as framing complete) and the schedule (each floor's framing start: a panel not on
+// site once its floor's framing has started is late); it never writes to them.
+// Shared views (colors, isolate, select, plan labels, levels): core/client/views.js.
+// Viewer3D (getSelection, SELECTION_CHANGED_EVENT): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+// Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+// Camera QR scanning (web platform, where the browser has it): BarcodeDetector
+// https://developer.mozilla.org/en-US/docs/Web/API/BarcodeDetector and MediaDevices.getUserMedia
+// https://developer.mozilla.org/en-US/docs/Web/API/MediaDevices/getUserMedia
+import { loadState, saveState, fetchJson, escapeHtml, stateFor, onModelReady, loadPropertyMap, getWallData } from '../../helpers.js';
+import { CONFIG } from '../../config.js';
+import { DemoToolbar } from '../../toolbar.js';
+import { assemblyFor } from '../02-takeoff/calc.mjs';
+import { INDEX_STATE } from '../06-shop-drawings/panels.mjs';
+import { linkActivities, fmtDay } from '../03-progress/p6.mjs';
+import { csvText, xlsxBytes } from '../common/table-export.mjs';
+import { qrEncode, qrRects } from '../common/qr.mjs';
+import {
+    STAGES, NOT_STARTED, stageIndex, readTracker, statusOf, statusFor, skippedOf, markStage, unmarkStage, findPanel,
+    effectiveRecord, counts, isLate, floorDates, demoHistory, revitRows, readRevitRows, importRevit,
+} from './tracker.mjs';
+
+const EXTENSION_ID = 'Drywall.PanelTracker';
+const NOT_SET = 'Not set';
+const LATE = '#d62728';
+const TABS = { track: 'Track', list: 'Panels', labels: 'QR labels', revit: 'Revit' };
+const INSTALLED = new Set(['Framed', 'Boarded', 'Taped', 'Finished']); // Install Progress stages at or past framing
+const VIA = { scan: 'scanned', camera: 'camera', manual: 'typed', '3d': 'clicked in 3D', card: 'panel card', page: 'panel page', revit: 'from Revit', demo: 'demo', install: 'Install Progress' };
+const localToday = () => new Date().toLocaleDateString('en-CA'); // YYYY-MM-DD in the viewer's time zone
+const pref = (k, v) => { try { if (v === undefined) return localStorage.getItem(`drywall-demos:tracker-${k}`); localStorage.setItem(`drywall-demos:tracker-${k}`, v); } catch { /* storage blocked */ } return null; };
+const day = (d) => (d ? fmtDay(d) : '');
+const dayMonth = (d) => day(d).slice(0, 6); // 14-Jul (the list; the full date in its tooltip)
+
+class PanelTrackerExtension extends Autodesk.Viewing.Extension {
+    load() {
+        this.views = this.options.views;
+        this.panel = this.options.panel;
+        this.panel.classList.add('wide');
+        this.tab = 'track';
+        this.stage = stageIndex(pref('stage')) >= 0 ? pref('stage') : 'bim'; // the step being recorded
+        this.demo = pref('demo') !== 'false';
+        this.recordOnClick = false;
+        this.date = localToday();
+        this.picked = null;
+        this.only = 'panels'; // shown in 3D: 'panels' (the rest ghosted), a step's key, 'late', or null (every wall)
+        this.filter = { q: '', status: '' };
+        this.lastSel = [];
+        this.panel.innerHTML = '<div class="demo-panel pt"><h2>Panel Tracker</h2><p class="muted" data-status>Waiting for a model…</p></div>';
+        this.onSelection = () => this.selectionChanged();
+        this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
+        this.bindPanel();
+        this.stops = [
+            onModelReady(this.viewer, (model) => this.init(model)),
+            this.views.on('ready', () => { if (this.walls) { this.prepare(); this.render(); } }), // the floors, in build order
+            this.views.on('level', () => { if (this.walls) { this.renderPipeline(); this.renderBody(); this.drawLegend(); } }),
+        ];
+        return true;
+    }
+
+    unload() {
+        this.stops.forEach(stop => stop());
+        this.listening.abort();
+        clearTimeout(this.qTimer);
+        clearTimeout(this.toastTimer);
+        this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
+        this.closeCamera();
+        this.bar?.remove();
+        this.legend?.remove();
+        this.views.setPlanLabels(null);
+        this.views.clearColors();
+        if (this.only) this.views.showAll();
+        this.panel.classList.remove('wide');
+        this.panel.innerHTML = '';
+        return true;
+    }
+
+    // Extension.onToolbarCreated: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Extension/
+    onToolbarCreated() {
+        if (this.bar) return;
+        const only = (key, name) => ({ key, icon: `dw-icon-pt-${key}`, tip: `Show only: ${name}`, run: () => this.showOnly(key), on: () => this.only === key });
+        this.bar = new DemoToolbar(this.viewer, 'dw-tracker', [
+            { key: 'click', icon: 'dw-icon-pt-click', tip: 'Record by clicking walls: the step picked in the panel, on each wall you click (3D or plan)', run: () => this.setRecordOnClick(!this.recordOnClick), on: () => this.recordOnClick },
+            { key: 'only', icon: 'dw-icon-pt-only', tip: 'Show only the panels at a step', items: [
+                only('panels', 'the panels (the rest of the model ghosted)'), only('none', NOT_STARTED.name), ...STAGES.map(s => only(s.key, s.name)),
+                only('late', 'Late (not on site, floor framing)'), { key: 'all', icon: 'dw-icon-showall', tip: 'Show every wall', run: () => this.showOnly(null) },
+            ] },
+        ]);
+    }
+
+    async init(model) {
+        try {
+            this.names = { tracker: await stateFor('panel-tracker') };
+            const [map, rules, takeoff, index, schedule, progress, saved] = await Promise.all([loadPropertyMap(), fetchJson('samples/takeoff-rules.json'),
+                loadState(await stateFor('takeoff')).catch(() => ({})), loadState(await stateFor(INDEX_STATE)).catch(() => ({})),
+                loadState(await stateFor('schedule')).catch(() => ({})), loadState(await stateFor('progress')).catch(() => ({})),
+                loadState(this.names.tracker).catch(() => ({}))]);
+            const { walls } = await getWallData(model, map);
+            this.walls = walls;
+            this.byExt = new Map(walls.map(w => [w.externalId, w]));
+            this.rules = rules;
+            this.overrides = takeoff.overrides || {};
+            this.index = index.panels || {};
+            this.schedule = schedule?.activities?.length ? schedule : null;
+            this.install = new Map(Object.entries(progress?.stages || {}));
+            this.tracker = readTracker(saved);
+            this.project = document.querySelector('#models option:checked')?.textContent || 'This model';
+            const shops = Object.keys(this.index).length;
+            if (!this.source || (this.source === 'shops' && !shops)) this.source = shops ? 'shops' : 'walls';
+            this.prepare();
+            this.render();
+            if (this.only) this.views.isolate(this.onlyIds()); // and framed in 3D
+        } catch (err) {
+            console.error(err);
+            this.panel.querySelector('[data-status]').textContent = `Could not start the tracker: ${err.message || err}`;
+        }
+    }
+
+    // --- Panels, floors, demo history ------------------------------------------------------------------------------
+
+    // The source's panels { key, dbId, mark, level, wallType, shop }, each floor's framing dates, the demo history.
+    prepare() {
+        const out = [];
+        if (this.source === 'shops') {
+            for (const e of Object.values(this.index)) {
+                const w = this.byExt.get(e.key);
+                out.push({ key: e.key, dbId: w?.dbId, mark: e.mark, level: e.level || w?.level || NOT_SET, wallType: e.wallType || w?.wallType || NOT_SET, shop: true });
+            }
+        } else {
+            for (const w of this.walls) {
+                if (assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope !== 'framed') continue;
+                const shop = this.index[w.externalId];
+                const code = /^_?([A-Z0-9][A-Z0-9.]*)\s*-/i.exec(w.wallType || '')?.[1] || 'W';
+                out.push({ key: w.externalId, dbId: w.dbId, mark: shop?.mark || `${code}-${w.dbId}`, level: w.level || NOT_SET, wallType: w.wallType || NOT_SET, shop: !!shop });
+            }
+        }
+        const nat = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
+        const order = this.views.levels.map(l => l.name), have = new Set(out.map(p => p.level));
+        this.levels = [...order.filter(l => have.has(l)), ...[...have].filter(l => !order.includes(l)).sort(nat)];
+        out.sort((a, b) => this.levels.indexOf(a.level) - this.levels.indexOf(b.level) || nat(a.mark, b.mark));
+        this.panels = out;
+        this.byKey = new Map(out.map(p => [p.key, p]));
+        this.byDb = new Map(out.filter(p => p.dbId).map(p => [p.dbId, p]));
+        // Each floor's framing: the schedule's framing activities linked to it (Demo 3), else spread in build order.
+        const starts = {}, finishes = {};
+        if (this.schedule) {
+            for (const a of linkActivities(this.schedule, order)) {
+                if (a.scope === 'other' || a.stage !== 'Framed' || !a.level || !a.start) continue;
+                if (!starts[a.level] || a.start < starts[a.level]) starts[a.level] = a.start;
+                if (a.finish && (!finishes[a.level] || a.finish > finishes[a.level])) finishes[a.level] = a.finish;
+            }
+        }
+        this.today = localToday();
+        this.floors = floorDates(this.levels, { starts, finishes, today: this.today });
+        this.demoRecs = demoHistory(out, { floors: this.floors, today: this.today, installed: p => this.installed(p), installKnown: this.install.size > 0 });
+    }
+
+    installed(p) {
+        return INSTALLED.has(this.install.get(p.key));
+    }
+
+    // What a panel shows: its records, over the demo history (when on), framing complete from Install Progress.
+    recordOf(p) {
+        return effectiveRecord(this.tracker.panels[p.key], this.demo ? this.demoRecs[p.key] : null, { installed: this.installed(p) });
+    }
+
+    startOf(p) {
+        return this.floors[p.level]?.planned ? this.floors[p.level].start : '';
+    }
+
+    late(p) {
+        return isLate(this.recordOf(p), this.startOf(p), this.today);
+    }
+
+    // The panels in view: the header's level, or every floor.
+    get shown() {
+        const level = this.views.level?.name;
+        return level ? this.panels.filter(p => p.level === level) : this.panels;
+    }
+
+    statusKey(p) {
+        return statusFor(statusOf(this.recordOf(p))).key;
+    }
+
+    colorOf(p) {
+        return statusFor(statusOf(this.recordOf(p))).color;
+    }
+
+    // --- Recording -------------------------------------------------------------------------------------------------------
+
+    get you() {
+        try { return localStorage.getItem('cas-panel-name') || ''; } catch { return ''; } // the panel page's name too
+    }
+
+    // A scan or a typed text: the panel it names gets the step being recorded.
+    scan(text, via = 'scan') {
+        const found = findPanel(this.panels, text);
+        if (found.panel) return this.record(found.panel.key, this.stage, via);
+        const other = this.source === 'shops' ? 'Every framed wall' : 'Shop drawing panels';
+        if (found.matches.length) {
+            this.toast(`${found.matches.length} panels match "${text}": pick one.<div class="pt-picks">${found.matches.map(p => `<button data-act="rec" data-v="${escapeHtml(p.key)}">${escapeHtml(p.mark)}</button>`).join('')}</div>`, 'warn', true);
+        } else this.toast(`No panel "${escapeHtml(text)}" in ${this.source === 'shops' ? 'the shop drawing panels' : 'the framed walls'} of this model. Try ${other}.`, 'bad', true);
+        return false;
+    }
+
+    record(key, stage, via) {
+        const p = this.byKey.get(key), st = STAGES[stageIndex(stage)];
+        if (!p || !st) return false;
+        const before = this.recordOf(p);
+        if (before[stage] && before[stage].via !== 'demo') {
+            const r = before[stage];
+            this.toast(r.via === 'install' ? `<b>${escapeHtml(p.mark)}</b> is framed already in Install Progress.`
+                : `<b>${escapeHtml(p.mark)}</b> was already recorded ${escapeHtml(st.name.toLowerCase())} ${day(r.date)}${r.by ? ` by ${escapeHtml(r.by)}` : ''}.`, 'info', true);
+            this.pick(key, { select: true });
+            return false;
+        }
+        const res = markStage(this.tracker, key, stage, { date: this.date, by: this.you, via });
+        if (!res.ok) return false;
+        const skipped = skippedOf(this.recordOf(p)).map(k => STAGES[stageIndex(k)].name.toLowerCase());
+        this.toast(`<b>✓ ${escapeHtml(p.mark)}</b> · ${escapeHtml(st.name)} ${day(this.date)}${skipped.length ? `<br><span class="pt-warn">Not recorded before it: ${escapeHtml(skipped.join(', '))}.</span>` : ''}
+            <button class="link" data-act="undo" data-v="${escapeHtml(key)}|${stage}">Undo</button>`, 'ok', true);
+        this.save();
+        this.pick(key, { select: true });
+        this.update();
+        return true;
+    }
+
+    undo(key, stage) {
+        if (!unmarkStage(this.tracker, key, stage)) return;
+        this.toast(`Undone: ${escapeHtml(this.byKey.get(key)?.mark || key)} · ${escapeHtml(STAGES[stageIndex(stage)].name)}.`, 'info');
+        this.save();
+        this.update();
+    }
+
+    save() {
+        saveState(this.names.tracker, this.tracker).catch(err => this.toast(`Not saved: ${escapeHtml(err.message)}`, 'bad', true));
+    }
+
+    setStage(stage) {
+        this.stage = stage;
+        pref('stage', stage);
+        this.renderPipeline();
+        this.renderScanHead();
+        this.panel.querySelector('[data-scan-input]')?.focus();
+    }
+
+    setRecordOnClick(on) {
+        this.recordOnClick = on;
+        this.lastSel = this.viewer.getSelection();
+        const box = this.panel.querySelector('[data-click]');
+        if (box) box.checked = on;
+        this.bar?.refresh();
+        if (on) this.toast(`Click walls in 3D or on the plan: each one is recorded <b>${escapeHtml(STAGES[stageIndex(this.stage)].name)}</b> (Ctrl+click for several).`, 'info');
+    }
+
+    // A wall picked in 3D or on the plan (views mirror the plan's picks to 3D): recorded when "record by clicking" is
+    // on, else its card.
+    selectionChanged() {
+        if (!this.panels || this.selecting) return;
+        const ids = this.viewer.getSelection(), fresh = ids.filter(id => !this.lastSel.includes(id));
+        this.lastSel = ids;
+        const picked = fresh.map(id => this.byDb.get(id)).filter(Boolean);
+        if (this.recordOnClick) { for (const p of picked) this.record(p.key, this.stage, '3d'); return; }
+        if (ids.length === 1 && this.byDb.has(ids[0])) this.pick(this.byDb.get(ids[0]).key);
+    }
+
+    // --- The side panel ----------------------------------------------------------------------------------------------
+
+    // The panel's listeners, removed on unload (the panel element stays for the next demo).
+    bindPanel() {
+        const p = this.panel, on = { signal: (this.listening = new AbortController()).signal };
+        p.addEventListener('click', (e) => {
+            const t = e.target.closest?.('[data-act]');
+            if (t) {
+                const v = t.dataset.v;
+                ({
+                    stage: () => this.setStage(v), tab: () => this.setTab(v), pick: () => this.pick(v, { select: true }), rec: () => this.record(v, this.stage, 'manual'),
+                    undo: () => { const [k, s] = v.split('|'); this.undo(k, s); }, step: () => { const [k, s] = v.split('|'); this.record(k, s, 'card'); },
+                    close: () => this.pick(null), camera: () => this.openCamera(), switch: () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '03-progress' } })),
+                    xlsx: () => this.exportList('xlsx'), csv: () => this.exportList('csv'), revit: () => this.exportRevit(), print: () => this.printLabels(),
+                    only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v),
+                })[t.dataset.act]?.();
+                return;
+            }
+            const row = e.target.closest?.('tr[data-key]');
+            if (row && !e.target.closest('a')) this.pick(row.dataset.key, { select: true });
+        }, on);
+        p.addEventListener('submit', (e) => {
+            if (!e.target.matches('[data-scan]')) return;
+            e.preventDefault();
+            const input = e.target.querySelector('[data-scan-input]'), text = input.value.trim();
+            if (text) this.scan(text, 'scan');
+            input.value = '';
+            input.focus();
+        }, on);
+        p.addEventListener('change', (e) => {
+            const t = e.target;
+            if (t.name === 'pt-src') { this.source = t.value; this.pick(null); this.prepare(); this.render(); if (this.only) this.views.isolate(this.onlyIds()); }
+            else if (t.matches('[data-demo]')) { this.demo = t.checked; pref('demo', String(t.checked)); this.update(); }
+            else if (t.matches('[data-click]')) this.setRecordOnClick(t.checked);
+            else if (t.matches('[data-date]')) { this.date = t.value || localToday(); this.renderScanHead(); }
+            else if (t.matches('[data-name]')) { try { localStorage.setItem('cas-panel-name', t.value.trim()); } catch { /* storage blocked */ } }
+            else if (t.matches('[data-status-filter]')) { this.filter.status = t.value; this.renderBody(); }
+            else if (t.matches('[data-import]')) { const f = t.files[0]; t.value = ''; if (f) this.importRevitFile(f); }
+        }, on);
+        p.addEventListener('input', (e) => {
+            if (!e.target.matches('[data-q]')) return;
+            this.filter.q = e.target.value;
+            clearTimeout(this.qTimer);
+            this.qTimer = setTimeout(() => this.renderList(), 150);
+        }, on);
+    }
+
+    render() {
+        const shops = Object.keys(this.index).length;
+        const framed = this.source === 'walls' ? this.panels.length : this.walls.filter(w => assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope === 'framed').length;
+        this.panel.innerHTML = `<div class="demo-panel pt">
+            <div class="pt-head">
+                <span class="pt-logo" aria-hidden="true"></span>
+                <div class="pt-titles"><b>Panel Tracker</b><span>${escapeHtml(this.project)} · ${new Date().toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' })}</span></div>
+                <button class="pt-switch" data-act="switch" title="Switch to Install Progress (Demo 3) on the same model and view">⇄ Install Progress</button>
+            </div>
+            <div class="pt-sub">
+                <label class="pt-you" title="Saved with each step you record (and on the panel pages)">You <input data-name placeholder="Your name" value="${escapeHtml(this.you)}"></label>
+                <span class="pt-seg" role="radiogroup" aria-label="Panels">
+                    <label class="${this.source === 'shops' ? 'on' : ''}"><input type="radio" name="pt-src" value="shops" ${this.source === 'shops' ? 'checked' : ''}>Shop drawing panels <b>${shops}</b></label>
+                    <label class="${this.source === 'walls' ? 'on' : ''}"><input type="radio" name="pt-src" value="walls" ${this.source === 'walls' ? 'checked' : ''}>Every framed wall <b>${framed.toLocaleString()}</b></label>
+                </span>
+                <label class="pt-check" title="A made-up history so the model shows something: reviewed, shipped and delivered ahead of each floor's framing start (the schedule), a few held up. Never saved; what you record wins over it."><input type="checkbox" data-demo ${this.demo ? 'checked' : ''}>Demo history</label>
+            </div>
+            <div class="pt-pipe" data-pipe></div>
+            <div class="pt-tabs" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button role="tab" data-act="tab" data-v="${k}" class="${k === this.tab ? 'on' : ''}">${l}</button>`).join('')}</div>
+            <div data-body></div>
+        </div>`;
+        this.renderPipeline();
+        this.renderBody();
+        this.update({ panelToo: false });
+    }
+
+    setTab(tab) {
+        this.tab = tab;
+        this.panel.querySelectorAll('.pt-tabs [data-v]').forEach(b => b.classList.toggle('on', b.dataset.v === tab));
+        this.renderBody();
+    }
+
+    // Everything that shows the panels' steps, after a change.
+    update({ panelToo = true } = {}) {
+        if (panelToo) { this.renderPipeline(); this.renderCard(); this.renderRecent(); if (this.tab === 'list') this.renderList(); }
+        this.show();
+        this.drawLegend();
+    }
+
+    // The five steps: how many panels reached each, the one being recorded outlined. Click a step to record it.
+    renderPipeline() {
+        const el = this.panel.querySelector('[data-pipe]');
+        if (!el) return;
+        const list = this.shown, c = counts(list, p => this.recordOf(p), { today: this.today, startOf: p => this.startOf(p) });
+        const pct = (n) => (c.total ? Math.round((n / c.total) * 100) : 0);
+        el.innerHTML = STAGES.map((s, i) => `<button class="pt-step ${s.key === this.stage ? 'sel' : ''}" style="--c:${s.color}" data-act="stage" data-v="${s.key}"
+                title="${escapeHtml(`${s.name}: ${c.reached[i]} of ${c.total} panels (${c.at[i]} at this step now). Click to record this step.`)}">
+                <span class="pt-name">${escapeHtml(s.name)}</span>
+                <b>${c.reached[i].toLocaleString()}</b><span class="pt-of">${pct(c.reached[i])}%</span><i class="pt-bar"><b style="width:${pct(c.reached[i])}%"></b></i></button>`).join('')
+            + `<div class="pt-pipe-foot"><span>${escapeHtml(this.views.level?.name || 'All levels')}: ${c.total.toLocaleString()} panels · ${c.none.toLocaleString()} not started</span>
+                ${c.late ? `<button class="pt-late ${this.only === 'late' ? 'on' : ''}" data-act="only" data-v="late" title="Not on site yet, and their floor's framing has started (the schedule): show only them">⚠ ${c.late} late</button>` : ''}
+                <span class="muted">${this.demo ? 'with demo history' : ''}</span></div>`;
+    }
+
+    renderBody() {
+        const el = this.panel.querySelector('[data-body]');
+        if (!el) return;
+        if (this.tab === 'track') {
+            el.innerHTML = `<div class="pt-track"><div>
+                <section class="pt-scan" data-scanbox>
+                    <div class="pt-rec" data-scan-head></div>
+                    <form class="pt-scanrow" data-scan autocomplete="off">
+                        <input data-scan-input type="text" list="pt-marks" placeholder="Scan a QR code or type a mark" aria-label="Scan or type a panel mark">
+                        <button class="pt-go">Record</button>
+                        <button type="button" class="pt-cam" data-act="camera" title="Scan QR codes with the camera">📷 Scan</button>
+                    </form>
+                    <datalist id="pt-marks">${this.panels.slice(0, 3000).map(p => `<option value="${escapeHtml(p.mark)}">`).join('')}</datalist>
+                    <label class="pt-check"><input type="checkbox" data-click ${this.recordOnClick ? 'checked' : ''}>Record by clicking walls in 3D or on the plan</label>
+                    <div class="pt-toast" data-toast hidden></div>
+                </section>
+                <div data-card></div></div>
+                <section class="pt-recent"><h3>Recently recorded</h3><div data-recent></div></section></div>`;
+            this.renderScanHead();
+            this.renderCard();
+            this.renderRecent();
+        } else if (this.tab === 'list') {
+            el.innerHTML = `<div class="pt-filters">
+                    <input type="search" data-q placeholder="Find: mark, wall type" value="${escapeHtml(this.filter.q)}" aria-label="Find a panel">
+                    <select data-status-filter aria-label="Step">${[['', 'Every step'], [NOT_STARTED.key, NOT_STARTED.name], ...STAGES.map(s => [s.key, `At: ${s.name}`]), ['late', 'Late']].map(([k, l]) => `<option value="${k}" ${k === this.filter.status ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>
+                    <span class="muted" data-count></span>
+                    <span class="pt-grow"></span><button data-act="xlsx" title="The list as an Excel workbook (and the log of records)">Excel</button><button data-act="csv">CSV</button>
+                </div><div data-list></div>`;
+            this.renderList();
+        } else if (this.tab === 'labels') {
+            const list = this.shown;
+            el.innerHTML = `<section class="pt-info"><h3>QR labels</h3>
+                <p>A label per panel: its QR code (its panel page, the same link as the QR code on its shop drawing), mark, floor and wall type. Scan it here
+                    (camera or handheld scanner) to record a step, or with any phone camera to open its panel page.</p>
+                <p><button data-act="print">Print ${list.length.toLocaleString()} labels</button> <span class="muted">${escapeHtml(this.views.level?.name || 'All levels')} (pick a level in the header for one floor's) · 3 x 10 per letter page</span></p>
+                <div class="pt-labels">${list.slice(0, 6).map(p => this.labelHtml(p)).join('')}</div>${list.length > 6 ? `<p class="muted">… and ${list.length - 6} more.</p>` : ''}</section>`;
+        } else {
+            el.innerHTML = `<section class="pt-info"><h3>Revit: pull the status, report back</h3>
+                <p><b>Pull into Revit.</b> One row per panel by its wall's Revit <b>UniqueId</b>: mark, level, status and the date of each step.
+                    For a CAS BIM Tools command (planned) to read onto the panels in the model.</p>
+                <p><button data-act="revit">Export for Revit (CSV)</button></p>
+                <p><b>Report back from Revit.</b> The same columns (CSV, or JSON rows), from Revit or a spreadsheet: each step the tracker does not have
+                    yet is recorded (from Revit); steps recorded here are kept. Rows match by UniqueId, else by mark.</p>
+                <p><label class="pt-file">Import a report (CSV or JSON)<input type="file" data-import accept=".csv,.json,.txt" hidden></label></p>
+                <p class="muted">Columns: ${['UniqueId', 'Mark', 'Level', 'Status', ...STAGES.map(s => s.name), 'Updated'].map(escapeHtml).join(' · ')}. Dates as YYYY-MM-DD.</p>
+                ${this.tracker.revit ? `<p class="muted">Last report: ${escapeHtml(this.tracker.revit.file)} · ${new Date(this.tracker.revit.at).toLocaleString()} · ${this.tracker.revit.steps} steps</p>` : ''}</section>`;
+        }
+    }
+
+    renderScanHead() {
+        const el = this.panel.querySelector('[data-scan-head]');
+        if (!el) return;
+        const s = STAGES[stageIndex(this.stage)];
+        this.panel.querySelector('[data-scanbox]').style.setProperty('--c', s.color);
+        el.innerHTML = `<span class="pt-dot"></span>Recording <b>${escapeHtml(s.done)}</b>
+            <label title="The date recorded (back-date a step that was not scanned on the day)">on <input type="date" data-date value="${this.date}" max="${localToday()}"></label>
+            <span class="muted">· pick another step above</span>`;
+    }
+
+    toast(html, kind = 'info', stay = false) {
+        const el = this.panel.querySelector('[data-toast]');
+        if (!el) return;
+        el.hidden = false;
+        el.className = `pt-toast ${kind}`;
+        el.innerHTML = html;
+        clearTimeout(this.toastTimer);
+        if (!stay) this.toastTimer = setTimeout(() => { el.hidden = true; }, 6000);
+    }
+
+    // The picked panel: its steps with who recorded each and when; record or undo a step from here.
+    renderCard() {
+        const el = this.panel.querySelector('[data-card]');
+        if (!el) return;
+        const p = this.picked && this.byKey.get(this.picked);
+        if (!p) { el.innerHTML = '<p class="muted pt-hint">Pick a panel (a wall in 3D or on the plan, a row, a scan) to see its steps.</p>'; return; }
+        const rec = this.recordOf(p), at = statusOf(rec), late = this.late(p), real = this.tracker.panels[p.key] || {};
+        const urn = location.hash.slice(1);
+        el.innerHTML = `<section class="pt-card" style="--c:${statusFor(at).color}">
+            <div class="pt-card-head"><b>${escapeHtml(p.mark)}</b><span class="pt-chip">${escapeHtml(statusFor(at).name)}</span>${late ? '<span class="pt-chip late">Late</span>' : ''}
+                <button class="pt-x" data-act="close" title="Close">×</button></div>
+            <div class="muted">${escapeHtml(p.level)} · ${escapeHtml(p.wallType)}${this.startOf(p) ? ` · framing from ${day(this.startOf(p))}` : ''}</div>
+            <ol class="pt-steps">${STAGES.map((s, i) => {
+                const r = rec[s.key], state = r ? 'done' : i < at ? 'skipped' : i === at + 1 ? 'next' : 'todo';
+                const who = r ? (r.via === 'demo' ? `${day(r.date)} · demo history` : [day(r.date), r.by, VIA[r.via] || r.via].filter(Boolean).join(' · ')) : state === 'skipped' ? 'not recorded' : '';
+                return `<li class="${state}" style="--s:${s.color}"><i></i><span><b>${escapeHtml(s.name)}</b><em>${escapeHtml(who)}</em></span>
+                    ${real[s.key] ? `<button class="link" data-act="undo" data-v="${escapeHtml(p.key)}|${s.key}" title="Take this step back off">Undo</button>`
+                        : !r ? `<button class="pt-mini" data-act="step" data-v="${escapeHtml(p.key)}|${s.key}" title="Record ${escapeHtml(s.name.toLowerCase())} ${day(this.date)}">Record</button>` : ''}</li>`;
+            }).join('')}</ol>
+            ${this.install.has(p.key) ? `<p class="muted">Install Progress: ${escapeHtml(this.install.get(p.key))}</p>` : ''}
+            <div class="pt-card-acts">${p.shop ? `<a href="panel.html?p=${encodeURIComponent(p.key)}" target="_blank" rel="noopener">Shop drawing ↗</a>`
+                : `<a href="index.html?demo=06-shop-drawings&layout=split&panel=${encodeURIComponent(p.key)}${urn ? `#${urn}` : ''}" target="_blank" rel="noopener">Draw its shop drawing ↗</a>`}
+                ${p.dbId ? `<button class="link" data-act="zoom" data-v="${escapeHtml(p.key)}">Zoom to it</button>` : '<span class="muted">not in this model</span>'}</div>
+        </section>`;
+    }
+
+    renderRecent() {
+        const el = this.panel.querySelector('[data-recent]');
+        if (!el) return;
+        const log = this.tracker.log.slice(0, 25);
+        el.innerHTML = log.length ? `<ul class="pt-log">${log.map(e => {
+            const s = STAGES[stageIndex(e.stage)], p = this.byKey.get(e.key);
+            return `<li style="--s:${s?.color}"><i></i><button class="link" data-act="pick" data-v="${escapeHtml(e.key)}" ${p ? '' : 'disabled title="Not in this panel list"'}>${escapeHtml(p?.mark || e.key.slice(-8))}</button>
+                <span>${escapeHtml(s?.name || e.stage)}</span><em>${day(e.date)}${e.by ? ` · ${escapeHtml(e.by)}` : ''} · ${escapeHtml(VIA[e.via] || e.via)}</em>
+                <button class="pt-x" data-act="undo" data-v="${escapeHtml(e.key)}|${e.stage}" title="Undo">×</button></li>`;
+        }).join('')}</ul>` : '<p class="muted">Nothing recorded yet on this model. Scan a QR code, type a mark, or tick "Record by clicking walls".</p>';
+    }
+
+    // The list: grouped by floor (build order), each step's date; a floor's framing start, and its panels by step.
+    filtered() {
+        const q = this.filter.q.trim().toLowerCase(), st = this.filter.status;
+        return this.shown.filter(p => (!q || `${p.mark} ${p.wallType}`.toLowerCase().includes(q))
+            && (!st || (st === 'late' ? this.late(p) : this.statusKey(p) === st)));
+    }
+
+    renderList() {
+        const el = this.panel.querySelector('[data-list]');
+        if (!el) return;
+        const list = this.filtered(), groups = new Map();
+        for (const p of list) { if (!groups.has(p.level)) groups.set(p.level, []); groups.get(p.level).push(p); }
+        this.panel.querySelector('[data-count]').textContent = `${list.length.toLocaleString()} of ${this.shown.length.toLocaleString()}`;
+        const capped = list.length > 600; // every framed wall: the first 600 rows (export has them all)
+        let left = 600;
+        el.innerHTML = `<table class="pt-list"><thead><tr><th>Mark</th><th>Step</th>${STAGES.map(s => `<th title="${escapeHtml(s.name)}"><i style="background:${s.color}"></i>${escapeHtml(s.short)}</th>`).join('')}</tr></thead>
+            ${[...groups].map(([level, ps]) => {
+                if (left <= 0) return '';
+                const f = this.floors[level], bar = STAGES.map((s, i) => { const n = ps.filter(p => statusOf(this.recordOf(p)) === i).length; return n ? `<span style="flex:${n};background:${s.color}"></span>` : ''; }).join('');
+                const rows = ps.slice(0, left);
+                left -= rows.length;
+                return `<tbody><tr class="pt-group"><td colspan="${STAGES.length + 2}"><b>${escapeHtml(level)}</b> <span class="muted">${ps.length} panels${f?.planned ? ` · framing from ${day(f.start)}` : ''}</span>
+                    <span class="pt-gbar">${bar}</span></td></tr>
+                ${rows.map(p => {
+                    const rec = this.recordOf(p), i = statusOf(rec), late = this.late(p);
+                    return `<tr data-key="${escapeHtml(p.key)}" class="${p.key === this.picked ? 'hi' : ''}"><td>${escapeHtml(p.mark)}</td>
+                        <td><span class="pt-chip sm" style="--c:${statusFor(i).color}">${escapeHtml(statusFor(i).short)}</span>${late ? '<span class="pt-chip sm late">Late</span>' : ''}</td>
+                        ${STAGES.map(s => `<td class="${rec[s.key]?.via === 'demo' ? 'demo' : ''}" title="${escapeHtml(rec[s.key] ? [day(rec[s.key].date), rec[s.key].via === 'demo' ? 'demo history' : rec[s.key].by, rec[s.key].via === 'demo' ? '' : VIA[rec[s.key].via]].filter(Boolean).join(' · ') : '')}">${dayMonth(rec[s.key]?.date)}</td>`).join('')}</tr>`;
+                }).join('')}</tbody>`;
+            }).join('')}</table>${capped ? `<p class="muted">The first 600 rows; filter, pick a level or export for all ${list.length.toLocaleString()}.</p>` : ''}
+            ${list.length ? '' : '<p class="muted">No panel matches.</p>'}`;
+    }
+
+    // --- 3D and plan: the walls in the color of their step ---------------------------------------------------------
+
+    show() {
+        const colors = new Map();
+        for (const p of this.panels) if (p.dbId) colors.set(p.dbId, this.colorOf(p));
+        this.views.setColors(colors);
+        this.views.setPlanLabels((id) => { const p = this.byDb.get(id); return p ? { text: p.mark, color: this.colorOf(p) } : null; });
+        if (this.only) this.views.isolate(this.onlyIds(), { fit: false });
+        this.bar?.refresh();
+    }
+
+    onlyIds() {
+        const keep = this.only === 'panels' ? () => true : this.only === 'late' ? p => this.late(p) : p => this.statusKey(p) === this.only;
+        return this.panels.filter(p => p.dbId && keep(p)).map(p => p.dbId);
+    }
+
+    showOnly(key) {
+        const was = this.only;
+        this.only = key;
+        if (key) {
+            const ids = this.onlyIds();
+            if (!ids.length) { this.only = was; this.toast('No panel there right now.', 'info'); }
+            else this.views.isolate(ids);
+        }
+        if (!this.only) { this.views.showAll(); this.show(); }
+        this.renderPipeline();
+        this.drawLegend();
+        this.bar?.refresh();
+    }
+
+    // The legend over the 3D view: each step's panels (in view), click one to show only them.
+    drawLegend() {
+        if (!this.panels) return;
+        if (!this.legend) {
+            this.legend = document.createElement('div');
+            this.legend.className = 'pt-legend';
+            document.getElementById('preview').appendChild(this.legend);
+            this.legend.addEventListener('click', (e) => { const k = e.target.closest('[data-only]')?.dataset.only; if (k !== undefined) this.showOnly(!k ? null : this.only === k && k !== 'panels' ? 'panels' : k); });
+        }
+        const c = counts(this.shown, p => this.recordOf(p), { today: this.today, startOf: p => this.startOf(p) });
+        const chip = (key, name, color, n) => `<button data-only="${key}" class="${this.only === key ? 'on' : ''}" ${n ? '' : 'disabled'}><i style="background:${color}"></i>${escapeHtml(name)} <b>${n}</b></button>`;
+        this.legend.innerHTML = `<b class="pt-lt">Panels · ${escapeHtml(this.views.level?.name || 'All levels')}</b>`
+            + chip('none', NOT_STARTED.name, NOT_STARTED.color, c.none) + STAGES.map((s, i) => chip(s.key, s.name, s.color, c.at[i])).join('')
+            + (c.late ? chip('late', 'Late', LATE, c.late) : '')
+            + `<span class="pt-lv"><button data-only="panels" class="${this.only === 'panels' ? 'on' : ''}" title="The panels, the rest of the model ghosted">Panels only</button><button data-only="" class="${this.only ? '' : 'on'}" title="Every wall, the panels in color">Every wall</button></span>`;
+    }
+
+    pick(key, { select = false } = {}) {
+        this.picked = key;
+        this.renderCard();
+        this.panel.querySelectorAll('tr[data-key]').forEach(r => r.classList.toggle('hi', r.dataset.key === key));
+        const p = key && this.byKey.get(key);
+        if (select && p?.dbId) {
+            this.selecting = true;
+            try { this.views.select([p.dbId]); } finally { this.selecting = false; }
+            this.lastSel = [p.dbId];
+        }
+    }
+
+    zoomTo(key) {
+        const p = this.byKey.get(key);
+        if (!p?.dbId) return;
+        if (this.only && this.only !== 'panels') this.showOnly('panels');
+        this.pick(key, { select: true }); // zooms to it (views.zoomToPick), unless Navigate is off in Options
+        if (!this.views.zoomPick) this.viewer.fitToView([p.dbId], this.viewer.model);
+    }
+
+    // --- Camera scanning ---------------------------------------------------------------------------------------------
+    // Where the browser reads QR codes (BarcodeDetector: Chrome and Edge on Android, macOS, ChromeOS), the camera scans
+    // panel after panel; elsewhere, the phone's own camera on the shop drawing's QR code opens the panel page.
+
+    async openCamera() {
+        const can = 'BarcodeDetector' in window && (await window.BarcodeDetector.getSupportedFormats().catch(() => [])).includes('qr_code');
+        if (!can || !navigator.mediaDevices?.getUserMedia) {
+            this.toast('This browser cannot read QR codes from the camera (Chrome or Edge on an Android phone or a Mac can). Here: a handheld scanner types into the box. '
+                + 'On a phone: point its camera at the QR code on the shop drawing or label; it opens the panel page, where the step can be recorded.', 'warn', true);
+            return;
+        }
+        this.closeCamera();
+        try {
+            this.stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
+        } catch (err) { this.toast(`No camera: ${escapeHtml(err.message)}`, 'bad', true); return; }
+        const box = this.cam = document.createElement('div');
+        box.className = 'pt-camera';
+        const s = STAGES[stageIndex(this.stage)];
+        box.innerHTML = `<div class="pt-cam-card" style="--c:${s.color}"><div class="pt-cam-head"><span class="pt-dot"></span>Recording <b>${escapeHtml(s.done)}</b><button data-cam-close>Done</button></div>
+            <video playsinline muted></video><p data-cam-msg>Point the camera at a panel's QR code.</p></div>`;
+        document.body.appendChild(box);
+        box.querySelector('[data-cam-close]').onclick = () => this.closeCamera();
+        const video = box.querySelector('video');
+        video.srcObject = this.stream;
+        await video.play().catch(() => {});
+        const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
+        const seen = new Map(); // a code read again within 4 s is the same scan
+        const tick = async () => {
+            if (this.cam !== box) return;
+            try {
+                for (const code of await detector.detect(video)) {
+                    const t = seen.get(code.rawValue);
+                    if (t && performance.now() - t < 4000) continue;
+                    seen.set(code.rawValue, performance.now());
+                    const before = this.tracker.log.length, ok = this.scan(code.rawValue, 'camera');
+                    const msg = box.querySelector('[data-cam-msg]');
+                    msg.innerHTML = ok && this.tracker.log.length > before ? `✓ ${escapeHtml(this.byKey.get(this.tracker.log[0].key)?.mark || '')} recorded` : this.panel.querySelector('[data-toast]')?.innerHTML || 'Not a panel here.';
+                }
+            } catch { /* frame not ready */ }
+            this.camTimer = setTimeout(tick, 250);
+        };
+        tick();
+    }
+
+    closeCamera() {
+        clearTimeout(this.camTimer);
+        this.stream?.getTracks().forEach(t => t.stop());
+        this.stream = null;
+        this.cam?.remove();
+        this.cam = null;
+    }
+
+    // --- Exports, labels, Revit -----------------------------------------------------------------------------------
+
+    download(name, data, type) {
+        const url = URL.createObjectURL(new Blob([data], { type }));
+        Object.assign(document.createElement('a'), { href: url, download: name }).click();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    fileName(what, ext) {
+        return `${this.project.replace(/[^\w-]+/g, '-')}-${what}-${localToday()}.${ext}`;
+    }
+
+    exportList(kind) {
+        const rows = [['Mark', 'Level', 'Wall type', 'Step', 'Late', ...STAGES.map(s => s.name), 'Last recorded by', 'UniqueId'],
+            ...this.filtered().map(p => {
+                const rec = this.recordOf(p), last = STAGES.map(s => rec[s.key]).filter(Boolean).pop();
+                return [p.mark, p.level, p.wallType, statusFor(statusOf(rec)).name, this.late(p) ? 'Late' : '', ...STAGES.map(s => rec[s.key]?.date || ''), last?.by || '', p.key];
+            })];
+        if (kind === 'csv') { this.download(this.fileName('panels', 'csv'), csvText(rows), 'text/csv'); return; }
+        const log = [['Date', 'Mark', 'Step', 'By', 'How', 'Recorded at', 'UniqueId'],
+            ...this.tracker.log.map(e => [e.date, this.byKey.get(e.key)?.mark || '', STAGES[stageIndex(e.stage)]?.name || e.stage, e.by || '', VIA[e.via] || e.via, e.at, e.key])];
+        this.download(this.fileName('panels', 'xlsx'), xlsxBytes([{ name: 'Panels', rows }, { name: 'Log', rows: log }]), 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    }
+
+    exportRevit() {
+        this.download(this.fileName('panel-status-for-revit', 'csv'), csvText(revitRows(this.panels, p => this.recordOf(p))), 'text/csv');
+    }
+
+    async importRevitFile(file) {
+        try {
+            const rows = readRevitRows(await file.text());
+            if (!rows.length) { this.toast(`${escapeHtml(file.name)}: no rows with a UniqueId or a mark.`, 'bad', true); this.renderBody(); return; }
+            const res = importRevit(this.tracker, rows, this.panels, { by: 'Revit' });
+            this.tracker.revit = { file: file.name, at: new Date().toISOString(), steps: res.steps };
+            this.save();
+            this.update();
+            this.renderBody();
+            alert(`${file.name}: ${res.steps} steps recorded on ${res.panels} panels.${res.unknown.length ? ` ${res.unknown.length} rows match no panel here (${res.unknown.slice(0, 5).join(', ')}${res.unknown.length > 5 ? '…' : ''}).` : ''}`);
+        } catch (err) {
+            alert(`Could not read ${file.name}: ${err.message}`);
+        }
+    }
+
+    labelUrl(p) {
+        const base = CONFIG.publicUrl || new URL('.', location.href).href;
+        return `${base.replace(/\/?$/, '/')}panel.html?p=${encodeURIComponent(p.key)}`;
+    }
+
+    labelHtml(p) {
+        let svg = '';
+        try {
+            const qr = qrEncode(this.labelUrl(p)), n = qr.size + 8;
+            svg = `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/>${qrRects(qr).map(r => `<rect x="${r.x + 4}" y="${r.y + 4}" width="${r.w}" height="${r.h}"/>`).join('')}</svg>`;
+        } catch { /* too long for a QR code */ }
+        return `<div class="pt-label">${svg}<div><b>${escapeHtml(p.mark)}</b><span>${escapeHtml(p.level)}</span><em>${escapeHtml(String(p.wallType).replace(/^_/, '').slice(0, 60))}</em><small>${escapeHtml(this.project)}</small></div></div>`;
+    }
+
+    printLabels() {
+        const list = this.shown;
+        const w = window.open('', '_blank');
+        if (!w) { alert('Allow pop-ups for this site to print the labels.'); return; }
+        w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Panel labels · ${escapeHtml(this.project)}</title><style>
+            @page { size: letter; margin: 0.5in 0.19in; } body { margin: 0; font: 9pt system-ui, sans-serif; }
+            .sheet { display: grid; grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; column-gap: 0.125in; }
+            .pt-label { display: flex; gap: 0.06in; align-items: center; overflow: hidden; padding: 0.04in 0.08in; box-sizing: border-box; break-inside: avoid; }
+            .pt-label svg { width: 0.9in; height: 0.9in; flex: none; } .pt-label div { display: flex; flex-direction: column; min-width: 0; }
+            .pt-label b { font-size: 12pt; } .pt-label em { font-style: normal; font-size: 7pt; color: #333; } .pt-label small { font-size: 6.5pt; color: #666; }
+            @media screen { body { padding: 1em; } .pt-label { outline: 1px dashed #ccc; } }</style></head>
+            <body><div class="sheet">${list.map(p => this.labelHtml(p)).join('')}</div><script>window.onload = () => window.print();<\/script></body></html>`);
+        w.document.close();
+    }
+}
+
+Autodesk.Viewing.theExtensionManager.registerExtension(EXTENSION_ID, PanelTrackerExtension);
