@@ -48,7 +48,17 @@ export class PlanPop {
 
     schedule(ms) {
         clearTimeout(this.timer);
-        this.timer = setTimeout(() => this.draw().catch(err => console.warn('Plan colors layer:', err)), ms);
+        if (!this.pending) { let done; this.pending = new Promise(r => { done = r; }); this.pending.done = done; }
+        this.timer = setTimeout(() => this.draw().catch(err => console.warn('Plan colors layer:', err)).finally(() => {
+            const p = this.pending;
+            this.pending = null;
+            p?.done();
+        }), ms);
+    }
+
+    // Resolves once the layer shows the latest colors (a schedule playing waits for it before its next day).
+    whenDrawn() {
+        return this.pending || Promise.resolve();
     }
 
     // The sheet's scale on screen: 10 sheet units along its bottom edge, in pixels (Model.getBoundingBox,
@@ -64,8 +74,11 @@ export class PlanPop {
         const v = this.viewer, cv = this.canvas, run = (this.run = (this.run || 0) + 1);
         const r = this.colors.length && v.model?.isLoadDone() ? this.radius() : 0;
         if (!r) { cv.width = 0; cv.classList.remove('moving'); return; }
-        const img = await new Promise((res, rej) => v.getScreenShot(0, 0, (url) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }));
+        // A large view at half resolution (the layer is blobs of color; a quarter of the pixels to read).
+        const cw = v.container.clientWidth, ch = v.container.clientHeight, half = cw * ch > 500000;
+        const img = await new Promise((res, rej) => v.getScreenShot(half ? Math.round(cw / 2) : 0, half ? Math.round(ch / 2) : 0, (url) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = url; }));
         if (run !== this.run) return;
+        const grow = half ? Math.max(1, Math.round(r / 2)) : r;
         const W = img.width, H = img.height;
         const src = Object.assign(document.createElement('canvas'), { width: W, height: H }), g = src.getContext('2d', { willReadFrequently: true });
         g.drawImage(img, 0, 0);
@@ -79,7 +92,7 @@ export class PlanPop {
         cv.height = H;
         const ctx = cv.getContext('2d');
         ctx.globalAlpha = 0.85;
-        for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) if (dx * dx + dy * dy <= r * r + r) ctx.drawImage(src, dx, dy);
+        for (let dy = -grow; dy <= grow; dy++) for (let dx = -grow; dx <= grow; dx++) if (dx * dx + dy * dy <= grow * grow + grow) ctx.drawImage(src, dx, dy);
         cv.classList.remove('moving');
     }
 

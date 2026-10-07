@@ -24,6 +24,26 @@ export class AllPlans {
         const views = this.views;
         this.close();
         if (!views.showing2d) views.setLayout('split');
+        views.setPlanCovered(true); // nothing to color under it meanwhile
+        this.loading = true;
+        let loaded;
+        this.opening = new Promise(r => { loaded = r; });
+        try {
+            await this.load(levels, { onProgress, onClose });
+        } finally {
+            this.loading = false;
+            loaded();
+        }
+    }
+
+    // The plans are in and their colors drawn (a schedule playing waits for this before each next day).
+    async settled() {
+        if (this.loading) await this.opening;
+        await Promise.race([this.pop?.whenDrawn(), new Promise(r => setTimeout(r, 2000))]);
+    }
+
+    async load(levels, { onProgress, onClose }) {
+        const views = this.views;
         const pane = views.el.container2d.parentElement;
         const run = (this.run = (this.run || 0) + 1);
         const box = this.box = document.createElement('div');
@@ -108,19 +128,27 @@ export class AllPlans {
 
     // colors: Map dbId -> hex, as the model shows them; each plan colors its own floors' walls.
     setColors(colors) {
+        const prev = this.colors;
         this.colors = colors;
-        for (const c of this.cells) this.colorCell(c);
+        for (const c of this.cells) this.colorCell(c, prev);
         this.pop?.setColors([...colors.values()]);
     }
 
-    colorCell(c) {
+    // A plan's walls in their colors: in full the first time, then only those whose color changed (no color:
+    // intensity 0, the drawing as it is). Viewer3D setThemingColor: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    colorCell(c, prev = null) {
         if (!this.viewer) return;
-        this.viewer.clearThemingColors(c.model);
-        for (const name of c.names) {
-            for (const id of this.views.wallsByLevel.get(name) || []) {
-                const hex = this.colors.get(id);
-                if (hex) this.viewer.setThemingColor(id, toThemingColor(hex), c.model);
-            }
+        c.ids ??= c.names.flatMap(name => this.views.wallsByLevel.get(name) || []);
+        if (!prev || !c.colored) {
+            this.viewer.clearThemingColors(c.model);
+            for (const id of c.ids) { const hex = this.colors.get(id); if (hex) this.viewer.setThemingColor(id, toThemingColor(hex), c.model); }
+            c.colored = true;
+            return;
+        }
+        const none = new THREE.Vector4(0, 0, 0, 0);
+        for (const id of c.ids) {
+            const was = prev.get(id), now = this.colors.get(id);
+            if (was !== now) this.viewer.setThemingColor(id, now ? toThemingColor(now) : none, c.model);
         }
     }
 
@@ -130,6 +158,7 @@ export class AllPlans {
         this.resizer = null;
         this.pop?.remove();
         this.pop = null;
+        if (this.box || this.viewer) this.views.setPlanCovered(false); // the plan pane shows again: its colors back
         this.viewer?.finish();
         this.viewer = null;
         this.box?.remove();

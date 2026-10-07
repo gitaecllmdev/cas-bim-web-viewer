@@ -667,20 +667,37 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         }
     }
 
+    // Day by day, one working day a step: the next step only once this one is drawn (the floor plans included, when they
+    // are open), so the timeline never runs ahead of what the views show. At most one step every 280 ms.
     play() {
         this.setCursor(this.cursor >= this.span[1] ? this.span[0] : this.cursor);
-        this.playTimer = setInterval(() => {
+        const run = (this.playRun = (this.playRun || 0) + 1);
+        const tick = async () => {
+            if (run !== this.playRun || !this.playTimer) return;
+            const t0 = performance.now();
             let next = addDays(this.cursor, 1);
             while (next < this.span[1] && !this.cal.isWork(next)) next = addDays(next, 1);
             if (next >= this.span[1]) { this.setCursor(this.span[1]); this.stopPlay(); return; }
             this.setCursor(next, { move: true });
-        }, 280);
+            if (this.allPlans.isOpen) await this.allPlans.settled();
+            if (run !== this.playRun || !this.playTimer) return;
+            this.playTimer = setTimeout(tick, Math.max(0, 280 - (performance.now() - t0)));
+        };
+        this.playTimer = setTimeout(async () => {
+            if (this.allPlans.isOpen && this.allPlans.loading) {
+                this.message('Waiting for the floor plans to load before playing…', 'warn');
+                await this.allPlans.settled();
+                this.message('');
+            }
+            tick();
+        }, 0);
         this.updateCursorUi();
     }
 
     stopPlay() {
-        clearInterval(this.playTimer);
+        clearTimeout(this.playTimer);
         this.playTimer = null;
+        this.playRun = (this.playRun || 0) + 1;
         if (this.panel.querySelector('[data-play]')) this.updateCursorUi();
     }
 

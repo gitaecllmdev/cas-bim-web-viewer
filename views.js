@@ -23,6 +23,7 @@ export class Views {
         this.viewer3d = viewer3d;
         this.viewer2d = null; // created the first time the 2D pane is shown
         this.colors = new Map(); // dbId -> hex
+        this.appliedTo = new WeakMap(); // model -> the colors map last applied to it in full or by changes (setColors)
         this.isolated = null; // dbIds, or null for no isolation
         this.hidden = [];
         this.level = null; // level object from getLevels(), or null for the whole building
@@ -86,9 +87,33 @@ export class Views {
 
     // --- Shared visual state -------------------------------------------------------------------
 
+    // New colors: where a model already shows the previous ones, only the walls whose color changed are themed again
+    // (a played schedule changes a few walls a day, not thousands); else in full. The plan pane under the floor plans
+    // (setPlanCovered) is left until it shows again.
     setColors(colors) {
+        const prev = this.colors;
         this.colors = new Map(colors);
-        for (const [viewer, model] of this.active) this.applyColors(viewer, model);
+        for (const [viewer, model] of this.active) {
+            if (viewer === this.viewer2d && this.planCovered) { this.appliedTo.delete(model); continue; }
+            if (this.appliedTo.get(model) === prev && !(viewer === this.viewer2d && this.isolated)) this.recolor(viewer, model, prev);
+            else this.applyColors(viewer, model);
+        }
+    }
+
+    // The walls whose color differs from prev, themed again (no color: intensity 0, the material as it is).
+    // Viewer3D setThemingColor (r, g, b, intensity): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    recolor(viewer, model, prev) {
+        const floor = this.apart?.idsOf.get(model), only = floor ? new Set(floor) : null, none = new THREE.Vector4(0, 0, 0, 0);
+        for (const [id, hex] of this.colors) if (prev.get(id) !== hex && (!only || only.has(id))) viewer.setThemingColor(id, toThemingColor(hex), model);
+        for (const id of prev.keys()) if (!this.colors.has(id) && (!only || only.has(id))) viewer.setThemingColor(id, none, model);
+        this.appliedTo.set(model, this.colors);
+        if (viewer === this.viewer2d) this.planPop?.setColors([...this.colors.values()]);
+    }
+
+    // The plan pane is covered (Demo 3's floor plans): no coloring there meanwhile; colored again when it shows.
+    setPlanCovered(on) {
+        this.planCovered = on;
+        if (!on && this.viewer2d?.model) this.applyColors(this.viewer2d, this.viewer2d.model);
     }
 
     clearColors() {
@@ -103,6 +128,7 @@ export class Views {
         const floor = this.apart?.idsOf.get(model);
         if (floor) {
             for (const id of floor) { const hex = this.colors.get(id); if (hex) viewer.setThemingColor(id, toThemingColor(hex), model); }
+            this.appliedTo.set(model, this.colors);
             return;
         }
         if (viewer === this.viewer2d && this.isolated) {
@@ -111,9 +137,11 @@ export class Views {
             for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
             this.highlightPlan(viewer, model, this.isolated);
             this.planPop?.setColors([...iso].map(id => this.colors.get(id) || PLAN_ISOLATED)); // seen from far, thicker
+            this.appliedTo.delete(model); // the faded walls too: in full next time
             return;
         }
         for (const [dbId, hex] of this.colors) viewer.setThemingColor(dbId, toThemingColor(hex), model);
+        this.appliedTo.set(model, this.colors);
         if (viewer === this.viewer2d) {
             this.highlightPlan(viewer, model, null);
             this.planPop?.setColors([...this.colors.values()]); // seen from far, thicker
