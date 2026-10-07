@@ -695,14 +695,34 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel.ps .ps-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.4em 0.6em; margin: 0.4em 0; }
 .demo-panel.ps .ps-filters label { display: flex; flex-direction: column; font-size: 0.85em; color: #555; gap: 2px; }
 .demo-panel.ps .ps-filters select, .demo-panel.ps .ps-filters input { font: inherit; font-size: 1.05em; color: #111; }
-.demo-panel.ps .ps-batches { max-height: 32vh; overflow: auto; border: 1px solid #e1e5ea; border-radius: 4px; padding: 0.3em 0.5em; }
-.demo-panel.ps .ps-batch { padding: 0.3em 0; border-bottom: 1px solid #eef1f4; }
-.demo-panel.ps .ps-bhead { display: flex; gap: 0.4em; align-items: baseline; flex-wrap: wrap; font-size: 0.9em; }
-.demo-panel.ps .ps-trucks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
-.demo-panel.ps .ps-truck { display: inline-flex; flex-direction: column; align-items: center; min-width: 52px; padding: 2px 6px; border: 1px solid #c9d1da; border-radius: 4px; background: #fff; cursor: pointer; font-weight: 700; }
-.demo-panel.ps .ps-truck small { font-weight: 400; color: #666; font-size: 0.75em; }
-.demo-panel.ps .ps-truck.active { background: #1f3b57; color: #fff; border-color: #1f3b57; }
-.demo-panel.ps .ps-truck.active small { color: #cfe0ef; }
+.demo-panel.ps .ps-sum { display: flex; flex-wrap: wrap; gap: 0.4em; align-items: center; margin: 0.4em 0; }
+.demo-panel.ps .ps-sum button { margin-left: auto; }
+.demo-panel.ps .ps-note { color: #1f6f3a; font-weight: 600; }
+.demo-panel.ps .ps-trucklist { display: grid; gap: 6px; max-height: 46vh; overflow: auto; padding: 2px; }
+.demo-panel.ps .ps-tcard { border: 1px solid #d4dae1; border-radius: 6px; padding: 6px 8px; background: #fff; }
+.demo-panel.ps .ps-tcard.sel { border-color: #1f3b57; box-shadow: 0 0 0 1px #1f3b57 inset; }
+.demo-panel.ps .ps-tcard.over { border-color: #b00020; background: #fff6f6; }
+.demo-panel.ps .ps-thead { display: flex; gap: 0.4em; align-items: center; flex-wrap: wrap; }
+.demo-panel.ps .ps-thead select { font: inherit; font-size: 0.85em; }
+.demo-panel.ps .ps-thead button:not(.link) { font-size: 0.8em; padding: 1px 6px; }
+.demo-panel.ps .ps-bar { display: grid; grid-template-columns: 3.6em 1fr auto; gap: 6px; align-items: center; font-size: 0.78em; color: #4a5866; margin-top: 3px; }
+.demo-panel.ps .ps-bar i { display: block; height: 7px; background: #e6ebf0; border-radius: 4px; overflow: hidden; }
+.demo-panel.ps .ps-bar i b { display: block; height: 100%; background: #59a14f; }
+.demo-panel.ps .ps-bar.over i b { background: #b00020; }
+.demo-panel.ps .ps-bar em { font-style: normal; white-space: nowrap; }
+.demo-panel.ps .ps-tmeta { font-size: 0.82em; color: #4a5866; margin-top: 3px; }
+.demo-panel.ps .ps-chips { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; max-height: 18vh; overflow: auto; }
+.demo-panel.ps .ps-chip { display: inline-flex; gap: 3px; align-items: center; padding: 1px 6px; border: 1px solid #c9d1da; border-radius: 10px; background: #f6f8fa;
+    font-size: 0.78em; cursor: grab; user-select: none; }
+.demo-panel.ps .ps-chip b { color: #1f3b57; }
+.demo-panel.ps .ps-chip i { font-style: normal; color: #8a939c; cursor: pointer; padding: 0 2px; }
+.demo-panel.ps .ps-chip i:hover { color: #b00020; }
+.demo-panel.ps .ps-chip.hi { background: #ffe3cc; border-color: #ff8a3d; }
+.demo-panel.ps .ps-chip.bad { background: #fde8ea; border-color: #b00020; color: #b00020; }
+.demo-panel.ps .ps-tnew { border: 2px dashed #b9c4cf; border-radius: 6px; padding: 8px; text-align: center; color: #1f3b57; font-weight: 600; }
+.demo-panel.ps .ps-pool { margin-top: 8px; border: 1px dashed #b9c4cf; border-radius: 6px; padding: 6px 8px; background: #fafbfc; }
+.demo-panel.ps .drop-over, .ps-overlay.drop-over { outline: 3px solid #ff8a3d; outline-offset: -3px; background: #fff4ea; }
+.ps-tag.bad { background: #b00020; color: #fff; }
 .demo-panel.ps .ps-list tr { cursor: pointer; }
 /* Floors apart (views.setLevelsApart): one small line next to each floor's walls, a bar under it (done filled, plan marked). */
 .apart-labels { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
