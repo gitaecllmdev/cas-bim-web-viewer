@@ -162,7 +162,7 @@ export class Views {
     // Viewer3D loadDocumentNode, hideModel, showModel, unloadModel; Model getData (globalOffset), getUnitString;
     // Navigation fitBounds: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
     async setLevelsApart(names, { onProgress = () => {} } = {}) {
-        const viewer = this.viewer3d, run = (this.apartRun = (this.apartRun || 0) + 1);
+        const views = this, viewer = this.viewer3d, run = (this.apartRun = (this.apartRun || 0) + 1);
         if (this.apart) {
             const { main, models } = this.apart;
             this.apart = null;
@@ -195,6 +195,11 @@ export class Views {
             if (run !== this.apartRun) { viewer.unloadModel(model); return; }
             this.apart.models.set(floors[i].name, model);
             this.apart.idsOf.set(model, ids);
+            if (!model.isLoadDone()) viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function placed(ev) {
+                if (ev.model !== model) return;
+                viewer.removeEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, placed);
+                views.placeApartLabels();
+            });
             this.applyColors(viewer, model);
             this.isolateIn(viewer, model);
             if (i === 0) this.frameApart(); // the first one loaded takes the viewer to the model's own (far) extents
@@ -205,31 +210,54 @@ export class Views {
     }
 
     // Labels for the floors apart: labelOf(level name) -> { title, text, done, plan } (done and plan in %, plan null)
-    // or null; one per loaded floor, at the left of the view level with the floor (its middle, lifted), with a bar:
-    // done filled, plan marked. Placed with Viewer3D.worldToClient and again whenever the camera moves.
+    // or null. One small line per floor, next to that floor's walls: just left of the floor's corner nearest the left
+    // of the view (right of its far corner when there is no room), at the floor's mid-height, a bar under it (done
+    // filled, plan marked); moved apart when floors are close on screen. Re-placed whenever the camera moves.
+    // Where the floor is: its copy's own bounds (only that floor is loaded in it), Model.getFuzzyBox with every
+    // instance (quantil 1); Viewer3D.worldToClient: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
     setApartLabels(labelOf) {
         this.apartLabelOf = labelOf || null;
         this.placeApartLabels();
     }
 
+    // A floor copy's bounds in the scene (cached once it has finished loading).
+    apartBox(model) {
+        const known = this.apart.boxes.get(model);
+        if (known) return known;
+        const box = model.getFuzzyBox?.({ quantil: 1 });
+        if (!box || box.isEmpty()) return null;
+        if (model.isLoadDone()) this.apart.boxes.set(model, box);
+        return box;
+    }
+
     placeApartLabels() {
         const host = this.viewer3d.container;
         let layer = host.querySelector('.apart-labels');
-        const a = this.apart, b = this.building;
-        if (!a || !this.apartLabelOf || !b) { layer?.remove(); return; }
+        const a = this.apart;
+        if (!a || !this.apartLabelOf) { layer?.remove(); return; }
         if (!layer) { layer = document.createElement('div'); layer.className = 'apart-labels'; host.appendChild(layer); }
-        const H = host.clientHeight, html = [];
-        a.floors.forEach((floor, i) => {
-            if (!a.models.has(floor.name)) return; // not loaded yet
-            const label = this.apartLabelOf(floor.name);
-            if (!label) return;
-            const z = floor.bottom + Math.min(floor.top - floor.bottom, a.gap) / 2 + i * a.gap;
-            const p = this.viewer3d.worldToClient(new THREE.Vector3(b.center.x, b.center.y, z));
-            if (!p || p.y < 0 || p.y > H) return;
-            const bar = label.done != null ? `<span class="al-bar"><i style="width:${label.done}%"></i>${label.plan != null ? `<b style="left:${label.plan}%" title="Planned ${label.plan}%"></b>` : ''}</span>` : '';
-            html.push(`<div class="apart-label" style="top:${p.y.toFixed(0)}px"><span class="al-title">${escapeHtml(label.title)}</span><span class="al-text">${escapeHtml(label.text || '')}</span>${bar}</div>`);
-        });
-        layer.innerHTML = html.join('');
+        a.boxes ??= new Map();
+        const W = host.clientWidth, H = host.clientHeight, items = [];
+        for (const floor of a.floors) {
+            const model = a.models.get(floor.name), label = model && this.apartLabelOf(floor.name);
+            const box = label && this.apartBox(model);
+            if (!box) continue;
+            const z = (box.min.z + box.max.z) / 2;
+            const corners = [[box.min.x, box.min.y], [box.max.x, box.min.y], [box.min.x, box.max.y], [box.max.x, box.max.y]]
+                .map(([x, y]) => this.viewer3d.worldToClient(new THREE.Vector3(x, y, z))).filter(Boolean);
+            if (!corners.length) continue;
+            const left = corners.reduce((p, c) => (c.x < p.x ? c : p)), right = corners.reduce((p, c) => (c.x > p.x ? c : p));
+            const onLeft = left.x > 140 || right.x > W - 140; // room for the label left of the floor
+            items.push({ label, x: onLeft ? left.x - 6 : right.x + 6, y: onLeft ? left.y : right.y, onLeft });
+        }
+        // Close floors on screen: each label at least a line below the one above it.
+        items.sort((p, q) => p.y - q.y);
+        for (let i = 1; i < items.length; i++) items[i].y = Math.max(items[i].y, items[i - 1].y + 17);
+        layer.innerHTML = items.filter(it => it.y > -10 && it.y < H + 10).map(({ label, x, y, onLeft }) => {
+            const bar = label.done != null ? `<span class="al-bar"><i style="width:${label.done}%"></i>${label.plan != null ? `<b style="left:${label.plan}%"></b>` : ''}</span>` : '';
+            const tip = `${label.title}${label.text ? `: ${label.text}` : ''}`;
+            return `<div class="apart-label ${onLeft ? 'left' : 'right'}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px" title="${escapeHtml(tip)}"><b>${escapeHtml(label.title)}</b> ${escapeHtml(label.text || '')}${bar}</div>`;
+        }).join('');
     }
 
     // The stack of floors in view: the building's plan size, from the lowest floor to the top one lifted.

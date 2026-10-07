@@ -704,13 +704,13 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .demo-panel.ps .ps-truck.active { background: #1f3b57; color: #fff; border-color: #1f3b57; }
 .demo-panel.ps .ps-truck.active small { color: #cfe0ef; }
 .demo-panel.ps .ps-list tr { cursor: pointer; }
-/* Floors apart (views.setLevelsApart): a label at the left, level with each floor; done filled, plan marked. */
+/* Floors apart (views.setLevelsApart): one small line next to each floor's walls, a bar under it (done filled, plan marked). */
 .apart-labels { position: absolute; inset: 0; z-index: 3; pointer-events: none; overflow: hidden; }
-.apart-label { position: absolute; left: 10px; transform: translateY(-50%); display: grid; grid-template-columns: auto auto; gap: 1px 8px; align-items: center;
-    padding: 3px 8px; background: rgba(255, 255, 255, 0.92); border: 1px solid #c9d1da; border-left: 4px solid #1f3b57; border-radius: 4px;
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12); font: 12px/15px "Segoe UI", sans-serif; color: #1d2b38; white-space: nowrap; }
-.apart-label .al-title { font-weight: 700; }
-.apart-label .al-text { color: #4a5866; }
-.apart-label .al-bar { grid-column: 1 / -1; position: relative; height: 5px; background: #e3e8ee; border-radius: 3px; }
-.apart-label .al-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #59a14f; border-radius: 3px; }
-.apart-label .al-bar b { position: absolute; top: -3px; width: 2px; height: 11px; margin-left: -1px; background: #1f3b57; }
+.apart-label { position: absolute; transform: translate(0, -50%); padding: 1px 5px 3px; background: rgba(255, 255, 255, 0.9); border: 1px solid #c9d1da;
+    border-radius: 3px; font: 10.5px/13px "Segoe UI", sans-serif; color: #4a5866; white-space: nowrap; pointer-events: auto; }
+.apart-label.left { transform: translate(-100%, -50%); border-right: 3px solid #1f3b57; }
+.apart-label.right { border-left: 3px solid #1f3b57; }
+.apart-label b { color: #1d2b38; font-weight: 700; }
+.apart-label .al-bar { position: absolute; left: 5px; right: 5px; bottom: 1px; height: 2px; background: #e3e8ee; }
+.apart-label .al-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #59a14f; }
+.apart-label .al-bar b { position: absolute; top: -2px; width: 2px; height: 6px; margin-left: -1px; background: #1f3b57; }
