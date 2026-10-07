@@ -18,16 +18,18 @@ export async function fetchJson(url, options) {
 }
 
 // Demo state: server-side in data/<name>.json (core/server/routes/state.js), or on the static review
-// site in the reviewer's own browser (localStorage), so each reviewer has their own copy.
+// site in the reviewer's own browser (localStorage), so each reviewer has their own copy. Big entries (schedules, punch
+// photos) go to the browser's database instead (IndexedDB, schedule-store.mjs): localStorage holds about 5 MB in all.
 // Panel pages and their links/comments (shop-panel-*, panel-notes-*) are shared through the Worker when the
 // site is built with a state service (CONFIG.stateUrl, deploy/cloudflare-worker/ with a KV namespace).
 const stateKey = (name) => `drywall-demos:${name}`;
 export const isSharedState = (name) => /^(shop-panel|panel-notes)-[a-z0-9-]{1,80}$/.test(name);
 export const sharedStateOn = () => CONFIG.mode !== 'static' || !!CONFIG.stateUrl;
 const stateServiceUrl = (name) => `${CONFIG.stateUrl.replace(/\/$/, '')}/state/${name}`;
+const browserDb = (name) => /^schedule(-[a-z0-9]+)?$/.test(name) || /^punch-photo-[a-z0-9-]{1,80}$/.test(name);
 export async function loadState(name) {
     if (CONFIG.mode !== 'static') return fetchJson(`api/state/${name}`);
-    if (/^schedule(-[a-z0-9]+)?$/.test(name)) {
+    if (browserDb(name)) {
         const saved = await readBrowserSchedule(name).catch(() => null); // IndexedDB blocked: fall through
         if (saved) return saved;
         // Older builds kept this in localStorage. Read it until the next successful save migrates it.
@@ -47,7 +49,7 @@ export async function saveState(name, data) {
     if (CONFIG.mode !== 'static') {
         return fetchJson(`api/state/${name}`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data) });
     }
-    if (/^schedule(-[a-z0-9]+)?$/.test(name)) {
+    if (browserDb(name)) {
         await writeBrowserSchedule(data, name);
         try { localStorage.removeItem(stateKey(name)); } catch {}
         return { ok: true };

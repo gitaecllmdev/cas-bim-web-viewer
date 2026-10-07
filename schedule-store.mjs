@@ -1,4 +1,4 @@
-// Large imported schedules remain private to this browser; transaction completion confirms a save.
+// Large imported schedules (and punch photos) remain private to this browser; transaction completion confirms a save.
 // https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API/Using_IndexedDB
 function openStore() {
     return new Promise((resolve, reject) => {
@@ -18,6 +18,6 @@ async function transact(mode, action) {
         tx.onerror = tx.onabort = () => reject(tx.error || request.error || new Error('Schedule storage failed.'));
     }); } finally { db.close(); }
 }
-// One entry per state name ('schedule' for the sample model, 'schedule-<model>' for the others).
+// One entry per state name ('schedule' for the sample model, 'schedule-<model>' for the others; 'punch-photo-<id>').
 export const readBrowserSchedule = (name = 'schedule') => transact('readonly', store => store.get(name));
 export const writeBrowserSchedule = (value, name = 'schedule') => transact('readwrite', store => store.put(value, name));

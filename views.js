@@ -111,7 +111,19 @@ export class Views {
         for (const [id, hex] of this.colors) if (prev.get(id) !== hex && (!only || only.has(id))) viewer.setThemingColor(id, toThemingColor(hex), model);
         for (const id of prev.keys()) if (!this.colors.has(id) && (!only || only.has(id))) viewer.setThemingColor(id, none, model);
         this.appliedTo.set(model, this.colors);
-        if (viewer === this.viewer2d) this.planPop?.setColors([...this.colors.values()]);
+        if (viewer === this.viewer2d) this.popColors([...this.colors.values()]);
+    }
+
+    // Colored walls drawn thicker on a plan seen from far (plan-pop.mjs), unless a demo turned that off (setPlanPop).
+    popColors(colors) {
+        this.planPop?.setColors(this.planPopOff ? [] : colors);
+    }
+
+    // Off: the plan's colored walls stay as thin as drawn (Field QC: its stamps on the plan would be drawn over, being
+    // of the walls' colors). On again: as before.
+    setPlanPop(on) {
+        this.planPopOff = !on;
+        this.popColors([...this.colors.values()]);
     }
 
     // The plan pane is covered (Demo 3's floor plans): no coloring there meanwhile; colored again when it shows.
@@ -140,7 +152,7 @@ export class Views {
             for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
             for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
             this.highlightPlan(viewer, model, this.isolated);
-            this.planPop?.setColors([...iso].map(id => this.colors.get(id) || PLAN_ISOLATED)); // seen from far, thicker
+            this.popColors([...iso].map(id => this.colors.get(id) || PLAN_ISOLATED)); // seen from far, thicker
             this.appliedTo.delete(model); // the faded walls too: in full next time
             return;
         }
@@ -148,7 +160,7 @@ export class Views {
         this.appliedTo.set(model, this.colors);
         if (viewer === this.viewer2d) {
             this.highlightPlan(viewer, model, null);
-            this.planPop?.setColors([...this.colors.values()]); // seen from far, thicker
+            this.popColors([...this.colors.values()]); // seen from far, thicker
         }
     }
 

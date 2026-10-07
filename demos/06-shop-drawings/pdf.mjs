@@ -33,13 +33,10 @@ const JPEG_URL = /^data:image\/jpeg;base64,/;
 // An image fitted in its box, keeping its aspect ratio (like preserveAspectRatio="xMidYMid meet"): [x, y, w, h] in inches.
 const fitBox = (o, pw, ph) => { const k = Math.min(o.w / pw, o.h / ph), w = pw * k, h = ph * k; return [o.x + (o.w - w) / 2, o.y + (o.h - h) / 2, w, h]; };
 
-// ops: primitives from sheet.mjs; logo: { jpeg: Uint8Array, width, height } for the op with id 'logo'.
-export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = 'Shop drawing' } = {}) {
-    const P = 72, Hpt = heightIn * P;
+// A page's content stream from the primitives: c, the page's operators so far; images, the JPEG data URL images of the
+// whole file so far ({ name, bytes, width, height }; Im1 is the logo).
+function drawOps(ops, { P, Hpt, c, images, logo }) {
     const X = (x) => num(x * P), Y = (y) => num(Hpt - y * P);
-    const c = ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'];
-    const images = []; // JPEG data URL images: { name, bytes, width, height }
-    const imageBase = logo ? 9 : 8; // their object numbers follow the fonts, the info and the logo
     for (const o of ops) {
         if (o.t === 'line') {
             const col = rgb(o.stroke) || '0 0 0';
@@ -80,6 +77,37 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
             c.push(`q ${num(w * P)} 0 0 ${num(h * P)} ${X(x)} ${num(Hpt - (y + h) * P)} cm /${name} Do Q`);
         }
     }
+    return c;
+}
+
+const imageObject = (im) => [latin1(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),
+    im.bytes, latin1('\nendstream')];
+
+// The file from its objects (1-based, in order): header, objects, cross-reference table, trailer (info: object 7 or given).
+function pdfFile(objects, info) {
+    const chunks = [latin1('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')];
+    let offset = chunks[0].length;
+    const offsets = [];
+    objects.forEach((obj, i) => {
+        offsets.push(offset);
+        const parts = [latin1(`${i + 1} 0 obj\n`), ...(Array.isArray(obj) ? obj : [obj]), latin1('\nendobj\n')];
+        for (const p of parts) { chunks.push(p); offset += p.length; }
+    });
+    const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`
+        + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info ${info} 0 R >>\nstartxref\n${offset}\n%%EOF\n`;
+    chunks.push(latin1(xref));
+    const out = new Uint8Array(chunks.reduce((n, ch) => n + ch.length, 0));
+    let at = 0;
+    for (const ch of chunks) { out.set(ch, at); at += ch.length; }
+    return out;
+}
+
+// ops: primitives from sheet.mjs; logo: { jpeg: Uint8Array, width, height } for the op with id 'logo'.
+export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = 'Shop drawing' } = {}) {
+    const P = 72, Hpt = heightIn * P;
+    const images = []; // JPEG data URL images: { name, bytes, width, height }
+    const imageBase = logo ? 9 : 8; // their object numbers follow the fonts, the info and the logo
+    const c = drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo });
     const content = latin1(c.join('\n'));
 
     // Objects: 1 catalog, 2 pages, 3 page, 4 content, 5-6 fonts, 7 info, 8 logo (optional), then the other images.
@@ -93,27 +121,28 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
         latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
         latin1(`<< /Title ${pdfString(title)} /Producer (CAS BIM Web Viewer) >>`),
     ];
-    if (logo) {
-        objects.push([latin1(`<< /Type /XObject /Subtype /Image /Width ${logo.width} /Height ${logo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.jpeg.length} >>\nstream\n`),
-            logo.jpeg, latin1('\nendstream')]);
-    }
-    for (const im of images) {
-        objects.push([latin1(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),
-            im.bytes, latin1('\nendstream')]);
-    }
-    const chunks = [latin1('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')];
-    let offset = chunks[0].length;
-    const offsets = [];
-    objects.forEach((obj, i) => {
-        offsets.push(offset);
-        const parts = [latin1(`${i + 1} 0 obj\n`), ...(Array.isArray(obj) ? obj : [obj]), latin1('\nendobj\n')];
-        for (const p of parts) { chunks.push(p); offset += p.length; }
+    if (logo) objects.push(imageObject({ width: logo.width, height: logo.height, bytes: logo.jpeg }));
+    for (const im of images) objects.push(imageObject(im));
+    return pdfFile(objects, 7);
+}
+
+// Several pages of the same primitives (a report): pages, one ops list each; JPEG data URL images (photos, plans).
+// Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, then each page and its content, then the images.
+export function toPdfPages(pages, { widthIn = 8.5, heightIn = 11, title = 'Report' } = {}) {
+    const P = 72, Hpt = heightIn * P, images = [], n = pages.length;
+    const streams = pages.map(ops => latin1(drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo: null }).join('\n')));
+    const xobjects = images.map((im, i) => `/${im.name} ${6 + 2 * n + i} 0 R`).join(' ');
+    const objects = [
+        latin1('<< /Type /Catalog /Pages 2 0 R >>'),
+        latin1(`<< /Type /Pages /Kids [${pages.map((_, k) => `${6 + 2 * k} 0 R`).join(' ')}] /Count ${n} >>`),
+        latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
+        latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
+        latin1(`<< /Title ${pdfString(title)} /Producer (CAS BIM Web Viewer) >>`),
+    ];
+    streams.forEach((content, k) => {
+        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''} >> /Contents ${7 + 2 * k} 0 R >>`));
+        objects.push([latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')]);
     });
-    const xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n${offsets.map(o => `${String(o).padStart(10, '0')} 00000 n \n`).join('')}`
-        + `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R /Info 7 0 R >>\nstartxref\n${offset}\n%%EOF\n`;
-    chunks.push(latin1(xref));
-    const out = new Uint8Array(chunks.reduce((n, ch) => n + ch.length, 0));
-    let at = 0;
-    for (const ch of chunks) { out.set(ch, at); at += ch.length; }
-    return out;
+    for (const im of images) objects.push(imageObject(im));
+    return pdfFile(objects, 5);
 }
