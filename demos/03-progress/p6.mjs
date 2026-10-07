@@ -634,3 +634,30 @@ export function wallProgress(activity, stageIndexOf) {
 export function linkedLevelNames(linked) {
     return new Set(linked.filter(a => a.scope !== 'other' && a.level && a.stage && !a.demoWalls).map(a => a.level));
 }
+
+// How far each floor is, as a share of the work the schedule asks of its walls: each wall counts up to the last wall
+// stage the schedule reaches (top: 3 = Taped when nothing is scheduled to be finished; 4 = Finished), so a floor taped
+// throughout is 100%. walls: [{ level }], stageIndexOf(wall) -> 0..4, plannedIndexOf(wall) -> 0..4 | undefined (the
+// plan on a date, plannedStages). Returns Map(level -> { walls, done, plan }) with done and plan in % (plan null
+// without a plan for that floor).
+export function levelPercents(walls, { stageIndexOf, plannedIndexOf = null, top = 4 }) {
+    const out = new Map();
+    for (const w of walls) {
+        const r = out.get(w.level) || out.set(w.level, { walls: 0, done: 0, plan: null }).get(w.level);
+        r.walls++;
+        r.done += Math.min(stageIndexOf(w), top);
+        const p = plannedIndexOf?.(w);
+        if (p !== undefined && p !== null) r.plan = (r.plan || 0) + Math.min(p, top);
+    }
+    for (const r of out.values()) {
+        r.done = Math.round((100 * r.done) / (r.walls * top));
+        if (r.plan !== null) r.plan = Math.round((100 * r.plan) / (r.walls * top));
+    }
+    return out;
+}
+
+// The last wall stage a schedule's linked work reaches (Framed 1 .. Finished 4); 4 without a schedule.
+export function topStage(linked) {
+    const ks = linked.filter(a => a.scope !== 'other' && a.level && a.stage).map(a => STAGE_NAMES.indexOf(a.stage)).filter(k => k > 0);
+    return ks.length ? Math.max(...ks) : STAGE_NAMES.length - 1;
+}

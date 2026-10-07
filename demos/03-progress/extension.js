@@ -9,7 +9,7 @@ import { readXlsx } from '../common/xlsx.mjs';
 import { readSchedulePdf, renderPdfPage } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
-    STAGE_NAMES, demoShift, assignDemoLevels, linkedLevelNames, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
+    STAGE_NAMES, demoShift, assignDemoLevels, linkedLevelNames, levelPercents, topStage, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
     stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
     randomWallLinks, wallProgress, demoTarget,
 } from './p6.mjs';
@@ -95,6 +95,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
         this.bar?.remove();
         this.allPlans.close();
+        this.views.setApartLabels(null);
         this.views.setLevelsApart(null);
         this.views.clearColors();
         if (this.isolatedBySchedule || this.isolatedStage !== undefined || this.linkedOnly) this.views.showAll();
@@ -554,6 +555,22 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         else this.views.showAll();
     }
 
+    // Floors apart: each floor's name, how far it is (its walls at their stages) and, with a schedule, the plan on the
+    // timeline's date (p6.mjs levelPercents, up to the last wall stage the schedule reaches).
+    updateFloorLabels(planned = null) {
+        if (this.schedule && !planned) {
+            const ranked = [...this.wallOrder].sort((a, b) => this.stageIndex(b) - this.stageIndex(a));
+            planned = plannedStages(ranked, this.linked.filter(a => !a.demoWalls), this.cursor, this.cal);
+        }
+        const top = this.schedule ? topStage(this.linked) : STAGE_NAMES.length - 1;
+        const per = levelPercents(this.walls, { stageIndexOf: (w) => this.stageIndex(w), plannedIndexOf: planned ? (w) => planned.get(w) : null, top });
+        this.views.setApartLabels((level) => {
+            const r = per.get(level);
+            if (!r) return { title: level };
+            return { title: level, text: `${r.done}% done${r.plan != null ? ` · plan ${r.plan}%` : ''}`, done: r.done, plan: r.plan };
+        });
+    }
+
     setLinkedOnly(on) {
         if (on && !this.schedule) { this.message('Load a schedule first (Gantt tab): the linked walls come from it.', 'warn'); return; }
         this.linkedOnly = on;
@@ -570,6 +587,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.updateViewButtons();
         if (!on) { await this.views.setLevelsApart(null); this.showDefault(); this.message(''); return; }
         const levels = (this.linkedOnly && this.schedule ? this.linkedLevels() : this.views.levels.filter(l => this.views.wallsByLevel.get(l.name)?.length)).map(l => l.name);
+        this.updateFloorLabels();
         await this.views.setLevelsApart(levels, { onProgress: (i, n, name) => {
             if (!this.apartOn) return;
             if (i < n) this.message(`Floors apart: loading ${name} (${i + 1} of ${n})…`, 'warn');
@@ -783,6 +801,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             if (stage.name === FINISHED) lvl.done++;
         }
         const focus = this.focusActivity();
+        let planned = null; // wall -> the stage planned by the timeline's date (with a schedule)
         if (focus) {
             // A selected activity: its level's walls at its stage (or later) in the stage's color, the rest grey.
             colors.clear();
@@ -793,7 +812,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             // The plan says how many walls of a level should be at a stage, not which: the walls furthest along are
             // taken first, so a wall shows "behind" only when its level has fewer walls at that stage than planned.
             const ranked = [...this.wallOrder].sort((a, b) => this.stageIndex(b) - this.stageIndex(a));
-            const planned = plannedStages(ranked, this.linked.filter(a => !a.demoWalls), this.cursor, this.cal);
+            planned = plannedStages(ranked, this.linked.filter(a => !a.demoWalls), this.cursor, this.cal);
             const c = { behind: 0, even: 0, ahead: 0 };
             for (const [w, k] of planned) {
                 if (this.colorMode === 'planned') { if (STAGES[k].color) colors.set(w.dbId, STAGES[k].color); continue; }
@@ -807,6 +826,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         }
         this.views.setColors(colors);
         if (this.allPlans.isOpen) this.allPlans.setColors(colors);
+        if (this.views.apart) this.updateFloorLabels(planned);
         this.renderColorLegend();
         const legend = this.panel.querySelector('[data-legend]');
         if (!legend) return; // the Stages tab isn't showing

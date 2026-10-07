@@ -48,6 +48,10 @@ export class Views {
         this.el.layoutButtons.forEach(b => b.onclick = () => this.setLayout(b.dataset.layout));
         this.el.master.onclick = () => this.setMaster();
         this.syncSelection(viewer3d);
+        // Floor labels with the floors apart follow the 3D camera.
+        viewer3d.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {
+            if (this.apart && this.apartLabelOf && !this.apartLabelFrame) this.apartLabelFrame = requestAnimationFrame(() => { this.apartLabelFrame = null; this.placeApartLabels(); });
+        });
         const wanted = new URLSearchParams(location.search).get('layout');
         this.setLayout(LAYOUTS.includes(wanted) ? wanted : 'split', { open: false });
     }
@@ -167,6 +171,7 @@ export class Views {
             viewer.showModel(main);
             this.applyColors(viewer, main);
             this.isolateIn(viewer, main);
+            this.placeApartLabels();
             if (!names?.length) { this.frameBuilding(); return; }
         }
         const main = viewer.model;
@@ -193,9 +198,38 @@ export class Views {
             this.applyColors(viewer, model);
             this.isolateIn(viewer, model);
             if (i === 0) this.frameApart(); // the first one loaded takes the viewer to the model's own (far) extents
+            this.placeApartLabels();
         }
         this.frameApart();
         onProgress(floors.length, floors.length, '');
+    }
+
+    // Labels for the floors apart: labelOf(level name) -> { title, text, done, plan } (done and plan in %, plan null)
+    // or null; one per loaded floor, at the left of the view level with the floor (its middle, lifted), with a bar:
+    // done filled, plan marked. Placed with Viewer3D.worldToClient and again whenever the camera moves.
+    setApartLabels(labelOf) {
+        this.apartLabelOf = labelOf || null;
+        this.placeApartLabels();
+    }
+
+    placeApartLabels() {
+        const host = this.viewer3d.container;
+        let layer = host.querySelector('.apart-labels');
+        const a = this.apart, b = this.building;
+        if (!a || !this.apartLabelOf || !b) { layer?.remove(); return; }
+        if (!layer) { layer = document.createElement('div'); layer.className = 'apart-labels'; host.appendChild(layer); }
+        const H = host.clientHeight, html = [];
+        a.floors.forEach((floor, i) => {
+            if (!a.models.has(floor.name)) return; // not loaded yet
+            const label = this.apartLabelOf(floor.name);
+            if (!label) return;
+            const z = floor.bottom + Math.min(floor.top - floor.bottom, a.gap) / 2 + i * a.gap;
+            const p = this.viewer3d.worldToClient(new THREE.Vector3(b.center.x, b.center.y, z));
+            if (!p || p.y < 0 || p.y > H) return;
+            const bar = label.done != null ? `<span class="al-bar"><i style="width:${label.done}%"></i>${label.plan != null ? `<b style="left:${label.plan}%" title="Planned ${label.plan}%"></b>` : ''}</span>` : '';
+            html.push(`<div class="apart-label" style="top:${p.y.toFixed(0)}px"><span class="al-title">${escapeHtml(label.title)}</span><span class="al-text">${escapeHtml(label.text || '')}</span>${bar}</div>`);
+        });
+        layer.innerHTML = html.join('');
     }
 
     // The stack of floors in view: the building's plan size, from the lowest floor to the top one lifted.
