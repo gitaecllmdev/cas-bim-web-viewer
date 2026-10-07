@@ -229,6 +229,14 @@ export const isContextModel = (model) => {
     return contextNodes.has(guid) || (copiesOf.has(guid) && copiesOf.get(guid) !== model);
 };
 
+// The info panel moved beside or below the viewers (the header's switch, main.js): callback(), until the returned
+// function is called (an extension's unload).
+export function onDockChange(callback) {
+    const handler = () => callback();
+    document.addEventListener('dock-change', handler);
+    return () => document.removeEventListener('dock-change', handler);
+}
+
 // Runs callback once the model's object tree (and so its properties) is available. Context models are skipped.
 // Returns a function that removes the listener (call it from the extension's unload()).
 export function onModelReady(viewer, callback) {

@@ -23,7 +23,7 @@ import { csvText, xlsxBytes } from '../common/table-export.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import {
     STAGES, NOT_STARTED, stageIndex, readTracker, statusOf, statusFor, skippedOf, markStage, unmarkStage, findPanel,
-    effectiveRecord, counts, isLate, floorDates, numberPanels, completeFloor, demoFloors, demoHistory, revitRows, readRevitRows, importRevit,
+    effectiveRecord, counts, isLate, floorDates, numberPanels, scopeOf, prefixOf, prefixName, levelCode, SCOPES, scopeName, filterPanels, facetCounts, completeFloor, demoFloors, demoHistory, revitRows, readRevitRows, importRevit,
 } from './tracker.mjs';
 
 const EXTENSION_ID = 'Drywall.PanelTracker';
@@ -49,7 +49,11 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         this.date = localToday();
         this.picked = null;
         this.only = 'panels'; // shown in 3D: 'panels' (the rest ghosted), a step's key, 'late', or null (every wall)
-        this.filter = { q: '', status: '' };
+        // The slicers (Sets; empty: all) and the search, kept in the link (pt-l, pt-s, pt-p, pt-q) so a view can be sent;
+        // status: the list's own step filter.
+        const params = new URLSearchParams(location.search), set = (k) => new Set((params.get(k) || '').split('|').filter(Boolean));
+        this.filter = { levels: set('pt-l'), scopes: set('pt-s'), prefixes: set('pt-p'), q: params.get('pt-q') || '', status: '' };
+        this.pickScope = pref('pick-scope') === 'all' ? 'all' : 'level'; // a picked panel: its floor alone in 3D (and its plan), or every floor
         this.lastSel = [];
         this.panel.innerHTML = '<div class="demo-panel pt"><h2>Panel Tracker</h2><p class="muted" data-status>Waiting for a model…</p></div>';
         this.onSelection = () => this.selectionChanged();
@@ -58,7 +62,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('ready', () => { if (this.walls) { this.prepare(); this.render(); } }), // the floors, in build order
-            this.views.on('level', () => { if (this.walls) { this.renderPipeline(); this.renderBody(); this.drawLegend(); } }),
+            this.views.on('level', (level) => this.levelChanged(level)),
         ];
         return true;
     }
@@ -128,24 +132,39 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
     // are over every panel, so a panel keeps them whichever list shows it.
     prepare() {
         const all = new Map();
+        this.prefixNames = new Map(); // 362 -> 3 5/8" studs
+        const kind = (type) => {
+            const asm = assemblyFor(type ?? NOT_SET, this.rules, this.overrides), prefix = prefixOf(asm);
+            if (!this.prefixNames.has(prefix)) this.prefixNames.set(prefix, prefixName(asm));
+            return { asm, scope: scopeOf(type, asm), prefix };
+        };
         for (const w of this.walls) {
-            if (assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope !== 'framed') continue;
-            all.set(w.externalId, { key: w.externalId, dbId: w.dbId, level: w.level || NOT_SET, wallType: w.wallType || NOT_SET, framed: true });
+            const k = kind(w.wallType);
+            if (k.asm.scope !== 'framed') continue;
+            all.set(w.externalId, { key: w.externalId, dbId: w.dbId, level: w.level || NOT_SET, wallType: w.wallType || NOT_SET, framed: true, scope: k.scope, prefix: k.prefix });
         }
         for (const e of Object.values(this.index)) {
-            const w = this.byExt.get(e.key), p = all.get(e.key) || { key: e.key, dbId: w?.dbId, level: e.level || w?.level || NOT_SET, wallType: e.wallType || w?.wallType || NOT_SET, framed: false };
+            const w = this.byExt.get(e.key), type = e.wallType || w?.wallType || NOT_SET, k = kind(type);
+            const p = all.get(e.key) || { key: e.key, dbId: w?.dbId, level: e.level || w?.level || NOT_SET, wallType: type, framed: false, scope: k.scope, prefix: k.prefix };
             all.set(e.key, { ...p, shop: true, alt: e.mark });
         }
         const nat = (x, y) => String(x).localeCompare(String(y), undefined, { numeric: true });
         const order = this.views.levels.map(l => l.name), have = new Set([...all.values()].map(p => p.level));
         this.levels = [...order.filter(l => have.has(l)), ...[...have].filter(l => !order.includes(l)).sort(nat)];
-        const every = [...all.values()].sort((x, y) => this.levels.indexOf(x.level) - this.levels.indexOf(y.level) || (x.dbId || 1e12) - (y.dbId || 1e12) || nat(x.key, y.key));
+        const every = [...all.values()].sort((x, y) => this.levels.indexOf(x.level) - this.levels.indexOf(y.level) || x.prefix.localeCompare(y.prefix) || (x.dbId || 1e12) - (y.dbId || 1e12) || nat(x.key, y.key));
         const numbers = numberPanels(every);
         for (const p of every) p.mark = numbers.get(p.key);
         const out = every.filter(p => (this.source === 'shops' ? p.shop : p.framed));
         this.panels = out;
         this.byKey = new Map(every.map(p => [p.key, p])); // any panel (a recent record from the other list too)
         this.byDb = new Map(out.filter(p => p.dbId).map(p => [p.dbId, p]));
+        // Slicer choices that this list does not have (another model, the other panel list) go.
+        const has = (field) => new Set(out.map(p => p[field]));
+        for (const [facet, field] of [['levels', 'level'], ['scopes', 'scope'], ['prefixes', 'prefix']]) {
+            const values = has(field);
+            for (const v of this.filter[facet]) if (!values.has(v)) this.filter[facet].delete(v);
+        }
+        this.shownCache = null;
         // Recorded data: each floor's framing from the schedule's framing activities linked to it (Demo 3).
         const starts = {}, finishes = {};
         if (this.schedule) {
@@ -187,10 +206,121 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         return isLate(this.recordOf(p), this.startOf(p), this.today);
     }
 
-    // The panels in view: the header's level, or every floor.
+    // The panels the slicers let through (levels, scope, prefix, search), with their keys.
     get shown() {
-        const level = this.views.level?.name;
-        return level ? this.panels.filter(p => p.level === level) : this.panels;
+        if (!this.shownCache) {
+            const list = filterPanels(this.panels, this.filter);
+            this.shownCache = { list, keys: new Set(list.map(p => p.key)) };
+        }
+        return this.shownCache.list;
+    }
+
+    get hasFilters() {
+        return !!(this.filter.levels.size || this.filter.scopes.size || this.filter.prefixes.size || this.filter.q.trim());
+    }
+
+    // "3RD FLOOR · Exterior · 362", or "All panels".
+    get filterSummary() {
+        const f = this.filter, list = (set, many, max, fmt = (v) => v) => (set.size > max ? `${set.size} ${many}` : [...set].map(fmt).join(', '));
+        const parts = [
+            f.levels.size ? list(f.levels, 'floors', 3) : '',
+            f.scopes.size ? list(f.scopes, 'scopes', 2, scopeName) : '',
+            f.prefixes.size ? list(f.prefixes, 'prefixes', 3) : '',
+            f.q.trim() ? `"${f.q.trim()}"` : '',
+        ].filter(Boolean);
+        return parts.length ? parts.join(' · ') : 'All panels';
+    }
+
+    // --- Slicers ---------------------------------------------------------------------------------------------------------
+
+    // A slicer value on or off (value null: that slicer back to all).
+    toggleFacet(facet, value) {
+        const set = this.filter[facet];
+        if (value === null) set.clear(); else if (set.has(value)) set.delete(value); else set.add(value);
+        this.filtersChanged({ levels: facet === 'levels' });
+    }
+
+    clearFilters() {
+        const hadLevels = this.filter.levels.size;
+        for (const k of ['levels', 'scopes', 'prefixes']) this.filter[k].clear();
+        this.filter.q = '';
+        const q = this.panel.querySelector('[data-fq]');
+        if (q) q.value = '';
+        this.filtersChanged({ levels: !!hadLevels });
+    }
+
+    // After a slicer change: one floor chosen cuts the model to it and opens its plan (the header's Level); none or
+    // several, the whole building. Everything showing the panels follows; the 3D view moves only when the panels now
+    // shown are off screen, a speck, or much bigger than the view (views.showSet).
+    filtersChanged({ levels = false } = {}) {
+        this.shownCache = null;
+        const params = new URLSearchParams(location.search), f = this.filter;
+        for (const [k, v] of [['pt-l', [...f.levels].join('|')], ['pt-s', [...f.scopes].join('|')], ['pt-p', [...f.prefixes].join('|')], ['pt-q', f.q.trim()]]) {
+            if (v) params.set(k, v); else params.delete(k);
+        }
+        history.replaceState(null, '', `?${params}${location.hash}`);
+        if (levels) {
+            const one = f.levels.size === 1 ? [...f.levels][0] : null;
+            if ((this.views.level?.name || null) !== one) { this.levelFromSlicer = true; this.views.setLevel(one).finally(() => { this.levelFromSlicer = false; }); }
+        }
+        this.renderSlicers();
+        this.renderPipeline();
+        if (this.tab !== 'track' && this.tab !== 'revit') this.renderBody();
+        this.show();
+        this.drawLegend();
+        const ids = this.shown.filter(p => p.dbId).map(p => p.dbId);
+        this.views.showSet(ids);
+        if (!levels || this.filter.levels.size !== 1) this.views.showPlanFor(ids); // the plan of the floor with most of them
+    }
+
+    // The header's Level changed. Picked there: the Levels slicer follows (that floor, or all). Set by a slicer or by a
+    // picked panel (per level): the slicers stay.
+    levelChanged(level) {
+        if (!this.walls || this.levelFromSlicer || this.levelFromPick) { this.drawLegend(); return; }
+        const f = this.filter.levels, name = level?.name || null;
+        if (name) { if (f.size === 1 && f.has(name)) return; f.clear(); f.add(name); } else if (f.size === 1) f.clear(); else return;
+        this.filtersChanged();
+    }
+
+    // The slicer chips: each value with how many panels it would show given the other slicers.
+    renderSlicers() {
+        const el = this.panel.querySelector('[data-facets]');
+        if (!el) return;
+        const f = this.filter, fc = facetCounts(this.panels, f);
+        const chip = (facet, v, label, title) => {
+            const n = fc[facet].get(v) || 0, on = f[facet].has(v);
+            return `<button class="pt-fchip ${on ? 'on' : ''}" data-facet="${facet}" data-v="${escapeHtml(v)}" ${n || on ? '' : 'disabled'} title="${escapeHtml(title)}">${escapeHtml(label)}<b>${n.toLocaleString()}</b></button>`;
+        };
+        const all = (facet) => `<button class="pt-fchip all ${f[facet].size ? '' : 'on'}" data-facet="${facet}" data-v="" title="Every one">All</button>`;
+        const present = (field) => new Set(this.panels.map(p => p[field]));
+        const scopes = present('scope'), prefixes = [...present('prefix')].sort();
+        el.innerHTML = `<div class="pt-facet"><span class="pt-flabel">Levels</span><div class="pt-chips">${all('levels')}${this.levels.filter(l => this.panels.some(p => p.level === l)).map(l => chip('levels', l, levelCode(l), l)).join('')}</div></div>
+            <div class="pt-facet"><span class="pt-flabel">Scope</span><div class="pt-chips">${all('scopes')}${SCOPES.filter(s => scopes.has(s.key)).map(s => chip('scopes', s.key, s.name, s.name)).join('')}</div></div>
+            <div class="pt-facet"><span class="pt-flabel">Prefix</span><div class="pt-chips">${all('prefixes')}${prefixes.map(p => chip('prefixes', p, p, `${p}: ${this.prefixNames.get(p) || ''}`)).join('')}</div></div>`;
+        const count = this.panel.querySelector('[data-fcount]');
+        if (count) count.textContent = this.hasFilters ? `${this.shown.length.toLocaleString()} of ${this.panels.length.toLocaleString()}` : `${this.panels.length.toLocaleString()} panels`;
+        this.panel.querySelector('[data-act=clear-filters]')?.toggleAttribute('hidden', !this.hasFilters);
+    }
+
+    // --- A picked panel: its floor alone, or every floor ---------------------------------------------------------------
+
+    setPickScope(scope) {
+        this.pickScope = scope;
+        pref('pick-scope', scope);
+        const p = this.picked && this.byKey.get(this.picked);
+        if (p) this.applyPickScope(p);
+        else if (scope === 'all') this.applyPickScope(null);
+        this.drawLegend();
+    }
+
+    // Per level: the picked panel's floor cut in 3D and its plan open (the header's Level). All levels: the whole
+    // building (unless the Levels slicer keeps one floor).
+    async applyPickScope(p) {
+        const pinned = this.filter.levels.size === 1 ? [...this.filter.levels][0] : null;
+        const want = this.pickScope === 'level' ? (p?.level || pinned) : pinned;
+        if ((this.views.level?.name || null) === (want || null) || (want && !this.views.levels.some(l => l.name === want))) return;
+        this.levelFromPick = true;
+        try { await this.views.setLevel(want || null); } finally { this.levelFromPick = false; }
     }
 
     statusKey(p) {
@@ -285,6 +415,8 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
     bindPanel() {
         const p = this.panel, on = { signal: (this.listening = new AbortController()).signal };
         p.addEventListener('click', (e) => {
+            const chip = e.target.closest?.('[data-facet]');
+            if (chip) { this.toggleFacet(chip.dataset.facet, chip.dataset.v || null); return; }
             const t = e.target.closest?.('[data-act]');
             if (t) {
                 const v = t.dataset.v;
@@ -293,7 +425,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                     undo: () => { const [k, s] = v.split('|'); this.undo(k, s); }, step: () => { const [k, s] = v.split('|'); this.record(k, s, 'card'); },
                     close: () => this.pick(null), camera: () => this.openCamera(), switch: () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '03-progress' } })),
                     xlsx: () => this.exportList('xlsx'), csv: () => this.exportList('csv'), revit: () => this.exportRevit(), print: () => this.printLabels(),
-                    only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v),
+                    only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v), 'clear-filters': () => this.clearFilters(),
                 })[t.dataset.act]?.();
                 return;
             }
@@ -319,10 +451,10 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             else if (t.matches('[data-import]')) { const f = t.files[0]; t.value = ''; if (f) this.importRevitFile(f); }
         }, on);
         p.addEventListener('input', (e) => {
-            if (!e.target.matches('[data-q]')) return;
+            if (!e.target.matches('[data-fq]')) return;
             this.filter.q = e.target.value;
             clearTimeout(this.qTimer);
-            this.qTimer = setTimeout(() => this.renderList(), 150);
+            this.qTimer = setTimeout(() => this.filtersChanged(), 250);
         }, on);
     }
 
@@ -342,10 +474,16 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                 </span>
                 <label class="pt-check" title="${escapeHtml(`Made-up progress for the concept: ${this.complete} complete, the floors under it nearly done, each floor over it further behind with its panels split over the steps. Never saved; what you record wins over it. Untick: only what is recorded, framing complete also from Install Progress.`)}"><input type="checkbox" data-demo ${this.demo ? 'checked' : ''}>Demo data</label>
             </div>
+            <section class="pt-slicers">
+                <div class="pt-search"><span aria-hidden="true">⌕</span><input type="search" data-fq placeholder="Search panels: number, wall type, floor, scope…" value="${escapeHtml(this.filter.q)}" aria-label="Search panels">
+                    <span class="pt-fcount" data-fcount></span><button class="link" data-act="clear-filters" hidden title="Every panel again">Clear filters</button></div>
+                <div data-facets></div>
+            </section>
             <div class="pt-pipe" data-pipe></div>
             <div class="pt-tabs" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button role="tab" data-act="tab" data-v="${k}" class="${k === this.tab ? 'on' : ''}">${l}</button>`).join('')}</div>
             <div data-body></div>
         </div>`;
+        this.renderSlicers();
         this.renderPipeline();
         this.renderBody();
         this.update({ panelToo: false });
@@ -374,7 +512,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                 title="${escapeHtml(`${s.name}: ${c.reached[i]} of ${c.total} panels (${c.at[i]} at this step now). Click to record this step.`)}">
                 <span class="pt-name">${escapeHtml(s.name)}</span>
                 <b>${c.reached[i].toLocaleString()}</b><span class="pt-of">${pct(c.reached[i])}%</span><i class="pt-bar"><b style="width:${pct(c.reached[i])}%"></b></i></button>`).join('')
-            + `<div class="pt-pipe-foot"><span>${escapeHtml(this.views.level?.name || 'All levels')}: ${c.total.toLocaleString()} panels · ${c.none.toLocaleString()} not started</span>
+            + `<div class="pt-pipe-foot"><span>${escapeHtml(this.filterSummary)}: ${c.total.toLocaleString()} panels · ${c.none.toLocaleString()} not started</span>
                 ${c.late ? `<button class="pt-late ${this.only === 'late' ? 'on' : ''}" data-act="only" data-v="late" title="Not on site yet, and their floor's framing has started (the schedule): show only them">⚠ ${c.late} late</button>` : ''}
                 <span class="muted">${this.demo ? `demo data · ${escapeHtml(this.complete)} complete` : ''}</span></div>`;
     }
@@ -402,7 +540,6 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             this.renderRecent();
         } else if (this.tab === 'list') {
             el.innerHTML = `<div class="pt-filters">
-                    <input type="search" data-q placeholder="Find: mark, wall type" value="${escapeHtml(this.filter.q)}" aria-label="Find a panel">
                     <select data-status-filter aria-label="Step">${[['', 'Every step'], [NOT_STARTED.key, NOT_STARTED.name], ...STAGES.map(s => [s.key, `At: ${s.name}`]), ['late', 'Late']].map(([k, l]) => `<option value="${k}" ${k === this.filter.status ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}</select>
                     <span class="muted" data-count></span>
                     <span class="pt-grow"></span><button data-act="xlsx" title="The list as an Excel workbook (and the log of records)">Excel</button><button data-act="csv">CSV</button>
@@ -414,7 +551,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                 <p>A label per panel: its QR code, panel number, floor and wall type. The QR code holds the panel number; for a panel with a shop drawing,
                     its panel page link (the same as on the sheet), so any phone camera opens the page to record a step. Scan any label here (camera or
                     handheld scanner) to record a step.</p>
-                <p><button data-act="print">Print ${list.length.toLocaleString()} labels</button> <span class="muted">${escapeHtml(this.views.level?.name || 'All levels')} (pick a level in the header for one floor's) · 3 x 10 per letter page</span></p>
+                <p><button data-act="print">Print ${list.length.toLocaleString()} labels</button> <span class="muted">${escapeHtml(this.filterSummary)} (the slicers above) · 3 x 10 per letter page</span></p>
                 <div class="pt-labels">${list.slice(0, 6).map(p => this.labelHtml(p)).join('')}</div>${list.length > 6 ? `<p class="muted">… and ${list.length - 6} more.</p>` : ''}</section>`;
         } else {
             el.innerHTML = `<section class="pt-info"><h3>Revit: pull the status, report back</h3>
@@ -489,9 +626,8 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
 
     // The list: grouped by floor (build order), each step's date; a floor's framing start, and its panels by step.
     filtered() {
-        const q = this.filter.q.trim().toLowerCase(), st = this.filter.status;
-        return this.shown.filter(p => (!q || `${p.mark} ${p.wallType}`.toLowerCase().includes(q))
-            && (!st || (st === 'late' ? this.late(p) : this.statusKey(p) === st)));
+        const st = this.filter.status;
+        return st ? this.shown.filter(p => (st === 'late' ? this.late(p) : this.statusKey(p) === st)) : this.shown;
     }
 
     renderList() {
@@ -516,24 +652,24 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                         <td><span class="pt-chip sm" style="--c:${statusFor(i).color}">${escapeHtml(statusFor(i).short)}</span>${late ? '<span class="pt-chip sm late">Late</span>' : ''}</td>
                         ${STAGES.map(s => `<td class="${rec[s.key]?.via === 'demo' ? 'demo' : ''}" title="${escapeHtml(rec[s.key] ? [day(rec[s.key].date), rec[s.key].via === 'demo' ? 'demo history' : rec[s.key].by, rec[s.key].via === 'demo' ? '' : VIA[rec[s.key].via]].filter(Boolean).join(' · ') : '')}">${dayMonth(rec[s.key]?.date)}</td>`).join('')}</tr>`;
                 }).join('')}</tbody>`;
-            }).join('')}</table>${capped ? `<p class="muted">The first 600 rows; filter, pick a level or export for all ${list.length.toLocaleString()}.</p>` : ''}
+            }).join('')}</table>${capped ? `<p class="muted">The first 600 rows; slice, search or export for all ${list.length.toLocaleString()}.</p>` : ''}
             ${list.length ? '' : '<p class="muted">No panel matches.</p>'}`;
     }
 
     // --- 3D and plan: the walls in the color of their step ---------------------------------------------------------
 
     show() {
-        const colors = new Map();
-        for (const p of this.panels) if (p.dbId) colors.set(p.dbId, this.colorOf(p));
+        const colors = new Map(), shown = this.shown, keys = this.shownCache.keys;
+        for (const p of shown) if (p.dbId) colors.set(p.dbId, this.colorOf(p));
         this.views.setColors(colors);
-        this.views.setPlanLabels((id) => { const p = this.byDb.get(id); return p ? { text: p.mark, color: this.colorOf(p) } : null; });
+        this.views.setPlanLabels((id) => { const p = this.byDb.get(id); return p && keys.has(p.key) ? { text: p.mark, color: this.colorOf(p) } : null; });
         if (this.only) this.views.isolate(this.onlyIds(), { fit: false, plan: this.only !== 'panels' });
         this.bar?.refresh();
     }
 
     onlyIds() {
         const keep = this.only === 'panels' ? () => true : this.only === 'late' ? p => this.late(p) : p => this.statusKey(p) === this.only;
-        return this.panels.filter(p => p.dbId && keep(p)).map(p => p.dbId);
+        return this.shown.filter(p => p.dbId && keep(p)).map(p => p.dbId);
     }
 
     showOnly(key) {
@@ -557,22 +693,32 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             this.legend = document.createElement('div');
             this.legend.className = 'pt-legend';
             document.getElementById('preview').appendChild(this.legend);
-            this.legend.addEventListener('click', (e) => { const k = e.target.closest('[data-only]')?.dataset.only; if (k !== undefined) this.showOnly(!k ? null : this.only === k && k !== 'panels' ? 'panels' : k); });
+            this.legend.addEventListener('click', (e) => {
+                const scope = e.target.closest('[data-pick-scope]')?.dataset.pickScope;
+                if (scope) { this.setPickScope(scope); return; }
+                const k = e.target.closest('[data-only]')?.dataset.only;
+                if (k !== undefined) this.showOnly(!k ? null : this.only === k && k !== 'panels' ? 'panels' : k);
+            });
         }
         const c = counts(this.shown, p => this.recordOf(p), { today: this.today, startOf: p => this.startOf(p) });
         const chip = (key, name, color, n) => `<button data-only="${key}" class="${this.only === key ? 'on' : ''}" ${n ? '' : 'disabled'}><i style="background:${color}"></i>${escapeHtml(name)} <b>${n}</b></button>`;
-        this.legend.innerHTML = `<b class="pt-lt">Panels · ${escapeHtml(this.views.level?.name || 'All levels')}</b>`
+        this.legend.innerHTML = `<b class="pt-lt" title="${escapeHtml(this.filterSummary)}">Panels · ${escapeHtml(this.filterSummary)}</b>`
             + chip('none', NOT_STARTED.name, NOT_STARTED.color, c.none) + STAGES.map((s, i) => chip(s.key, s.name, s.color, c.at[i])).join('')
             + (c.late ? chip('late', 'Late', LATE, c.late) : '')
-            + `<span class="pt-lv"><button data-only="panels" class="${this.only === 'panels' ? 'on' : ''}" title="The panels, the rest of the model ghosted">Panels only</button><button data-only="" class="${this.only ? '' : 'on'}" title="Every wall, the panels in color">Every wall</button></span>`;
+            + `<span class="pt-lv"><button data-only="panels" class="${this.only === 'panels' ? 'on' : ''}" title="The panels, the rest of the model ghosted">Panels only</button><button data-only="" class="${this.only ? '' : 'on'}" title="Every wall, the panels in color">Every wall</button></span>
+            <span class="pt-lv pt-pickscope"><em>Picked panel</em><button data-pick-scope="level" class="${this.pickScope === 'level' ? 'on' : ''}" title="A picked panel: its floor alone in 3D, and its plan">Per level</button><button data-pick-scope="all" class="${this.pickScope === 'all' ? 'on' : ''}" title="A picked panel: every floor stays in 3D">All levels</button></span>`;
     }
 
-    pick(key, { select = false } = {}) {
+    // A panel picked (a wall in 3D or on the plan, a row, a scan): its card; per level, its floor cut in 3D; select: its
+    // wall selected too (shown, views.zoomToPick moving the view only as much as needed).
+    async pick(key, { select = false } = {}) {
         this.picked = key;
         this.renderCard();
         this.panel.querySelectorAll('tr[data-key]').forEach(r => r.classList.toggle('hi', r.dataset.key === key));
         const p = key && this.byKey.get(key);
-        if (select && p?.dbId) {
+        if (!p) return;
+        await this.applyPickScope(p);
+        if (select && p.dbId && this.picked === key) {
             this.selecting = true;
             try { this.views.select([p.dbId]); } finally { this.selecting = false; }
             this.lastSel = [p.dbId];
@@ -583,8 +729,12 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         const p = this.byKey.get(key);
         if (!p?.dbId) return;
         if (this.only && this.only !== 'panels') this.showOnly('panels');
-        this.pick(key, { select: true }); // zooms to it (views.zoomToPick), unless Navigate is off in Options
-        if (!this.views.zoomPick) this.viewer.fitToView([p.dbId], this.viewer.model);
+        this.pick(key).then(() => {
+            this.selecting = true;
+            try { this.views.select([p.dbId]); } finally { this.selecting = false; }
+            this.lastSel = [p.dbId];
+            this.views.zoomToPick([p.dbId], { force: true }); // asked for: zoomed to it
+        });
     }
 
     // --- Camera scanning ---------------------------------------------------------------------------------------------

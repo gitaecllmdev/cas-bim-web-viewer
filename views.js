@@ -9,14 +9,13 @@
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
 import { PlanPop } from './plan-pop.mjs';
+import { frameMove, PICK, SET } from './frame-move.mjs';
 import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
 const PLAN_ISOLATED = '#1f3b57';    // isolated walls without a color of their own
-const PLAN_CONTEXT = 3;              // a picked wall on the plan: shown in a frame this many times its own,
-const PLAN_MIN_FRAME = 1 / 6;        // and at least this share of the sheet (a short wall still shows its rooms)
-const MODEL_CONTEXT = 2.5;           // in 3D: this many times its own frame
+const PLAN_MIN_FRAME = 1 / 8;        // a picked wall zoomed to on the plan: at least this share of the sheet in view (its rooms)
 
 export class Views {
     constructor(viewer3d) {
@@ -381,26 +380,52 @@ export class Views {
         });
     }
 
-    // Fly to an object with room around it: fit it (immediately, to measure its frame), put the camera back before
-    // anything is drawn, then animate to a box `factor` times that frame (on a sheet, at least `minShare` of the
-    // sheet). Viewer3D fitToView / clientToWorld; Navigation getPosition / getTarget / getEyeVector / setView / fitBounds;
-    // Model getBoundingBox: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
-    frameWithContext(viewer, model, id, factor, minShare) {
-        const nav = viewer.navigation, from = nav.getPosition().clone(), to = nav.getTarget().clone();
-        viewer.fitToView([id], model, true);
-        const center = nav.getTarget().clone();
-        let half;
-        if (model.is2d()) {
-            const c = viewer.container, a = viewer.clientToWorld(0, 0, true), b = viewer.clientToWorld(c.clientWidth, c.clientHeight, true);
-            const sheet = model.getBoundingBox().getSize(new THREE.Vector3());
-            const w = a && b ? Math.abs(b.point.x - a.point.x) : sheet.x / 20, h = a && b ? Math.abs(b.point.y - a.point.y) : sheet.y / 20;
-            half = new THREE.Vector3(Math.max(w * factor, sheet.x * minShare) / 2, Math.max(h * factor, sheet.y * minShare) / 2, 1);
-        } else {
-            const r = nav.getEyeVector().length() * 0.5 * factor;
-            half = new THREE.Vector3(r, r, r);
-        }
-        nav.setView(from, to); // nothing has been drawn at the tight fit
+    // Show objects (one picked wall, or a filtered set) without losing the view the user has (frame-move.mjs): measure how
+    // they sit in it now (fit them for a moment and put the camera back before anything is drawn: their size as a share
+    // of the view, their middle on screen or not), then keep the view, bring them in at the same scale, or zoom to the
+    // rule's target share. The scale is the eye distance (3D: to the objects; the plan's orthographic zoom follows it
+    // too). The move: Navigation.fitBounds (animated) on a box sized by a quick trial fit, so it lands at that distance.
+    // Viewer3D fitToView / worldToClient; Navigation getPosition / getTarget / getEyeVector / setView / fitBounds:
+    // https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/ and .../reference/Viewing/Navigation/
+    showInView(viewer, model, ids, rule = PICK, { minShare = 0 } = {}) {
+        const nav = viewer.navigation, from = nav.getPosition().clone(), to = nav.getTarget().clone(), is2d = model.is2d();
+        const c = viewer.container, W = c.clientWidth, H = c.clientHeight;
+        if (!W || !H || !ids?.length) return 'keep';
+        const now = is2d ? from.distanceTo(to) : null;
+        viewer.fitToView(ids, model, true);
+        const center = nav.getTarget().clone(), fitEye = nav.getEyeVector().length();
+        nav.setView(from, to); // nothing has been drawn at the trial fit
+        const seen = is2d ? now : from.distanceTo(center);
+        const p = viewer.worldToClient(center), m = 0.06, ahead = is2d || center.clone().sub(from).dot(to.clone().sub(from)) > 0;
+        const onScreen = !!p && ahead && p.x > W * m && p.x < W * (1 - m) && p.y > H * m && p.y < H * (1 - m);
+        const move = frameMove({ share: fitEye / seen, onScreen }, rule.minPx ? { ...rule, min: rule.minPx / Math.min(W, H) } : rule);
+        if (move.move === 'keep') return 'keep';
+        let eye = fitEye / move.share; // the eye distance that shows them at that share
+        if (is2d && minShare) eye = Math.max(eye, this.sheetEye(viewer, model, minShare, from, to));
+        // A trial box (3D: a cube; the plan: the view's shape) fitted at once tells the box that lands at that distance.
+        const shape = is2d ? new THREE.Vector3(W / H, 1, 1) : new THREE.Vector3(1, 1, 1);
+        nav.fitBounds(true, new THREE.Box3(center.clone().sub(shape), center.clone().add(shape)));
+        const trial = nav.getEyeVector().length();
+        nav.setView(from, to);
+        const half = shape.multiplyScalar(eye / trial);
+        if (is2d) half.z = 1;
         nav.fitBounds(false, new THREE.Box3(center.clone().sub(half), center.clone().add(half)));
+        return move.move;
+    }
+
+    // A filtered set in 3D (e.g. the Panel Tracker's slicers): framed only when it is off screen, tiny, or much bigger
+    // than the view (SET), so changing a filter keeps the view the user has whenever the set is already in it.
+    showSet(ids) {
+        if (this.viewer3d.model && !this.apart && ids?.length) this.showInView(this.viewer3d, this.viewer3d.model, ids, SET);
+    }
+
+    // The plan's eye distance at which a share of the sheet fills the view (a short wall still shows its rooms).
+    sheetEye(viewer, model, share, from, to) {
+        const nav = viewer.navigation;
+        viewer.fitToView(null, model, true);
+        const whole = nav.getEyeVector().length();
+        nav.setView(from, to);
+        return whole * share;
     }
 
     setZoomPick(on) {
@@ -408,20 +433,21 @@ export class Views {
         try { localStorage.setItem('drywall-demos:zoom-pick', on ? 'on' : 'off'); } catch { /* storage blocked */ }
     }
 
-    // One wall picked (in either viewer, or by a demo): zoom to it in 3D, and on the plan of its floor (opened if another
-    // floor's is showing) with room around it to see where it is. Viewer3D fitToView, GEOMETRY_LOADED_EVENT;
+    // One wall picked (in either viewer, or by a demo): shown in 3D, and on the plan of its floor (opened if another
+    // floor's is showing), only moving the view as much as needed to see it (showInView). force: zoom to it anyway (a
+    // demo's "Zoom to it"). Viewer3D fitToView, GEOMETRY_LOADED_EVENT;
     // Navigation getPosition / getTarget / setView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
     // and https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Navigation/
-    async zoomToPick(ids) {
-        if (!this.zoomPick || this.applyingSheet || ids.length !== 1 || !this.wallLevel.has(ids[0])) return;
-        const id = ids[0], token = (this.pickToken = (this.pickToken || 0) + 1);
-        if (this.viewer3d.model && !this.apart) this.frameWithContext(this.viewer3d, this.viewer3d.model, id, MODEL_CONTEXT, 0);
+    async zoomToPick(ids, { force = false } = {}) {
+        if ((!this.zoomPick && !force) || this.applyingSheet || ids.length !== 1 || !this.wallLevel.has(ids[0])) return;
+        const id = ids[0], token = (this.pickToken = (this.pickToken || 0) + 1), rule = force ? { ...PICK, min: Infinity } : PICK;
+        if (this.viewer3d.model && !this.apart) this.showInView(this.viewer3d, this.viewer3d.model, [id], rule);
         if (!this.showing2d) return;
         const plan = this.planFor(this.wallLevel.get(id));
         if (plan && plan !== this.model2d?.getDocumentNode()) await this.openSheet(plan);
         const viewer = this.viewer2d, model = this.model2d;
         if (!model || token !== this.pickToken) return;
-        const zoom = () => { if (viewer.model === model && token === this.pickToken) this.frameWithContext(viewer, model, id, PLAN_CONTEXT, PLAN_MIN_FRAME); };
+        const zoom = () => { if (viewer.model === model && token === this.pickToken) this.showInView(viewer, model, [id], rule, { minShare: PLAN_MIN_FRAME }); };
         if (model.isLoadDone()) zoom();
         else viewer.addEventListener(Autodesk.Viewing.GEOMETRY_LOADED_EVENT, function once(ev) {
             if (ev.model !== model) return;

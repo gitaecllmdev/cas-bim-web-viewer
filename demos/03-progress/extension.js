@@ -4,7 +4,7 @@
 // Model (getBulkProperties with externalId): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Stage colors go through core/client/views.js (3D + 2D plan); selecting walls on the plan selects them in 3D too.
 // The schedule: p6.mjs reads the P6 export and links activities to levels and stages; schedule-views.js draws them.
-import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson, modelKey } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson, modelKey, onDockChange } from '../../helpers.js';
 import { readXlsx } from '../common/xlsx.mjs';
 import { readSchedulePdf, renderPdfPage } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
@@ -81,6 +81,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', () => { if (this.walls) this.renderBody(); }),
+            onDockChange(() => { if (this.walls) this.render(); }), // the Gantt's width and its ⤢ button follow the dock
             // Levels and their elevations arrive after the walls: redraw so floors list bottom to top.
             this.views.on('ready', () => { if (this.walls) { this.linkedCache = null; this.renderBody(); } }),
         ];

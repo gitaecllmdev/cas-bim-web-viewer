@@ -10,7 +10,7 @@
 // Dashboard tutorial (aggregating properties): https://get-started.aps.autodesk.com/tutorials/dashboard/
 // Model getBulkProperties: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
 // Viewer3D isolate, fitToView: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
-import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState, stateFor } from '../../helpers.js';
+import { loadPropertyMap, getWallData, getBulkProperties, getLevels, propValue, onModelReady, unitLabel, downloadCsv, escapeHtml, fetchJson, loadState, saveState, stateFor, onDockChange } from '../../helpers.js';
 import { takeoff, assemblyFor, fmtInches, ROLES, INSULATIONS } from './calc.mjs';
 import { takeoffLines, filterLines, facets, groupLines, totalsOf, findGroup, DIMENSIONS, DEFAULT_GROUPS } from './breakdown.mjs';
 import { wallCriteria, openingCriteria, criteriaChoices, parseDesignator, finishClassOf, FINISH_CLASSES, SOURCES } from './criteria.mjs';
@@ -115,6 +115,7 @@ class TakeoffExtension extends Autodesk.Viewing.Extension {
             () => this.views.setPlanLabels(null),
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', (level) => this.onHeaderLevel(level)),
+            onDockChange(() => { if (this.panel.querySelector('.demo-panel.tk')) this.render(); }), // its table bar is laid out by the dock
             () => document.removeEventListener('click', closeLists),
         ];
         return true;

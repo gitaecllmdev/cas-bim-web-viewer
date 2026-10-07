@@ -134,14 +134,69 @@ export function levelCode(name) {
     return s.replace(/[^A-Z]/g, '').slice(0, 2) || 'X';
 }
 
-// Panel numbers (a concept: not the shop drawing marks): P<floor code>-<001...> on each floor, in the order given;
-// floors with the same code share one count. Returns Map key -> number.
+// Panel numbers (a concept: not the shop drawing marks): <prefix>-<floor code>-<001...>, the prefix being the panel's
+// stud (prefixOf: 362 for 3 5/8" studs), numbered in the order given on each floor, per prefix: 362-3-014 is the 14th
+// 3 5/8" stud panel of the third floor. Floors with the same code share a count. Returns Map key -> number.
 export function numberPanels(panels) {
     const seq = new Map(), out = new Map();
     for (const p of panels) {
-        const c = levelCode(p.level), n = (seq.get(c) || 0) + 1;
-        seq.set(c, n);
-        out.set(p.key, `P${c}-${String(n).padStart(3, '0')}`);
+        const pre = p.prefix || 'P', c = levelCode(p.level), k = `${pre}|${c}`, n = (seq.get(k) || 0) + 1;
+        seq.set(k, n);
+        out.set(p.key, `${pre}-${c}-${String(n).padStart(3, '0')}`);
+    }
+    return out;
+}
+
+// --- Slicers: scope, prefix, levels, search -------------------------------------------------------------------------
+// Scope: the kind of wall, from its type name and its takeoff assembly (samples/takeoff-rules.json).
+export const SCOPES = [
+    { key: 'interior', name: 'Interior partition' }, { key: 'exterior', name: 'Exterior' }, { key: 'party', name: 'Party & demising' },
+    { key: 'shaft', name: 'Shaft wall' }, { key: 'chase', name: 'Chase & furring' }, { key: 'soffit', name: 'Soffit & valance' },
+];
+const SCOPE_NAME = Object.fromEntries(SCOPES.map(s => [s.key, s.name]));
+export const scopeName = (key) => SCOPE_NAME[key] || key;
+export function scopeOf(wallType, asm = {}) {
+    const t = `${wallType || ''} ${asm.label || ''}`;
+    if (/shaft|^_?SW\d/i.test(t)) return 'shaft';
+    if (/exterior|\bEI?FS\b|sheathing|cladding|rainscreen|parapet/i.test(t) || asm.sheathingSides > 0) return 'exterior';
+    if (/party|demising|double/i.test(t) || asm.rows > 1) return 'party';
+    if (/chase|furring|liner/i.test(t) || /furring/i.test(asm.member || '')) return 'chase';
+    if (/soffit|valance|beam wrap|bulkhead/i.test(t)) return 'soffit';
+    return 'interior';
+}
+
+// Prefix: the panel's stud as in its SSMA designation (web depth in 1/100": 162, 250, 362, 600, 800; 087: 7/8"
+// furring), from its takeoff assembly; GEN when it has none. prefixName: '3 5/8" studs'.
+const FRACTIONS = { 1: '1/8', 2: '1/4', 3: '3/8', 4: '1/2', 5: '5/8', 6: '3/4', 7: '7/8' };
+const inches = (x) => { const w = Math.floor(x + 1e-6), f = Math.round((x - w) * 8); return `${w || ''}${w && f ? ' ' : ''}${f ? FRACTIONS[f] : ''}"`; };
+export function prefixOf(asm = {}) {
+    const d = Number(asm.studIn);
+    return d > 0 ? String(Math.floor(d * 100 + 1e-6)).padStart(3, '0') : 'GEN';
+}
+export function prefixName(asm = {}) {
+    const d = Number(asm.studIn);
+    if (!(d > 0)) return 'No stud size';
+    return /furring/i.test(asm.member || '') ? `${inches(d)} furring` : `${inches(d)} studs`;
+}
+
+// The panels a set of slicers lets through: { levels, scopes, prefixes } (Sets; empty: all) and q (words, all of them
+// in the number, shop mark, wall type, floor or scope). skip: leave one slicer out (its own counts, below).
+const searchText = (p) => [p.mark, p.alt, p.wallType, p.level, scopeName(p.scope), p.prefix].join(' ').toLowerCase();
+export function filterPanels(panels, f = {}, skip = '') {
+    const words = String(f.q || '').toLowerCase().split(/\s+/).filter(Boolean);
+    const on = (k) => skip !== k && f[k]?.size;
+    return panels.filter(p => (!on('levels') || f.levels.has(p.level)) && (!on('scopes') || f.scopes.has(p.scope))
+        && (!on('prefixes') || f.prefixes.has(p.prefix)) && (!words.length || words.every(w => searchText(p).includes(w))));
+}
+
+// Each slicer's values with how many panels each would show given the other slicers (and the search):
+// { levels: Map, scopes: Map, prefixes: Map }.
+export function facetCounts(panels, f = {}) {
+    const out = {};
+    for (const [facet, field] of [['levels', 'level'], ['scopes', 'scope'], ['prefixes', 'prefix']]) {
+        const m = new Map();
+        for (const p of filterPanels(panels, f, facet)) m.set(p[field], (m.get(p[field]) || 0) + 1);
+        out[facet] = m;
     }
     return out;
 }

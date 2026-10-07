@@ -27,6 +27,9 @@ body {
     font-weight: 600;
 }
 
+#header .title-group { flex: 1 0 auto; display: flex; align-items: center; gap: 0.6em; }
+#header .title-group .title { flex: none; }
+
 #header select {
     height: 2em;
     font-size: 1em;
@@ -878,3 +881,33 @@ body.dock-bottom .pt-track { grid-template-columns: minmax(340px, 1fr) minmax(30
 .pt-cam-head button { margin-left: auto; border: 0; background: var(--c); color: #fff; border-radius: 8px; padding: 6px 14px; cursor: pointer; font: inherit; }
 .pt-cam-card video { display: block; width: 100%; max-height: 60vh; background: #000; object-fit: cover; }
 .pt-cam-card p { margin: 0; padding: 10px 12px; font-size: 14px; }
+/* Panel Tracker slicers: the search box and the chips (levels, scope, prefix), each with its count. */
+.pt-slicers { border: 1px solid var(--pt-line); border-radius: 10px; padding: 8px 10px; margin-bottom: 10px; background: var(--pt-soft); }
+.pt-search { display: flex; align-items: center; gap: 6px; background: #fff; border: 1px solid #c9d1da; border-radius: 8px; padding: 0 8px; }
+.pt-search:focus-within { outline: 2px solid #1f3b57; outline-offset: -1px; }
+.pt-search > span { color: #8794a1; font-size: 16px; }
+.pt-search input { flex: 1; min-width: 0; border: 0; outline: 0; padding: 6px 0; font: inherit; background: none; }
+.pt-fcount { color: #6b7785; font-size: 12px; white-space: nowrap; }
+.pt-facet { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.pt-flabel { flex: none; width: 44px; padding-top: 3px; font-size: 11.5px; font-weight: 600; color: #4a5866; text-transform: uppercase; letter-spacing: 0.3px; }
+.pt-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.pt-fchip { display: inline-flex; align-items: center; gap: 5px; border: 1px solid #d4dae1; background: #fff; color: #33414f; border-radius: 999px; padding: 2px 9px; font-size: 12px; cursor: pointer; white-space: nowrap; }
+.pt-fchip b { font-weight: 500; color: #8794a1; font-size: 11px; }
+.pt-fchip:hover:not(:disabled) { border-color: #1f3b57; }
+.pt-fchip.on { background: #1f3b57; border-color: #1f3b57; color: #fff; }
+.pt-fchip.on b { color: #c9d6e3; }
+.pt-fchip.all { font-weight: 600; }
+.pt-fchip:disabled { opacity: 0.4; cursor: default; }
+body.dock-bottom .pt-slicers { display: grid; grid-template-columns: minmax(260px, 1fr) 2.2fr; gap: 0 14px; align-items: start; }
+body.dock-bottom .pt-slicers .pt-search { grid-row: span 3; margin-top: 6px; }
+.pt-legend .pt-pickscope { flex-wrap: wrap; }
+.pt-legend .pt-pickscope em { flex-basis: 100%; font-style: normal; font-size: 11px; color: #6b7785; margin: 0 2px 2px; }
+/* Where the info panel goes (header switch, every demo): beside the views or below them. */
+.dock-switch { display: inline-flex; border: 1px solid #c9d1da; border-radius: 6px; overflow: hidden; margin-left: 4px; }
+.dock-switch button { font: inherit; font-size: 12.5px; border: 0; background: #fff; color: #1f3b57; padding: 3px 9px; cursor: pointer; display: inline-flex; align-items: center; gap: 5px; }
+.dock-switch button + button { border-left: 1px solid #c9d1da; }
+.dock-switch button.active { background: #1f3b57; color: #fff; }
+.dock-switch i { display: inline-block; width: 14px; height: 10px; border: 1.5px solid currentColor; border-radius: 2px; position: relative; box-sizing: border-box; }
+.dock-switch i::after { content: ""; position: absolute; background: currentColor; opacity: 0.55; }
+.dock-switch .side i::after { top: 0; bottom: 0; right: 0; width: 4px; }
+.dock-switch .below i::after { left: 0; right: 0; bottom: 0; height: 3px; }

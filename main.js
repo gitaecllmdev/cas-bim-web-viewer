@@ -9,8 +9,11 @@ import { countVisit } from './hits.js';
 
 countVisit(); // the home page's view counter (hits.js)
 
-// ?dock=bottom: the panel goes under the viewers (the takeoff link uses it for its tables).
-if (new URLSearchParams(location.search).get('dock') === 'bottom') document.body.classList.add('dock-bottom');
+// The info panel beside the viewers, or under them (dock-bottom): ?dock=bottom (the takeoff link uses it for its tables)
+// or ?dock=side, else this browser's last choice (the header's switch, setupDockSwitch).
+const DOCK_KEY = 'drywall-demos:dock';
+const dockWanted = new URLSearchParams(location.search).get('dock') || (() => { try { return localStorage.getItem(DOCK_KEY); } catch { return null; } })();
+if (dockWanted === 'bottom') document.body.classList.add('dock-bottom');
 
 const demoSelect = document.getElementById('demos');
 const modelSelect = document.getElementById('models');
@@ -37,7 +40,8 @@ if (offline) {
         + '<div class="offline-links"><a href="panels.html">Panel shops</a><a href="takeoff.html">Takeoff</a><a href="home.html" class="secondary">Home</a></div>');
 } else {
     const views = new Views(viewer);
-    setupDockSplit(views);
+    const dockSplit = setupDockSplit(views);
+    setupDockSwitch(views, dockSplit);
     // The demo's own toolbar set (demos.json "toolbar"; tools.js): only the tools it uses.
     viewer.loadExtension(TOOLS_EXTENSION_ID, { views, is3d: true, toolbar: demo?.toolbar });
     views.use2d(TOOLS_EXTENSION_ID, { views, is3d: false, toolbar: demo?.toolbar });
@@ -135,11 +139,12 @@ async function onModelSelected(urn) {
 // with document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })) (the takeoff's ⤢ Table button).
 function setupDockSplit(views) {
     const bar = document.getElementById('dock-split'), main = document.getElementById('main'), pane = document.getElementById('views');
-    if (!bar || !document.body.classList.contains('dock-bottom')) return;
+    if (!bar) return null;
     const KEY = 'drywall-demos:dock-split', DEFAULT = 50, TABLE = 20;
     let pct = DEFAULT, frame = 0;
     const set = (value, save) => {
         pct = Math.min(85, Math.max(15, value));
+        if (!document.body.classList.contains('dock-bottom')) return; // beside the viewers: the panel's own width
         pane.style.flexBasis = `${pct}%`;
         if (!frame) frame = requestAnimationFrame(() => { frame = 0; views.resize(); });
         if (save) { try { localStorage.setItem(KEY, String(pct)); } catch { /* storage blocked: not remembered */ } }
@@ -171,6 +176,29 @@ function setupDockSplit(views) {
         if (e.key !== 'ArrowUp' && e.key !== 'ArrowDown') return;
         e.preventDefault();
         set(pct + (e.key === 'ArrowUp' ? -5 : 5), true);
+    });
+    // The dock switched: below, the split as it was; beside, the views take the rest of the width.
+    return { apply: () => { if (document.body.classList.contains('dock-bottom')) set(pct, false); else { pane.style.flexBasis = ''; views.resize(); } } };
+}
+
+// The header's switch: the info panel beside the 3D and 2D views, or below them (no reload). Kept in the link and as
+// this browser's choice; demos hear 'dock-change' on document.
+function setupDockSwitch(views, dockSplit) {
+    const buttons = [...document.querySelectorAll('[data-dock-mode]')];
+    const mark = () => { const below = document.body.classList.contains('dock-bottom'); buttons.forEach(b => b.classList.toggle('active', (b.dataset.dockMode === 'bottom') === below)); };
+    mark();
+    buttons.forEach(b => b.onclick = () => {
+        const below = b.dataset.dockMode === 'bottom';
+        if (below === document.body.classList.contains('dock-bottom')) return;
+        document.body.classList.toggle('dock-bottom', below);
+        const params = new URLSearchParams(location.search);
+        if (below) params.set('dock', 'bottom'); else params.delete('dock');
+        history.replaceState(null, '', `?${params}${location.hash}`);
+        try { localStorage.setItem(DOCK_KEY, below ? 'bottom' : 'side'); } catch { /* storage blocked: not remembered */ }
+        mark();
+        dockSplit?.apply();
+        requestAnimationFrame(() => views.resize());
+        document.dispatchEvent(new CustomEvent('dock-change', { detail: below ? 'bottom' : 'side' }));
     });
 }
 
