@@ -2,7 +2,9 @@
 // as on a PlanGrid sheet (a code in a colored circle, ringed in its status color: open, in review, closed), photos
 // taken with the iPad's camera, and a daily or weekly report (PDF: counts, each floor's plan with its stamps, each item
 // with a close-up of the plan and its photos) to send from the iPad's share sheet. Optionally the walls colored by
-// install progress (Install Progress, Demo 3: installed; planned for the day; installed vs plan), read only.
+// install progress (Install Progress, Demo 3: installed; planned for the day; installed vs plan), read only. Revizto: each
+// item sent as a Revizto issue for review (stamp, picture, note, photos, status), its status read back (revizto-map.mjs,
+// core/client/revizto.js; the Revizto API: https://developer.revizto.com/).
 // Spec and acceptance criteria: demos/04-punch/README.md. Items and reports: punch.mjs, report.mjs (tested).
 // Data Visualization sprites (the stamps in 3D and on the plan): https://aps.autodesk.com/en/docs/dataviz/v1/developers_guide/examples/sprites/
 // Sprite events: https://aps.autodesk.com/en/docs/dataviz/v1/developers_guide/sprite-events/
@@ -14,10 +16,12 @@
 // Web: the camera / photo library through <input type="file" accept="image/*" capture="environment">
 //   (https://developer.mozilla.org/en-US/docs/Web/HTML/Attributes/capture), createImageBitmap, the share sheet
 //   (navigator.share with files: https://developer.mozilla.org/en-US/docs/Web/API/Navigator/share).
-import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, downloadCsv, escapeHtml, buildingCenter, stateFor } from '../../helpers.js';
+import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, downloadCsv, escapeHtml, buildingCenter, stateFor, modelKey } from '../../helpers.js';
 import { DemoToolbar } from '../../toolbar.js';
 import { STAMPS, STATUSES, ASSIGNEES, stampOf, statusOf, upgradeItem, nextNumber, setStatus, periodOf, reportData, summaryText, periodText, reportTitle, stampSvg, fitSize, itemLabel } from './punch.mjs';
 import { reportPages } from './report.mjs';
+import { issueFields, commentText, textComment, fileComment, statusComment, defaultStatusMap, localStatus, parseTemplates, templateFor, issueSummary, listOf } from './revizto-map.mjs';
+import { reviztoStatus, signIn, signOut, signedIn, revizto } from '../../revizto.js';
 import { toPdfPages } from '../06-shop-drawings/pdf.mjs';
 import { linkActivities, calendarOf, plannedStages, STAGE_NAMES } from '../03-progress/p6.mjs';
 
@@ -155,6 +159,8 @@ class PunchExtension extends Autodesk.Viewing.Extension {
                 photo: () => this.openPhoto(v), unphoto: () => this.removePhoto(v), del: () => this.deleteItem(), draw: () => this.startMarkup(this.current),
                 'show-markup': () => this.toggleMarkup(this.current), tool: () => this.setMarkupTool(v), 'markup-save': () => this.finishMarkup(true), 'markup-cancel': () => this.finishMarkup(false),
                 'use-picked': () => this.placeOnPicked(),
+                revizto: () => this.openRevizto(), 'rz-signin': () => this.rzSignIn(), 'rz-signout': () => this.rzSignOut(), 'rz-send': () => this.rzSend(this.rzUnsent()),
+                'rz-send-one': () => this.rzSend([this.current].filter(Boolean)), 'rz-pull': () => this.rzPull(),
             })[t.dataset.act]?.();
         }, on);
         p.addEventListener('change', (e) => {
@@ -168,6 +174,9 @@ class PunchExtension extends Autodesk.Viewing.Extension {
                 if (this.screen === 'item') this.save();
             } else if (t.matches('[data-range]')) { this.range = { ...this.range, [t.dataset.range]: t.value }; this.reportKind = 'range'; }
             else if (t.matches('[data-opt]')) this.reportOpts = { ...this.reportOpts, [t.dataset.opt]: t.checked };
+            else if (t.matches('[data-rz-project]')) this.rzProject(t.value);
+            else if (t.matches('[data-rz-map]')) this.rzSetMap(t.dataset.rzMap, t.value);
+            else if (t.matches('[data-rz-closed]')) { this.rz.sendClosed = t.checked; this.renderScreen(); }
         }, on);
     }
 
@@ -183,6 +192,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
                 <button class="pq-big pq-primary" data-act="new"><i>＋</i>New item</button>
                 <button class="pq-big" data-act="list"><i>☰</i>Items</button>
                 <button class="pq-big" data-act="report"><i>📄</i>Report</button>
+                <button class="pq-big" data-act="revizto"><i>🔁</i>Revizto</button>
             </nav>
             <div class="pq-progress" role="group" aria-label="Show progress"><span>Show progress</span>${Object.entries(PROGRESS).map(([k, l]) => {
                 const needs = (k === 'planned' || k === 'compare') && !this.schedule;
@@ -205,8 +215,8 @@ class PunchExtension extends Autodesk.Viewing.Extension {
     renderScreen() {
         const el = this.panel.querySelector('[data-screen]');
         if (!el) return;
-        this.panel.querySelectorAll('.pq-actions [data-act]').forEach(b => b.classList.toggle('on', (b.dataset.act === 'list' && ['list', 'item'].includes(this.screen)) || (b.dataset.act === 'report' && this.screen === 'report') || (b.dataset.act === 'new' && ['stamp', 'place', 'form'].includes(this.screen))));
-        el.innerHTML = ({ list: () => this.listHtml(), stamp: () => this.stampHtml(), place: () => this.placeHtml(), form: () => this.formHtml(), item: () => this.itemHtml(), report: () => this.reportHtml() })[this.screen]?.() || '';
+        this.panel.querySelectorAll('.pq-actions [data-act]').forEach(b => b.classList.toggle('on', (b.dataset.act === 'list' && ['list', 'item'].includes(this.screen)) || (b.dataset.act === 'report' && this.screen === 'report') || (b.dataset.act === 'revizto' && this.screen === 'revizto') || (b.dataset.act === 'new' && ['stamp', 'place', 'form'].includes(this.screen))));
+        el.innerHTML = ({ list: () => this.listHtml(), stamp: () => this.stampHtml(), place: () => this.placeHtml(), form: () => this.formHtml(), item: () => this.itemHtml(), report: () => this.reportHtml(), revizto: () => this.reviztoHtml() })[this.screen]?.() || '';
         if (this.screen === 'form' || this.screen === 'item') this.fillThumbs();
     }
 
@@ -294,6 +304,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
             ${this.photoButtons()}
             <div class="pq-row2"><button class="pq-big" data-act="plan"><i>🗺</i>Show on plan</button><button class="pq-big" data-act="jump"><i>🧊</i>Show in 3D</button></div>
             ${i.history.length ? `<h4 class="pq-h">History</h4><ul class="pq-history">${i.history.slice().reverse().map(h => `<li><b>${escapeHtml(h.what)}</b> <span>${new Date(h.at).toLocaleString()}${h.by ? ` · ${escapeHtml(h.by)}` : ''}</span></li>`).join('')}</ul>` : ''}
+            <h4 class="pq-h">Revizto</h4>${this.rzItemHtml(i)}
             <details class="pq-more"><summary>More</summary>
                 ${editing ? `<div class="pq-row2">${Object.keys(MARKUP_TOOLS).map(t => `<button class="pq-mid" data-act="tool" data-v="${t}">${t}</button>`).join('')}</div>
                     <div class="pq-row2"><button class="pq-mid" data-act="markup-save">Save drawing</button><button class="pq-mid" data-act="markup-cancel">Cancel</button></div>`
@@ -460,6 +471,7 @@ class PunchExtension extends Autodesk.Viewing.Extension {
         await this.save();
         this.toast(`#${item.number} is ${statusOf(status).name.toLowerCase()}.`);
         this.renderScreen();
+        if (item.revizto && signedIn()) this.rzPushStatus(item, status);
     }
 
     async deleteItem() {
@@ -698,6 +710,238 @@ class PunchExtension extends Autodesk.Viewing.Extension {
         this.progressCounts = counts;
         this.views.setColors(colors);
         this.renderLegend();
+    }
+
+    // --- Revizto: send items for review, read their status back ----------------------------------------------------
+    // Sign-in, projects, the project's statuses and stamp templates; per model, the project picked (this browser).
+
+    get rzKey() {
+        return `drywall-demos:revizto-project-${modelKey(decodeURIComponent(location.hash.slice(1)))}`;
+    }
+
+    async openRevizto() {
+        this.rz ??= { project: (() => { try { return JSON.parse(localStorage.getItem(this.rzKey) || 'null'); } catch { return null; } })() };
+        this.show('revizto');
+        if (this.rz.checked) return;
+        this.rz.checked = true;
+        Object.assign(this.rz, await reviztoStatus());
+        if (this.rz.configured && signedIn()) await this.rzLoad();
+        this.renderScreen();
+    }
+
+    rzBusy(text) {
+        this.rz.busy = text;
+        if (this.screen === 'revizto') this.renderScreen();
+    }
+
+    async rzSignIn() {
+        try { await signIn(); await this.rzLoad(); } catch (err) { this.rz.note = err.message; }
+        this.renderScreen();
+    }
+
+    rzSignOut() {
+        signOut();
+        Object.assign(this.rz, { me: null, projects: null, settings: null, note: 'Signed out of Revizto on this device.' });
+        this.renderScreen();
+    }
+
+    // Who is signed in, their projects (every license), and the project picked before.
+    async rzLoad() {
+        try {
+            this.rzBusy('Getting your Revizto projects…');
+            this.rz.me = await revizto('user');
+            const projects = [];
+            for (const lic of listOf(await revizto('user/licenses'))) {
+                const list = listOf(await revizto(`project/list/${lic.uuid}/paged`, { query: { page: 0, limit: 100 } }));
+                for (const p of list) if (!p.archived) projects.push({ uuid: p.uuid, id: p.id, title: p.title || p.name || p.uuid, license: lic.name || lic.title || '' });
+            }
+            this.rz.projects = projects;
+            if (this.rz.project && projects.some(p => p.uuid === this.rz.project.uuid)) await this.rzProject(this.rz.project.uuid, false);
+            this.rz.note = '';
+        } catch (err) {
+            this.rz.note = err.message;
+        } finally { this.rzBusy(''); }
+    }
+
+    // A project picked: its statuses and types (Get workflows) and stamp templates; Field QC's statuses matched to its.
+    async rzProject(uuid, render = true) {
+        const p = this.rz.projects?.find(x => x.uuid === uuid);
+        if (!p) return;
+        this.rz.project = p;
+        try { localStorage.setItem(this.rzKey, JSON.stringify(p)); } catch { /* storage blocked */ }
+        try {
+            this.rzBusy(`Getting ${p.title}'s statuses…`);
+            const wf = await revizto(`project/${uuid}/issue-workflow/settings`);
+            const statuses = (wf?.statuses || []).filter(x => !x.deletedAt), types = (wf?.types || []).filter(x => !x.deletedAt && x.isActive !== false);
+            this.rz.settings = { statuses, types };
+            this.rz.templates = parseTemplates(await revizto(`project/${uuid}/issue-preset/list`).catch(() => null));
+            let saved = null;
+            try { saved = JSON.parse(localStorage.getItem(`drywall-demos:revizto-map-${uuid}`) || 'null'); } catch { /* none */ }
+            const def = defaultStatusMap(statuses);
+            this.rz.map = { ...def, type: types.find(t => t.isDefault)?.uuid || '', ...(saved || {}) };
+        } catch (err) { this.rz.note = err.message; } finally { this.rzBusy(''); }
+        if (render) this.renderScreen();
+    }
+
+    rzSetMap(key, uuid) {
+        this.rz.map = { ...this.rz.map, [key]: uuid };
+        try { localStorage.setItem(`drywall-demos:revizto-map-${this.rz.project.uuid}`, JSON.stringify(this.rz.map)); } catch { /* storage blocked */ }
+    }
+
+    get rzReady() {
+        return !!(this.rz?.me && this.rz.project && this.rz.map && signedIn());
+    }
+
+    // Items not sent to this project yet (closed ones only if asked).
+    rzUnsent() {
+        return this.items.filter(i => !i.revizto && (this.rz?.sendClosed || i.status !== 'closed')).sort((a, b) => a.number - b.number);
+    }
+
+    reviztoHtml() {
+        const z = this.rz || {}, sel = (key, list, value, none) => `<select data-rz-map="${key}">${none ? `<option value="">${none}</option>` : ''}${list.map(x => `<option value="${escapeHtml(x.uuid)}" ${x.uuid === value ? 'selected' : ''}>${escapeHtml(x.name)}</option>`).join('')}</select>`;
+        const head = `<h3 class="pq-step"><span>🔁</span>Review in Revizto</h3>`;
+        if (!z.checked) return `${head}<p>Checking…</p>`;
+        if (!z.configured) return `${head}<div class="pq-banner"><p>Revizto is not set up yet. An administrator adds the Revizto app's ID and secret to this site's server (see the Field QC guide), once.</p></div>`;
+        if (!signedIn() || !z.me) {
+            return `${head}<p>Send punch items to Revizto as issues, with their stamp, a picture of the plan, the note and the photos; read their status back here.</p>
+                <button class="pq-big pq-go" data-act="rz-signin"><i>🔑</i>Sign in to Revizto</button>
+                <p class="muted">Your own Revizto account. It stays signed in on this device until you sign out (about a month).</p>
+                ${z.note ? `<p class="pq-warn">${escapeHtml(z.note)}</p>` : ''}${z.busy ? `<p>${escapeHtml(z.busy)}</p>` : ''}`;
+        }
+        const statuses = z.settings?.statuses || [], types = z.settings?.types || [], unsent = this.rzUnsent(), sent = this.items.filter(i => i.revizto);
+        return `${head}<p class="pq-meta">Signed in as <b>${escapeHtml(z.me.fullname || z.me.email)}</b> (${escapeHtml(z.me.email || '')}) · <button class="pq-link" data-act="rz-signout">Sign out</button></p>
+            <label class="pq-label">Revizto project<select data-rz-project><option value="">Pick the project</option>${(z.projects || []).map(p => `<option value="${escapeHtml(p.uuid)}" ${p.uuid === z.project?.uuid ? 'selected' : ''}>${escapeHtml(p.title)}${p.license ? ` · ${escapeHtml(p.license)}` : ''}</option>`).join('')}</select></label>
+            ${z.project && z.map ? `<h4 class="pq-h">When an item is…</h4>
+                <div class="pq-rzmap">${STATUSES.map(st => `<label class="pq-label"><span class="pq-pill" style="--c:${st.color}">${st.name}</span> in Revizto it is${sel(st.key, statuses, z.map[st.key], 'Leave as Revizto sets it')}</label>`).join('')}
+                <label class="pq-label">Issue type${sel('type', types, z.map.type, 'Revizto default')}</label></div>
+                <label class="pq-opts"><span><input type="checkbox" data-rz-closed ${z.sendClosed ? 'checked' : ''}> Also send closed items</span></label>
+                <button class="pq-big pq-go" data-act="rz-send" ${unsent.length && !z.busy ? '' : 'disabled'}><i>📤</i>${z.busy ? escapeHtml(z.busy) : unsent.length ? `Send ${unsent.length} item${unsent.length === 1 ? '' : 's'} to Revizto` : 'Every item is in Revizto'}</button>
+                <button class="pq-big" data-act="rz-pull" ${sent.length && !z.busy ? '' : 'disabled'}><i>⬇</i>Get the review status (${sent.length} sent)</button>
+                <p class="muted">Each item becomes a Revizto issue: its stamp and title, the plan around it as the picture, the note, who fixes it and the fix-by date, and every photo. A status changed here is sent too; one changed in Revizto comes back with Get the review status.</p>` : ''}
+            ${z.note ? `<p class="pq-warn">${escapeHtml(z.note)}</p>` : ''}`;
+    }
+
+    rzItemHtml(i) {
+        if (i.revizto) {
+            const name = this.rz?.settings?.statuses.find(x => x.uuid === i.revizto.statusUuid)?.name || i.revizto.statusName || '';
+            return `<p class="pq-meta">In Revizto${name ? ` · <b>${escapeHtml(name)}</b>` : ''} · sent ${ago(i.revizto.sentAt)}</p>
+                ${i.revizto.web ? `<a class="pq-big pq-rzlink" href="${escapeHtml(i.revizto.web)}" target="_blank" rel="noopener"><i>↗</i>Review in Revizto</a>` : ''}`;
+        }
+        return this.rzReady ? `<button class="pq-mid" data-act="rz-send-one">Send this item to Revizto</button>` : `<button class="pq-mid" data-act="revizto">Set up Revizto</button>`;
+    }
+
+    // Send items: the plan around each (one picture per floor, stamped), then per item the issue and its comments (the
+    // note, every photo). Each item is saved as soon as it is in Revizto, so a stop part way loses nothing.
+    async rzSend(items) {
+        if (!this.rzReady) { await this.openRevizto(); return; }
+        if (!items.length) return;
+        const z = this.rz, p = z.project, by = z.me.email;
+        let done = 0;
+        try {
+            this.rzBusy('Getting the plans…');
+            const { snippets } = await this.capturePlans(items, (t) => this.rzBusy(t)).catch(() => ({ snippets: new Map() }));
+            for (const item of items) {
+                this.rzBusy(`Sending #${item.number} (${done + 1} of ${items.length})…`);
+                const uuid = crypto.randomUUID(), form = new FormData();
+                form.append('projectId', String(p.id));
+                form.append('uuid', uuid);
+                form.append('fields', JSON.stringify(issueFields(item, { reporter: by, statusUuid: z.map[item.status], typeUuid: z.map.type, template: templateFor(item.stamp, z.templates || []) })));
+                const preview = await this.rzPreview(item, snippets.get(item.id));
+                if (preview) form.append('preview', preview, `field-qc-${item.number}.jpg`);
+                const issue = issueSummary({ uuid, ...(await revizto('issue/add', { form })) });
+                item.revizto = { uuid, projectUuid: p.uuid, projectId: p.id, statusUuid: z.map[item.status] || issue.statusUuid, web: issue.web, desktop: issue.desktop, sentAt: new Date().toISOString(), sentBy: by };
+                item.history.push({ at: item.revizto.sentAt, by: this.you || by, what: `Sent to Revizto (${p.title})` });
+                await this.save();
+                // The note and the photos, as comments.
+                const comments = new FormData(), list = [textComment(commentText(item, { project: this.project }), { uuid: crypto.randomUUID(), reporter: by })];
+                comments.append('projectUuid', p.uuid);
+                comments.append('issueUuid', uuid);
+                for (const [k, id] of item.photos.entries()) {
+                    const ph = await this.photo(id);
+                    if (!ph?.full) continue;
+                    const cu = crypto.randomUUID();
+                    list.push(fileComment({ uuid: cu, reporter: by }));
+                    comments.append(`file_${cu}`, await (await fetch(ph.full)).blob(), `field-qc-${item.number}-photo-${k + 1}.jpg`);
+                }
+                comments.append('comments', JSON.stringify(list));
+                await revizto('comment/add', { form: comments }).catch(err => { z.note = `#${item.number} is in Revizto, but its note or photos were not added: ${err.message}`; });
+                done++;
+            }
+            if (done === items.length && !z.note) z.note = `${done} item${done === 1 ? '' : 's'} sent to Revizto (${p.title}).`;
+        } catch (err) {
+            z.note = `${done} of ${items.length} sent. Stopped at the next one: ${err.message}`;
+        } finally {
+            this.rzBusy('');
+            this.toast(z.note);
+            this.renderScreen();
+        }
+    }
+
+    // The issue's picture: the plan around the item with its stamp on it, else its first photo.
+    async rzPreview(item, snip) {
+        if (snip) {
+            const img = await loadImage(snip.href), c = Object.assign(document.createElement('canvas'), { width: img.naturalWidth, height: img.naturalHeight }), g = c.getContext('2d');
+            g.drawImage(img, 0, 0);
+            const x = (snip.pu ?? 0.5) * c.width, y = (snip.pv ?? 0.5) * c.height, s = stampOf(item.stamp), r = 22;
+            for (const [rad, color] of [[r, '#ffffff'], [r - 3, statusOf(item.status).color], [r - 8, s.color]]) { g.beginPath(); g.arc(x, y, rad, 0, Math.PI * 2); g.fillStyle = color; g.fill(); }
+            g.fillStyle = '#ffffff'; g.font = `bold ${s.code.length > 1 ? 13 : 17}px Arial`; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText(s.code, x, y + 1);
+            return new Promise(res => c.toBlob(res, 'image/jpeg', 0.85));
+        }
+        const ph = item.photos.length ? await this.photo(item.photos[0]) : null;
+        return ph?.full ? (await fetch(ph.full)).blob() : null;
+    }
+
+    // The review status back: the project's issues (100 a page), the sent ones matched by their UUID; a Revizto status
+    // that maps to another Field QC status changes the item (kept in its history, by Revizto).
+    async rzPull() {
+        if (!this.rzReady) { await this.openRevizto(); return; }
+        const z = this.rz, p = z.project, sent = new Map(this.items.filter(i => i.revizto?.projectUuid === p.uuid).map(i => [i.revizto.uuid, i]));
+        let found = 0, changed = 0;
+        try {
+            for (let page = 0; page < 30 && found < sent.size; page++) {
+                this.rzBusy(`Reading Revizto (page ${page + 1})…`);
+                const data = await revizto(`project/${p.uuid}/issue-filter/filter`, { query: { page } });
+                const list = listOf(data);
+                for (const issue of list) {
+                    const item = sent.get(issue.uuid);
+                    if (!item) continue;
+                    found++;
+                    const s = issueSummary(issue);
+                    Object.assign(item.revizto, { statusUuid: s.statusUuid, statusName: z.settings?.statuses.find(x => x.uuid === s.statusUuid)?.name || '', web: s.web || item.revizto.web, desktop: s.desktop || item.revizto.desktop, checkedAt: new Date().toISOString() });
+                    const local = localStatus(s.statusUuid, z.settings?.statuses || [], z.map);
+                    if (local && local !== item.status && setStatus(item, local, { by: 'Revizto' })) changed++;
+                }
+                const pages = Number(data?.pages ?? data?.pagesCount ?? data?.totalPages);
+                if (!list.length || (Number.isFinite(pages) && page + 1 >= pages)) break;
+            }
+            await this.save();
+            z.note = `${found} of ${sent.size} found in Revizto; ${changed} changed status.`;
+        } catch (err) {
+            z.note = `Could not read Revizto: ${err.message}`;
+        } finally {
+            this.rzBusy('');
+            this.toast(z.note);
+            this.renderScreen();
+        }
+    }
+
+    // A status changed here, on an item in Revizto: the same change there (a status comment).
+    async rzPushStatus(item, status) {
+        if (!this.rzReady || item.revizto.projectUuid !== this.rz.project.uuid) return;
+        const to = this.rz.map[status];
+        if (!to || to === item.revizto.statusUuid) return;
+        try {
+            const form = new FormData();
+            form.append('projectUuid', item.revizto.projectUuid);
+            form.append('issueUuid', item.revizto.uuid);
+            form.append('comments', JSON.stringify([statusComment(item.revizto.statusUuid, to, { uuid: crypto.randomUUID(), reporter: this.rz.me.email })]));
+            await revizto('comment/add', { form });
+            item.revizto.statusUuid = to;
+            item.revizto.statusName = this.rz.settings?.statuses.find(x => x.uuid === to)?.name || '';
+            await this.save();
+            if (this.screen === 'item') this.renderScreen();
+            this.toast(`#${item.number} updated in Revizto too.`);
+        } catch (err) { this.toast(`#${item.number} not updated in Revizto: ${err.message}`); }
     }
 
     // --- The report ------------------------------------------------------------------------------------------------
