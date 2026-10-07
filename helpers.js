@@ -183,6 +183,12 @@ export function unitLabel(units) {
     return rules.find(([re]) => re.test(units))?.[1] || '';
 }
 
+// Feet (or square feet) from a property value and its units id (unitLabel): a metric model gives meters or millimeters.
+const TO_FT = { ft: 1, m: 3.28084, mm: 0.00328084, cm: 0.0328084, in: 1 / 12 };
+const TO_SF = { 'ft²': 1, 'm²': 10.7639, 'in²': 1 / 144 };
+export const toFeet = (value, units) => Number(value) * (TO_FT[unitLabel(units)] ?? 1);
+export const toSquareFeet = (value, units) => Number(value) * (TO_SF[unitLabel(units)] ?? 1);
+
 // Distinct colors for legends. More values than colors? Extra ones get generated hues.
 const PALETTE = ['#4e79a7', '#f28e2b', '#59a14f', '#e15759', '#76b7b2', '#edc948',
     '#b07aa1', '#ff9da7', '#9c755f', '#17becf', '#bcbd22', '#1f77b4'];

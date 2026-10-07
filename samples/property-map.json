@@ -9,6 +9,7 @@
     "level": "Base Constraint",
     "length": "Length",
     "area": "Area",
+    "height": "Unconnected Height",
     "ignore": {
         "_comment": "Objects left out of everything (hidden in 3D, never framed, never used for the middle of the building): not building elements, and in some models miles from the site. categories: exact Category values; categoryPattern: a regex on the Category (imported CAD shows up as a category named after the file).",
         "categories": [

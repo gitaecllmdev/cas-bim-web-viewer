@@ -270,6 +270,53 @@ export function demoHistory(panels, { levels, today, complete = '' }) {
     return out;
 }
 
+// --- Production metrics ------------------------------------------------------------------------------------------------
+// The figures on top of the tracker, for the panels the slicers show (panels { lengthFt, heightFt, areaSf, wallType, scope,
+// prefix, fire, custom: { name: value } }). Linear feet by step (framed: framing complete; on site: delivered or further;
+// late), wall area, heights (mean, lowest, highest), studs (estimated: one every spacingIn along each panel, plus one),
+// and the mix of wall types, scopes, prefixes and fire ratings by linear feet (largest first).
+export const METRICS = [
+    { key: 'panels', name: 'Panels' }, { key: 'lf', name: 'Linear ft' }, { key: 'lfFramed', name: 'LF framed' },
+    { key: 'lfSite', name: 'LF on site' }, { key: 'lfLate', name: 'LF late' }, { key: 'sf', name: 'Wall area' },
+    { key: 'height', name: 'Height' }, { key: 'studs', name: 'Studs (est.)' }, { key: 'types', name: 'Wall types' },
+    { key: 'scope', name: 'Scope' }, { key: 'prefix', name: 'Stud prefix' }, { key: 'fire', name: 'Fire rating' },
+];
+export const DEFAULT_METRICS = ['panels', 'lf', 'lfFramed', 'height', 'types', 'scope'];
+
+export function productionMetrics(panels, { statusOf: stepOf = () => -1, late = () => false, spacingIn = 16 } = {}) {
+    const framed = stageIndex('framed'), delivered = stageIndex('delivered');
+    const m = { panels: panels.length, lf: 0, lfFramed: 0, lfSite: 0, lfLate: 0, sf: 0, studs: 0, heights: [], types: new Map(), scope: new Map(), prefix: new Map(), fire: new Map() };
+    const add = (map, k, v) => map.set(k, (map.get(k) || 0) + v);
+    for (const p of panels) {
+        const lf = Number(p.lengthFt) || 0, i = stepOf(p);
+        m.lf += lf;
+        if (i >= framed) m.lfFramed += lf;
+        if (i >= delivered) m.lfSite += lf;
+        if (late(p)) m.lfLate += lf;
+        m.sf += Number(p.areaSf) || 0;
+        if (Number(p.heightFt) > 0) m.heights.push(Number(p.heightFt));
+        if (lf > 0) m.studs += Math.floor((lf * 12) / spacingIn) + 1;
+        add(m.types, p.wallType || 'Not set', lf); add(m.scope, p.scope || 'Not set', lf); add(m.prefix, p.prefix || 'Not set', lf); add(m.fire, p.fire || 'None', lf);
+    }
+    const hs = m.heights;
+    m.height = hs.length ? { mean: hs.reduce((a, h) => a + h, 0) / hs.length, min: Math.min(...hs), max: Math.max(...hs) } : null;
+    delete m.heights;
+    for (const k of ['types', 'scope', 'prefix', 'fire']) m[k] = [...m[k]].sort((a, b) => b[1] - a[1]);
+    return m;
+}
+
+// A model parameter's values over the panels (a custom metric): numbers give their total and mean; text gives how many
+// distinct values and the most common ones. values: [value] (undefined: the panel does not have it).
+export function valueSummary(values) {
+    const have = values.filter(v => v !== undefined && v !== null && v !== '');
+    if (!have.length) return { n: 0 };
+    const nums = have.map(Number);
+    if (nums.every(Number.isFinite)) { const total = nums.reduce((a, v) => a + v, 0); return { n: have.length, numeric: true, total, mean: total / have.length }; }
+    const count = new Map();
+    for (const v of have) count.set(String(v), (count.get(String(v)) || 0) + 1);
+    return { n: have.length, distinct: count.size, top: [...count].sort((a, b) => b[1] - a[1]).slice(0, 5) };
+}
+
 // --- Revit exchange ---------------------------------------------------------------------------------------------------
 // One row per panel, keyed by its wall's Revit UniqueId: what a Revit add-in reads to pull the status onto the panels,
 // and the same columns it writes back (report). Dates as YYYY-MM-DD.

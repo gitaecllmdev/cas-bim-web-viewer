@@ -548,40 +548,85 @@ export class Views {
 
     // --- Levels: section box in 3D + that level's plan in 2D -------------------------------------
 
-    async setLevel(name) {
+    // plan: false keeps the 2D sheet that is open (a demo following the plan the user opened); fit: frame the 3D view on
+    // the level's walls ('now', or animated: true), else only a model with far-away extents is framed.
+    async setLevel(name, { plan = true, fit = false } = {}) {
         const level = this.levels.find(l => l.name === name) || null;
         this.level = level;
         const params = new URLSearchParams(location.search); // keep the level in the link, so it can be sent
         if (level) params.set('level', level.name); else params.delete('level');
         history.replaceState(null, '', `?${params}${location.hash}`);
         this.el.levels.value = level?.name || '';
-        const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
-        if (level && this.viewer3d.model) {
-            // Around the building (its walls), not the whole model: ignored objects far off would stretch the box.
-            const world = this.viewer3d.model.getBoundingBox();
-            const b = this.building, r = b ? b.radius * 1.5 : 0;
-            const min = b ? new THREE.Vector3(b.center.x - r, b.center.y - r, 0) : world.min, max = b ? new THREE.Vector3(b.center.x + r, b.center.y + r, 0) : world.max;
-            // Cut 1.5 ft below the next level: the slab above hangs below its level line and would roof the floor over.
-            const top = Math.max(level.bottom + 4, level.top - 1.4);
-            section.setSectionBox(new THREE.Box3(
-                new THREE.Vector3(min.x - 1, min.y - 1, level.bottom),
-                new THREE.Vector3(max.x + 1, max.y + 1, top)));
-        } else {
-            section.deactivate(false);
-        }
+        await this.applySection();
         await this.applyCeilings();
-        // A model with far-away extents (see setModel): frame the level's walls, or the cut is lost in the distance.
-        if (this.farExtents && this.viewer3d.model) {
+        // A model with far-away extents (see setModel), or asked for: frame the level's walls (or the building's).
+        if ((fit || this.farExtents) && this.viewer3d.model && !this.apart) {
             const walls = level ? this.wallsByLevel.get(level.name) : [...this.wallsByLevel.values()].flat();
-            if (walls?.length) this.viewer3d.fitToView(walls, this.viewer3d.model);
+            if (walls?.length) this.viewer3d.fitToView(walls, this.viewer3d.model, fit === 'now');
         }
-        if (this.showing2d) {
+        if (this.showing2d && plan) {
             const plan = this.planFor(level?.name);
             if (plan && plan !== this.viewer2d?.model?.getDocumentNode()) await this.openSheet(plan);
             else this.frame2d();
         }
         this.updateMasterButton();
         this.emit('level', level);
+    }
+
+    // The level cut in 3D: a section box around that level's walls only (levelExtent), from just under its level line to
+    // 1.5 ft under the next (the slab above hangs below its level line and would roof the floor over).
+    // SectionExtension setSectionBox / deactivate: https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
+    async applySection() {
+        const level = this.level, model = this.viewer3d.model;
+        const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
+        if (!level || !model) { section.deactivate(false); return; }
+        const ext = this.levelExtent(level.name), b = this.building;
+        // Before the geometry is in (nothing to measure yet): around the building, as wide as its framing distance.
+        const c = ext?.center || b?.center, r = ext ? ext.radius * 1.04 + 1 : b ? b.radius * 1.5 : 0;
+        const world = model.getBoundingBox();
+        const min = c ? new THREE.Vector3(c.x - r, c.y - r, 0) : world.min, max = c ? new THREE.Vector3(c.x + r, c.y + r, 0) : world.max;
+        const top = Math.max(level.bottom + 4, level.top - 1.4);
+        section.setSectionBox(new THREE.Box3(new THREE.Vector3(min.x, min.y, level.bottom), new THREE.Vector3(max.x, max.y, top)));
+    }
+
+    // A level's walls: the middle and the radius of the sphere around them, measured once the geometry is in. The trial
+    // fits (fitToView of the walls, fitBounds of a unit cube at the same middle) land at distances in proportion to the
+    // spheres they frame, so the walls' radius is the cube's (√3) times the ratio; the camera goes back before anything
+    // is drawn. Viewer3D fitToView; Navigation fitBounds / getEyeVector / setView (links above).
+    levelExtent(name) {
+        const model = this.viewer3d.model, walls = this.wallsByLevel.get(name);
+        if (!model?.isLoadDone() || !walls?.length) return null;
+        this.extents ??= new WeakMap();
+        if (!this.extents.has(model)) this.extents.set(model, new Map());
+        const known = this.extents.get(model);
+        if (known.has(name)) return known.get(name);
+        const nav = this.viewer3d.navigation, from = nav.getPosition().clone(), to = nav.getTarget().clone();
+        this.viewer3d.fitToView(walls, model, true);
+        const center = nav.getTarget().clone(), eye = nav.getEyeVector().length();
+        nav.fitBounds(true, new THREE.Box3(center.clone().subScalar(1), center.clone().addScalar(1)));
+        const unit = nav.getEyeVector().length();
+        nav.setView(from, to);
+        const ext = { center, radius: Math.sqrt(3) * (eye / unit) };
+        known.set(name, ext);
+        return ext;
+    }
+
+    // What the view shows, framed in 3D: with a level cut, that level's walls (those isolated, if any are there);
+    // else what is isolated; else the building's walls. The toolbar's Fit with nothing selected.
+    fitShown() {
+        const model = this.viewer3d.model;
+        if (!model) return;
+        if (this.apart) { this.frameApart(); return; }
+        const level = this.level && this.wallsByLevel.get(this.level.name);
+        const iso = this.isolated && new Set(this.isolated), mine = level && iso ? level.filter(id => iso.has(id)) : null;
+        const ids = level ? (mine?.length ? mine : level) : this.isolated?.length ? this.isolated : [...this.wallsByLevel.values()].flat();
+        if (ids.length) this.viewer3d.fitToView(ids, model);
+    }
+
+    // The level of the 2D sheet that is open ('' when it has none, e.g. a detail sheet).
+    get planLevelName() {
+        const node = this.model2d?.getDocumentNode();
+        return (node && this.sheets.find(x => x.node === node)?.levelName) || '';
     }
 
     // The 2D view for a level: its master view (samples/level-views.json or the user's ★ choice), else a sheet
@@ -793,6 +838,7 @@ export class Views {
             const size = model3d.getBoundingBox()?.getSize(new THREE.Vector3());
             this.farExtents = !!(size && Math.max(size.x, size.y) > Math.max(20000, this.building.radius * 20));
             if (!this.farExtents) nav.setView(eye, target, up); // a normal model keeps its own opening view
+            if (this.level) this.applySection(); // a level cut before the geometry was in: now around its walls
         };
         this.building = null;
         if (model3d.isLoadDone()) frameWalls();

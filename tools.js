@@ -68,7 +68,10 @@ class DrywallToolsExtension extends Autodesk.Viewing.Extension {
             ['isolate', 'Isolate selection (3D + 2D)', () => { const ids = selection(); if (ids.length) this.views.isolate(ids); }],
             ['hide', 'Hide selection (3D + 2D)', () => { const ids = selection(); if (ids.length) this.views.hide(ids); }],
             ['showall', 'Show all (clears isolate and hide)', () => this.views.showAll()],
-            ['fit', 'Zoom to selection', () => this.viewer.fitToView(selection().length ? selection() : null, this.viewer.model)],
+            ['fit', 'Zoom to the selection, or to what is shown (the level, the isolated walls, the building)', () => {
+                if (selection().length) this.viewer.fitToView(selection(), this.viewer.model);
+                else if (is3d) this.views.fitShown(); else this.views.frame2d();
+            }],
             ['building', 'Whole building (clear the level section)', () => this.views.setLevel(null)],
         ];
         if (is3d) {
