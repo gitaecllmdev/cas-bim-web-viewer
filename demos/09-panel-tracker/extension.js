@@ -22,6 +22,7 @@ import { INDEX_STATE } from '../06-shop-drawings/panels.mjs';
 import { linkActivities, fmtDay } from '../03-progress/p6.mjs';
 import { csvText, xlsxBytes } from '../common/table-export.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
+import { reviztoButton, showReviztoConcept, REVIZTO_API } from '../../revizto-concept.js';
 import {
     STAGES, NOT_STARTED, stageIndex, readTracker, statusOf, statusFor, skippedOf, markStage, unmarkStage, findPanel,
     effectiveRecord, counts, isLate, floorDates, numberPanels, scopeOf, prefixOf, prefixName, levelCode, SCOPES, scopeName, filterPanels, facetCounts, METRICS, DEFAULT_METRICS, productionMetrics, valueSummary, completeFloor, demoFloors, demoHistory, revitRows, readRevitRows, importRevit,
@@ -420,6 +421,22 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             ...this.params.map(n => [n, String(this.paramOf(p, n) ?? '–')])];
     }
 
+    // A panel raised in Revizto (a concept, core/client/revizto-concept.js): an issue for it, its steps as a comment, its
+    // review status back. Doable with the right Revizto access; nothing is sent.
+    rzPanel(key) {
+        const p = this.byKey.get(key);
+        if (!p) return;
+        const rec = this.recordOf(p), st = statusFor(statusOf(rec)), late = this.late(p);
+        const done = STAGES.filter(s => rec[s.key]).map(s => `${s.name} ${day(rec[s.key].date)}`);
+        showReviztoConcept({ title: 'Raise in Revizto', intro: `Panel ${p.mark}${late ? ' is late' : ''}: an issue in Revizto for the coordination team, with what the field knows about it.`,
+            cards: [{ code: p.prefix.slice(0, 4), color: st.color, statusColor: late ? LATE : '#d93025', status: 'Open', title: `Panel ${p.mark} · ${p.level}${late ? ' · late' : ''}`,
+                lines: [`Now: ${st.name}${late ? ' (not on site, floor framing)' : ''}`, `${scopeName(p.scope)} · ${this.prefixNames.get(p.prefix) || p.prefix}`, done.length ? `Steps: ${done.join(', ')}` : 'No step recorded yet',
+                    `Tags: Panel Tracker, ${p.level}, ${scopeName(p.scope)}`, 'The plan around it as the picture; the wall\'s Revit UniqueId in the first comment'] }],
+            api: [REVIZTO_API.create, REVIZTO_API.comments, REVIZTO_API.issues],
+            steps: ['Make the issue in the project\'s Revizto: title, the panel\'s stud prefix as its stamp, tags, the plan around the panel as the picture.',
+                'Add the panel\'s steps (who recorded each and when) as a comment.', 'Show "Open in Revizto" on the card, and the issue\'s status back here.'] });
+    }
+
     // --- 3D: the plan's floor, or every floor -----------------------------------------------------------------------
 
     // This floor ('level', the default): 3D shows the floor of the plan open in 2D, cut to that floor's walls and framed
@@ -560,7 +577,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                     undo: () => { const [k, s] = v.split('|'); this.undo(k, s); }, step: () => { const [k, s] = v.split('|'); this.record(k, s, 'card'); },
                     close: () => this.pick(null), camera: () => this.openCamera(), switch: () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '03-progress' } })),
                     xlsx: () => this.exportList('xlsx'), csv: () => this.exportList('csv'), revit: () => this.exportRevit(), print: () => this.printLabels(),
-                    only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v), 'clear-filters': () => this.clearFilters(),
+                    only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v), 'clear-filters': () => this.clearFilters(), 'rz-panel': () => this.rzPanel(v),
                 })[t.dataset.act]?.();
                 return;
             }
@@ -749,6 +766,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             <div class="pt-card-acts">${p.shop ? `<a href="panel.html?p=${encodeURIComponent(p.key)}" target="_blank" rel="noopener">Shop drawing ${escapeHtml(p.alt || '')} ↗</a>`
                 : `<a href="index.html?demo=06-shop-drawings&layout=split&panel=${encodeURIComponent(p.key)}${urn ? `#${urn}` : ''}" target="_blank" rel="noopener">Draw its shop drawing ↗</a>`}
                 ${p.dbId ? `<button class="link" data-act="zoom" data-v="${escapeHtml(p.key)}">Zoom to it</button>` : '<span class="muted">not in this model</span>'}</div>
+            ${reviztoButton('Raise in Revizto', `data-act="rz-panel" data-v="${escapeHtml(p.key)}"`)}
         </section>`;
     }
 

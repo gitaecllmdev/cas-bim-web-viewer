@@ -16,6 +16,7 @@ import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
 import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
 import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './demos/06-shop-drawings/prefab.mjs';
+import { reviztoButton, showReviztoConcept, REVIZTO_API } from './revizto-concept.js';
 import { STAGES, readTracker, statusOf, statusFor, markStage, unmarkStage, effectiveRecord } from './demos/09-panel-tracker/tracker.mjs';
 import { fmtDay } from './demos/03-progress/p6.mjs';
 
@@ -174,7 +175,7 @@ function render() {
                 <div><h2 style="margin:0">${escapeHtml(record.mark)}: framing elevation</h2>
                     <span class="muted">${escapeHtml(record.info?.wallType || '')} · ${fmtFtIn(layout.lengthIn)} × ${fmtFtIn(layout.heightIn)} ·
                     ${layout.cutList.reduce((a, r) => a + r.qty, 0)} members · saved ${escapeHtml(when(record.savedAt))}</span></div>
-                <div class="row"><a class="button secondary" href="${escapeHtml(open3d)}">Open in 3D</a><button data-pdf>Download PDF</button></div>
+                <div class="row"><a class="button secondary" href="${escapeHtml(open3d)}">Open in 3D</a><button data-pdf>Download PDF</button>${reviztoButton('Send for review in Revizto', 'data-rz-sheet')}</div>
             </div>
             ${layout.issues?.length ? `<div class="check-failed" style="margin-top:0.6em">Framing check failed (${layout.issues.length}): do not release.
                 ${layout.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</div>`
@@ -198,6 +199,14 @@ function render() {
     main.querySelectorAll('[data-remove]').forEach(b => b.onclick = () => removeLink(Number(b.dataset.remove)));
     main.querySelector('[data-add-comment]').onsubmit = (e) => { e.preventDefault(); addComment(new FormData(e.target)); };
     main.querySelector('[data-pdf]').onclick = () => downloadPdf();
+    // A concept (revizto-concept.js): doable with the right Revizto access; nothing is sent.
+    main.querySelector('[data-rz-sheet]').onclick = () => showReviztoConcept({ title: 'Send for review in Revizto',
+        intro: `${record.mark}'s shop drawing to Revizto for review: the coordination team marks it up there, and their comments and approval come back to this page.`,
+        cards: [{ code: 'SHOP', color: '#1f3b57', status: 'Open', title: `Shop drawing ${record.mark} · ${record.info?.level || ''}`,
+            lines: [record.info?.wallType || '', `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)} · ${layout.cutList.reduce((a, r) => a + r.qty, 0)} members`, 'The sheet as the picture; the 11x17 PDF attached', 'Tags: Shop drawing, Panel']}],
+        api: [REVIZTO_API.create, REVIZTO_API.comments, REVIZTO_API.issues],
+        steps: ['Make the issue: the sheet as its picture, title, tags, the panel\'s level.', 'Attach the shop drawing PDF to it (a file comment, up to 38 MB).',
+            'Bring the reviewers\' comments and the issue\'s status back here, beside the links and comments.'] });
     renderTracker();
 }
 
