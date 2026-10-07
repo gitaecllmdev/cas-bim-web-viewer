@@ -672,3 +672,35 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg-pdf-page { position: relative; overflow: auto; }
 .pg-pdf-page canvas { display: block; }
 .pg-pdf-hi { position: absolute; left: 0; right: 0; background: rgba(255, 200, 0, 0.32); outline: 2px solid #e8a500; pointer-events: none; }
+/* Demo 8 Panel Shipper: the truck over the 3D pane, the panel's batches and load list. */
+.dw-icon-prev::before { content: "\25C0"; }
+.dw-icon-next::before { content: "\25B6"; }
+.dw-icon-truck::before { content: "\25AC"; color: #e8a33d; }
+.ps-overlay { position: absolute; inset: 0; z-index: 5; display: flex; flex-direction: column; background: linear-gradient(#f6f8fb, #e9edf2); }
+.ps-obar { display: flex; flex-wrap: wrap; gap: 0.5em; align-items: center; padding: 0.45em 0.7em; background: #1f2a36; color: #fff; font-size: 0.9em; }
+.ps-obar .muted { color: #b8c4d0; }
+.ps-obar button { font: inherit; padding: 0.15em 0.6em; border: 1px solid #5b6b7c; background: #2c3a49; color: #fff; border-radius: 4px; cursor: pointer; }
+.ps-obar button:hover { background: #3a4b5e; }
+.ps-oacts { margin-left: auto; display: inline-flex; gap: 0.4em; }
+.ps-tag { font-size: 0.8em; font-weight: 700; padding: 0 6px; border-radius: 3px; background: #ffcf33; color: #222; }
+.ps-stage { position: relative; flex: 1 1 auto; min-height: 0; display: flex; }
+.ps-svg { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 0.5em; }
+.ps-svg svg { max-height: 100%; }
+.ps-svg .ps-panel { cursor: pointer; }
+.ps-svg .ps-panel:hover { filter: brightness(1.12); }
+.ps-card { position: absolute; right: 0.8em; top: 0.8em; background: #fff; border: 1px solid #c9d1da; border-left: 4px solid #ff8a3d; border-radius: 4px; padding: 0.4em 0.7em; font-size: 0.88em; box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12); max-width: 60%; }
+.ps-legend { display: flex; flex-wrap: wrap; gap: 0.3em 0.9em; padding: 0.4em 0.8em; font-size: 0.8em; color: #333; border-top: 1px solid #d4dae1; background: #fff; }
+.ps-legend i, .ps-sw { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 4px; vertical-align: -1px; }
+.demo-panel.ps .ps-source { display: flex; gap: 1em; flex-wrap: wrap; margin: 0.3em 0; }
+.demo-panel.ps .ps-filters { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 0.4em 0.6em; margin: 0.4em 0; }
+.demo-panel.ps .ps-filters label { display: flex; flex-direction: column; font-size: 0.85em; color: #555; gap: 2px; }
+.demo-panel.ps .ps-filters select, .demo-panel.ps .ps-filters input { font: inherit; font-size: 1.05em; color: #111; }
+.demo-panel.ps .ps-batches { max-height: 32vh; overflow: auto; border: 1px solid #e1e5ea; border-radius: 4px; padding: 0.3em 0.5em; }
+.demo-panel.ps .ps-batch { padding: 0.3em 0; border-bottom: 1px solid #eef1f4; }
+.demo-panel.ps .ps-bhead { display: flex; gap: 0.4em; align-items: baseline; flex-wrap: wrap; font-size: 0.9em; }
+.demo-panel.ps .ps-trucks { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+.demo-panel.ps .ps-truck { display: inline-flex; flex-direction: column; align-items: center; min-width: 52px; padding: 2px 6px; border: 1px solid #c9d1da; border-radius: 4px; background: #fff; cursor: pointer; font-weight: 700; }
+.demo-panel.ps .ps-truck small { font-weight: 400; color: #666; font-size: 0.75em; }
+.demo-panel.ps .ps-truck.active { background: #1f3b57; color: #fff; border-color: #1f3b57; }
+.demo-panel.ps .ps-truck.active small { color: #cfe0ef; }
+.demo-panel.ps .ps-list tr { cursor: pointer; }
