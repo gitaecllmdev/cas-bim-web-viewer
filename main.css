@@ -651,3 +651,24 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
     #panel, #panel.wide, #panel.xwide { flex: 0 0 40%; border-left: none; border-top: 1px solid #ddd; }
     #header .title { flex-basis: 100%; }
 }
+/* All floor plans (Demo 3, demos/03-progress/all-plans.js): over the plan pane, its own viewer and floor names. */
+.all-plans { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; background: #fff; }
+.all-plans .ap-bar { flex: 0 0 auto; display: flex; gap: 0.6em; align-items: center; padding: 0.3em 0.6em; border-bottom: 1px solid #ddd; background: #fafafa; font-size: 0.9em; }
+.all-plans .ap-bar button { margin-left: auto; font: inherit; padding: 0.1em 0.6em; cursor: pointer; border: 1px solid #999; background: #fff; }
+.all-plans .ap-view { position: relative; flex: 1 1 auto; min-height: 0; }
+.all-plans .ap-labels { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.all-plans .ap-label { position: absolute; transform: translateY(-100%); white-space: nowrap; font: 700 12px/16px "Segoe UI", sans-serif; color: #fff; background: #1f3b57; padding: 0 6px; border-radius: 3px 3px 0 0; }
+/* Demo 3 schedule views (Linked walls, Floors apart, All plans) and their toolbar icons. */
+.pg-views { display: inline-flex; gap: 4px; }
+.dw-icon-sched-views::before { content: "\25A6"; color: #4e79a7; }
+.dw-icon-linked::before { content: "\26D3"; }
+.dw-icon-apart::before { content: "\2630"; }
+.dw-icon-all-plans::before { content: "\25A6"; }
+/* Demo 3: an activity's row in the source PDF (showInPdf). */
+.pg-pdf-modal { position: fixed; inset: 0; z-index: 60; background: rgba(0, 0, 0, 0.55); display: flex; align-items: center; justify-content: center; padding: 2vh 2vw; }
+.pg-pdf-box { background: #fff; max-width: 96vw; max-height: 96vh; display: flex; flex-direction: column; border-radius: 6px; overflow: hidden; }
+.pg-pdf-bar { display: flex; gap: 0.6em; align-items: center; padding: 0.4em 0.7em; border-bottom: 1px solid #ddd; background: #fafafa; }
+.pg-pdf-bar button { margin-left: auto; }
+.pg-pdf-page { position: relative; overflow: auto; }
+.pg-pdf-page canvas { display: block; }
+.pg-pdf-hi { position: absolute; left: 0; right: 0; background: rgba(255, 200, 0, 0.32); outline: 2px solid #e8a500; pointer-events: none; }

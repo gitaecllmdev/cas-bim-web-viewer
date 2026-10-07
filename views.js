@@ -8,7 +8,7 @@
 // Section extension (setSectionBox, deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
-import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState } from './helpers.js';
+import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
@@ -67,9 +67,12 @@ export class Views {
         }
     }
 
-    // [viewer, model] for each viewer that has a model loaded.
+    // [viewer, model] for each viewer that has a model loaded; with the floors apart (setLevelsApart), each floor's copy
+    // in 3D instead of the (hidden) building model.
     get active() {
-        return [this.viewer3d, this.viewer2d].filter(v => v?.model).map(v => [v, v.model]);
+        const out = [this.viewer3d, this.viewer2d].filter(v => v?.model).map(v => [v, v.model]);
+        if (!this.apart) return out;
+        return [...out.filter(([v]) => v !== this.viewer3d), ...[...this.apart.models.values()].map(m => [this.viewer3d, m])];
     }
 
     get model2d() {
@@ -92,6 +95,11 @@ export class Views {
     // isolation would fade the whole drawing. The highlight stays on the plan (not mirrored to the 3D selection).
     applyColors(viewer, model) {
         viewer.clearThemingColors(model);
+        const floor = this.apart?.idsOf.get(model);
+        if (floor) {
+            for (const id of floor) { const hex = this.colors.get(id); if (hex) viewer.setThemingColor(id, toThemingColor(hex), model); }
+            return;
+        }
         if (viewer === this.viewer2d && this.isolated) {
             const iso = new Set(this.isolated);
             for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
@@ -128,10 +136,81 @@ export class Views {
         this.isolated = ids?.length ? [...ids] : null;
         for (const [viewer, model] of this.active) {
             if (viewer === this.viewer2d) this.applyColors(viewer, model);
-            else viewer.isolate(this.isolated || [], model);
+            else this.isolateIn(viewer, model);
         }
-        if (fit && this.viewer3d.model) this.viewer3d.fitToView(this.isolated, this.viewer3d.model);
+        if (fit && this.viewer3d.model && !this.apart) this.viewer3d.fitToView(this.isolated, this.viewer3d.model);
         if (fit && this.model2d) this.frame2d();
+    }
+
+    // The isolated walls in one 3D model: on a floor's copy, those of its floor (none of them: the floor hidden).
+    isolateIn(viewer, model) {
+        const floor = this.apart?.idsOf.get(model);
+        if (!floor || !this.isolated) { viewer.isolate(this.isolated || [], model); return; }
+        const set = new Set(this.isolated), mine = floor.filter(id => set.has(id));
+        if (mine.length) viewer.isolate(mine, model); else { viewer.isolate([], model); viewer.hide(floor, model); }
+    }
+
+    // --- Floors apart: every floor's walls at once, each lifted by a gap over the one below ------------------------
+    // Each floor's walls are loaded again from the same view as their own model (Viewer3D.loadDocumentNode with
+    // keepCurrentModels, ids and placementTransform: documented loadModel options), lifted by its place in the stack
+    // times the gap, and the building model is hidden meanwhile. Colors and isolation set through views reach every
+    // floor (active, applyColors, isolateIn). names: the floors, bottom to top (null: back to the building).
+    // Viewer3D loadDocumentNode, hideModel, showModel, unloadModel; Model getData (globalOffset), getUnitString;
+    // Navigation fitBounds: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    async setLevelsApart(names, { onProgress = () => {} } = {}) {
+        const viewer = this.viewer3d, run = (this.apartRun = (this.apartRun || 0) + 1);
+        if (this.apart) {
+            const { main, models } = this.apart;
+            this.apart = null;
+            for (const m of models.values()) viewer.unloadModel(m);
+            unmarkCopiesOf(main);
+            viewer.showModel(main);
+            this.applyColors(viewer, main);
+            this.isolateIn(viewer, main);
+            if (!names?.length) { this.frameBuilding(); return; }
+        }
+        const main = viewer.model;
+        if (!names?.length || !main) return;
+        if (this.level) await this.setLevel(null); // no section cut: every floor shows
+        const floors = this.levels.filter(l => names.includes(l.name) && this.wallsByLevel.get(l.name)?.length);
+        if (!floors.length) return;
+        const gap = main.getUnitString?.() === 'm' ? 7.5 : 25; // between floors, over their own height
+        markCopiesOf(main);
+        this.apart = { main, gap, floors, models: new Map(), idsOf: new Map() };
+        viewer.hideModel(main);
+        this.frameApart();
+        const node = main.getDocumentNode(), globalOffset = main.getData().globalOffset;
+        for (let i = 0; i < floors.length; i++) {
+            if (run !== this.apartRun) return; // switched off or restarted meanwhile
+            onProgress(i, floors.length, floors[i].name);
+            const ids = this.wallsByLevel.get(floors[i].name);
+            const model = await viewer.loadDocumentNode(this.doc, node, { keepCurrentModels: true, ids, globalOffset,
+                placementTransform: new THREE.Matrix4().makeTranslation(0, 0, i * gap) });
+            await new Promise(res => model.getObjectTree(res, res)); // colors and isolation need its object tree (Model.getObjectTree)
+            if (run !== this.apartRun) { viewer.unloadModel(model); return; }
+            this.apart.models.set(floors[i].name, model);
+            this.apart.idsOf.set(model, ids);
+            this.applyColors(viewer, model);
+            this.isolateIn(viewer, model);
+            if (i === 0) this.frameApart(); // the first one loaded takes the viewer to the model's own (far) extents
+        }
+        this.frameApart();
+        onProgress(floors.length, floors.length, '');
+    }
+
+    // The stack of floors in view: the building's plan size, from the lowest floor to the top one lifted.
+    frameApart() {
+        const a = this.apart, b = this.building;
+        if (!a || !b) return;
+        const r = b.radius * 0.28, low = a.floors[0], high = a.floors.at(-1);
+        const top = Math.min(high.top, high.bottom + a.gap) + (a.floors.length - 1) * a.gap; // the top level's own top can be the model's far extents
+        this.viewer3d.navigation.fitBounds(false, new THREE.Box3(
+            new THREE.Vector3(b.center.x - r, b.center.y - r, low.bottom), new THREE.Vector3(b.center.x + r, b.center.y + r, top)));
+    }
+
+    frameBuilding() {
+        const walls = [...this.wallsByLevel.values()].flat();
+        if (walls.length && this.viewer3d.model) this.viewer3d.fitToView(walls, this.viewer3d.model);
     }
 
     // Open the plan of the level where most of these walls are (none: the header level's plan), if it isn't open.
@@ -234,7 +313,7 @@ export class Views {
     async zoomToPick(ids) {
         if (!this.zoomPick || this.applyingSheet || ids.length !== 1 || !this.wallLevel.has(ids[0])) return;
         const id = ids[0], token = (this.pickToken = (this.pickToken || 0) + 1);
-        if (this.viewer3d.model) this.frameWithContext(this.viewer3d, this.viewer3d.model, id, MODEL_CONTEXT, 0);
+        if (this.viewer3d.model && !this.apart) this.frameWithContext(this.viewer3d, this.viewer3d.model, id, MODEL_CONTEXT, 0);
         if (!this.showing2d) return;
         const plan = this.planFor(this.wallLevel.get(id));
         if (plan && plan !== this.model2d?.getDocumentNode()) await this.openSheet(plan);

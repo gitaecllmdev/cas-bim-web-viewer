@@ -218,7 +218,15 @@ export function downloadCsv(filename, rows) {
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/BubbleNode/ and .../reference/Viewing/Model/
 const contextNodes = new Set();
 export const markContextNode = (node) => contextNodes.add(node.guid());
-export const isContextModel = (model) => contextNodes.has(model?.getDocumentNode?.()?.guid?.());
+// Copies of a loaded model (views.setLevelsApart loads each floor's walls again from the same view): while marked,
+// any other model loaded from that view is a copy, not a model to start the demos on.
+const copiesOf = new Map(); // view guid -> the real model
+export const markCopiesOf = (model) => copiesOf.set(model.getDocumentNode().guid(), model);
+export const unmarkCopiesOf = (model) => copiesOf.delete(model.getDocumentNode().guid());
+export const isContextModel = (model) => {
+    const guid = model?.getDocumentNode?.()?.guid?.();
+    return contextNodes.has(guid) || (copiesOf.has(guid) && copiesOf.get(guid) !== model);
+};
 
 // Runs callback once the model's object tree (and so its properties) is available. Context models are skipped.
 // Returns a function that removes the listener (call it from the extension's unload()).

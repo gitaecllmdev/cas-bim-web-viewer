@@ -628,3 +628,9 @@ export function wallProgress(activity, stageIndexOf) {
     const done = activity.walls.filter(w => stageIndexOf(w) >= k).length;
     return { done, total: activity.walls.length, pct: Math.round((done / activity.walls.length) * 100) };
 }
+
+// The model levels the schedule's wall work is linked to: wall activities with a level and an install stage, not the
+// demo's picked walls (those are on their own). A Set of level names.
+export function linkedLevelNames(linked) {
+    return new Set(linked.filter(a => a.scope !== 'other' && a.level && a.stage && !a.demoWalls).map(a => a.level));
+}

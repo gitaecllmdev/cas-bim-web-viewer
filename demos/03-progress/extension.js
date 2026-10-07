@@ -6,16 +6,21 @@
 // The schedule: p6.mjs reads the P6 export and links activities to levels and stages; schedule-views.js draws them.
 import { loadPropertyMap, getWallData, onModelReady, loadState, saveState, escapeHtml, downloadCsv, fetchJson, modelKey } from '../../helpers.js';
 import { readXlsx } from '../common/xlsx.mjs';
-import { readSchedulePdf } from '../common/pdf-reader.mjs';
+import { readSchedulePdf, renderPdfPage } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
-    STAGE_NAMES, demoShift, assignDemoLevels, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
+    STAGE_NAMES, demoShift, assignDemoLevels, linkedLevelNames, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
     stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay, addDays, dayMs, monthName,
     randomWallLinks, wallProgress, demoTarget,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
+import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
+
+// Base64 for the source PDF kept with a schedule (state is JSON).
+const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+const fromBase64 = (text) => Uint8Array.from(atob(text), ch => ch.charCodeAt(0));
 
 const EXTENSION_ID = 'Drywall.Progress';
 // Saved per model: 'progress' / 'schedule' for the sample model (Snowdon, the one with a sample schedule in
@@ -57,6 +62,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const params = new URLSearchParams(location.search);
         this.tab = TABS[params.get('tab')] ? params.get('tab') : 'stages';
         this.colorMode = 'actual';
+        // Schedule views: only the walls linked to the schedule, the floors apart (views.setLevelsApart), all floor plans.
+        this.linkedOnly = false;
+        this.apartOn = false;
+        this.allPlans = new AllPlans(this.views);
         this.gantt = { scale: 'week', show: 'all', links: 'selected', fold: 'done', collapsed: new Set() };
         this.selectedAct = null;
         this.demoMove = true;
@@ -85,8 +94,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.resizer.disconnect();
         this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
         this.bar?.remove();
+        this.allPlans.close();
+        this.views.setLevelsApart(null);
         this.views.clearColors();
-        if (this.isolatedBySchedule || this.isolatedStage !== undefined) this.views.showAll();
+        if (this.isolatedBySchedule || this.isolatedStage !== undefined || this.linkedOnly) this.views.showAll();
         this.panel.classList.remove('wide', 'xwide');
         this.panel.innerHTML = '';
         return true;
@@ -105,6 +116,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                 ...STAGES.map(stage).map(({ key, icon, name }) => ({ key, icon, tip: `Show only: ${name}`, run: () => this.isolateStage(name), on: () => this.isolatedStage === name })),
                 { key: 'wip', icon: 'dw-icon-stage-wip', tip: 'Show only: in progress (framed, boarded or taped)', run: () => this.isolateStage('wip'), on: () => this.isolatedStage === 'wip' },
                 { key: 'all', icon: 'dw-icon-showall', tip: 'Show all walls', run: () => this.isolateStage(null) },
+            ] },
+            { key: 'views', icon: 'dw-icon-sched-views', tip: 'Schedule views: only the linked walls, the floors apart, all floor plans', items: [
+                { key: 'linked', icon: 'dw-icon-linked', tip: 'Only the walls linked to the schedule', run: () => this.setLinkedOnly(!this.linkedOnly), on: () => this.linkedOnly },
+                { key: 'apart', icon: 'dw-icon-apart', tip: 'Floors apart: every floor at once, each lifted over the one below', run: () => this.setApart(!this.apartOn), on: () => this.apartOn },
+                { key: 'plans', icon: 'dw-icon-all-plans', tip: 'All floor plans at once, beside the schedule', run: () => this.setAllPlans(!this.allPlans.isOpen), on: () => this.allPlans.isOpen },
             ] },
             { key: 'set', icon: 'dw-icon-set-stage', tip: 'Set the stage of the picked walls (pick them in 3D or on the plan, Ctrl+click for several)', items:
                 STAGES.map(stage).map(({ key, icon, name }) => ({ key, icon, tip: `Picked walls: ${name}`, run: () => this.setStageFromToolbar(name) })) },
@@ -129,12 +145,12 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     isolateStage(name) {
         if (!this.walls) return;
         this.isolatedStage = name;
-        if (!name) { this.views.showAll(); this.bar?.refresh(); return; }
+        if (!name) { this.showDefault(); this.bar?.refresh(); return; }
         const ids = this.walls.filter(w => (name === 'wip' ? [1, 2, 3].includes(this.stageIndex(w)) : this.stageOf(w) === name)).map(w => w.dbId);
         if (!ids.length) {
             this.message(`No walls are ${name === 'wip' ? 'in progress' : name.toLowerCase()} yet.`);
             this.isolatedStage = null;
-            this.views.showAll();
+            this.showDefault();
         } else {
             this.views.isolate(ids);
             this.message(`Showing ${ids.length.toLocaleString()} wall${ids.length === 1 ? '' : 's'}: ${name === 'wip' ? 'in progress' : name}.`);
@@ -170,7 +186,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.walls =(await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
-            if (schedule?.activities?.length) this.useSchedule(schedule);
+            if (schedule?.activities?.length) { this.useSchedule(schedule); this.loadPdf(); }
             else if (!schedule?.removed && this.sampleSchedule) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
             this.render();
         } catch (err) {
@@ -261,12 +277,15 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const ext = file.name.split('.').pop().toLowerCase();
         if (!['pdf', 'xer', 'xlsx', 'csv', 'txt'].includes(ext)) throw new Error('Choose a PDF, XER, XLSX or CSV file.');
         const buffer = ext === 'pdf' ? null : await file.arrayBuffer();
-        let s, pdfNotes = '';
+        let s, pdfNotes = '', pdfBytes = null;
         if (ext === 'pdf') {
             const doc = await readSchedulePdf(file, { signal: this.importController?.signal, onProgress: message => this.message(message, 'warn') });
             s = scheduleFromRows(scheduleRows(doc), { file: file.name, format: 'pdf', dataDate: parseDateText(doc.dataDate).day });
             pdfNotes = ` PDF: ${doc.warnings.length} import notes; no relationships or calendar in a PDF (Monday–Friday used).`;
             s.source.warnings = doc.warnings;
+            // Where each activity is printed (page, y in points): "Show in the PDF" in its details.
+            s.source.pdfRows = Object.fromEntries(doc.rows.filter(r => r.kind === 'Activity').map(r => [r.cells.id, [r.page, Math.round(r.y)]]));
+            pdfBytes = new Uint8Array(await file.arrayBuffer());
         } else if (ext === 'xlsx') {
             let firstError;
             for (const sheet of await readXlsx(buffer)) {
@@ -286,8 +305,69 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.useSchedule(s);
         this.render();
         if (!await this.saveSchedule()) return;
+        this.pdfBytes = pdfBytes;
+        this.pdfFile = file.name;
+        if (pdfBytes) await saveState(this.pdfState, { file: file.name, at: new Date().toISOString(), data: toBase64(pdfBytes) }).catch(err => console.warn('Source PDF not kept:', err.message));
         const linked = this.linked.filter(a => a.level && a.stage).length;
         this.message(`Loaded ${s.activities.length} activities from ${file.name} (${s.source.format}); ${linked} linked to walls.${linked ? '' : ' Link them with 🔗 Links.'}${pdfNotes}`, pdfNotes ? 'warn' : '');
+    }
+
+    // The schedule as it was imported (its own dates and project), in place of the demo-moved one, until switched back.
+    // View only: nothing is saved meanwhile.
+    toggleOriginal() {
+        this.stopPlay();
+        if (this.viewingOriginal) {
+            this.viewingOriginal = false;
+            this.useSchedule(this.adjustedSchedule);
+            this.adjustedSchedule = null;
+        } else {
+            const original = this.schedule?.source.original;
+            if (!original) return;
+            this.adjustedSchedule = this.schedule;
+            this.viewingOriginal = true;
+            this.useSchedule({ ...structuredClone(original), source: { ...structuredClone(original.source), pdfRows: this.schedule.source.pdfRows } });
+        }
+        this.render();
+        this.message(this.viewingOriginal ? `The original schedule: ${this.schedule.project.name}, data date ${fmtDay(this.schedule.project.dataDate)}, its own dates. View only.` : 'Back to the demo schedule (dates adjusted).');
+    }
+
+    // The source PDF of a schedule imported from one (state 'schedule-pdf-<model>'), and an activity's row in it.
+    get pdfState() {
+        return this.scheduleState.replace(/^schedule/, 'schedule-pdf');
+    }
+
+    // The kept PDF, when the schedule came from one: "Show in the PDF" appears in the details once it is here.
+    async loadPdf() {
+        if (!this.schedule?.source.pdfRows || this.pdfBytes) return;
+        const saved = await loadState(this.pdfState).catch(() => ({}));
+        if (!saved?.data) return;
+        this.pdfBytes = fromBase64(saved.data);
+        this.pdfFile = saved.file;
+        if (this.selectedAct) this.renderDetails(this.panel.querySelector('[data-details]'));
+    }
+
+    async showInPdf(a) {
+        const at = this.schedule.source.pdfRows?.[a.id];
+        if (!at || !this.pdfBytes) return;
+        const [page, y] = at, scale = 1.6;
+        this.pdfModal?.remove();
+        const modal = this.pdfModal = document.createElement('div');
+        modal.className = 'pg-pdf-modal';
+        modal.innerHTML = `<div class="pg-pdf-box"><div class="pg-pdf-bar"><b>${escapeHtml(this.pdfFile || this.schedule.source.file || 'Source PDF')}</b>
+                <span class="muted">page ${page} · ${escapeHtml(a.id)} ${escapeHtml(a.name)}, as printed</span><button class="pg-btn" data-pdf-close>✕ Close</button></div>
+            <div class="pg-pdf-page"><canvas></canvas><div class="pg-pdf-hi"></div></div></div>`;
+        document.body.appendChild(modal);
+        const close = () => { modal.remove(); if (this.pdfModal === modal) this.pdfModal = null; };
+        modal.querySelector('[data-pdf-close]').onclick = close;
+        modal.onclick = (e) => { if (e.target === modal) close(); };
+        try {
+            await renderPdfPage(this.pdfBytes, page, modal.querySelector('canvas'), { scale });
+            const hi = modal.querySelector('.pg-pdf-hi');
+            Object.assign(hi.style, { top: `${(y - 7) * scale}px`, height: `${13 * scale}px` });
+            hi.scrollIntoView({ block: 'center' });
+        } catch (err) {
+            modal.querySelector('.pg-pdf-page').innerHTML = `<p class="warn">The PDF could not be shown: ${escapeHtml(err.message)}</p>`;
+        }
     }
 
     // Demo: dates moved by whole weeks into this year, shown as this model's project, and P6 locations that match no
@@ -302,6 +382,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     async saveSchedule() {
+        if (this.viewingOriginal) { this.message('Viewing the original dates: changes are not saved. Switch back to the adjusted dates to change links.', 'warn'); return false; }
         try {
             await saveState(this.scheduleState, this.schedule);
             return true;
@@ -336,6 +417,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     <b class="pg-title">Install Progress</b>
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
+                    ${s?.source.original || this.viewingOriginal ? `<button class="pg-btn ${this.viewingOriginal ? 'active' : ''}" data-original title="${this.viewingOriginal ? 'Back to the demo schedule (dates adjusted)' : 'The schedule as imported: its own project, data date and dates (view only)'}">${this.viewingOriginal ? 'Original dates' : 'Show original'}</button>` : ''}
                     ${d?.day ? `<span class="pg-chip demo" title="Demo: dates moved ${d.shiftDays.toLocaleString()} days (whole weeks) so ${fmtDay(d.day)} falls today. Original: ${escapeHtml(d.originalProject)} (data date ${d.originalDataDate ? fmtDay(d.originalDataDate) : '–'}). Schedule ⋯ › Undo restores them.">dates adjusted</span>`
                         : d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">${d.years ? `demo ${d.years > 0 ? '+' : ''}${d.years} y` : 'demo'}</span>` : ''}
                     <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">⬆ Upload<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
@@ -374,6 +456,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             finally { this.importController = null; const input = this.panel.querySelector('[data-upload]'); if (input) input.disabled = false; }
         };
         p.querySelector('[data-demo-move]').onchange = e => { this.demoMove = e.target.checked; try { localStorage.setItem('drywall-demos:schedule-demo-shift', String(this.demoMove)); } catch {} };
+        p.querySelector('[data-original]')?.addEventListener('click', () => this.toggleOriginal());
         p.querySelector('[data-undo-demo]')?.addEventListener('click', async e => { e.preventDefault(); this.stopPlay(); this.useSchedule(structuredClone(this.schedule.source.original)); this.render(); if (await this.saveSchedule()) this.message('Original dates, project and links restored.'); });
         const sampleLink = p.querySelector('[data-sample]');
         if (sampleLink) sampleLink.onclick = (e) => { e.preventDefault(); this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn')); };
@@ -386,6 +469,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.clearFocus();
             this.schedule = null;
             this.colorMode = 'actual';
+        // Schedule views: only the walls linked to the schedule, the floors apart (views.setLevelsApart), all floor plans.
+        this.linkedOnly = false;
+        this.apartOn = false;
+        this.allPlans = new AllPlans(this.views);
             await saveState(this.scheduleState, { removed: true, at: new Date().toISOString() }).catch(() => {});
             this.render();
         };
@@ -431,13 +518,79 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             <button class="pg-btn" data-play title="Play the plan day by day">▶</button>
             <button class="pg-btn" data-cursor-dd title="Back to the schedule's data date">Data date</button>
             ${this.asOf ? `<button class="pg-btn" data-cursor-asof title="The day the field progress was recorded (${fmtDay(this.asOf)}): compare the walls with the plan then">Status</button>` : ''}
+            <span class="pg-views" title="Schedule views">
+                <button class="pg-btn ${this.linkedOnly ? 'active' : ''}" data-view="linked" title="Only the walls linked to the schedule (the floors its wall work is on)">Linked walls</button>
+                <button class="pg-btn ${this.apartOn ? 'active' : ''}" data-view="apart" title="Floors apart: every floor at once in 3D, each lifted over the one below, colored as the schedule plays">Floors apart</button>
+                <button class="pg-btn ${this.allPlans.isOpen ? 'active' : ''}" data-view="plans" title="All floor plans at once, beside the schedule, colored as it plays">All plans</button></span>
             <span class="pg-legend" data-color-legend></span>`;
+        el.querySelectorAll('[data-view]').forEach(b => b.onclick = () => ({ linked: () => this.setLinkedOnly(!this.linkedOnly), apart: () => this.setApart(!this.apartOn), plans: () => this.setAllPlans(!this.allPlans.isOpen) })[b.dataset.view]());
         el.querySelector('[data-cursor-asof]')?.addEventListener('click', () => this.setCursor(this.asOf, { move: true }));
         el.querySelector('[data-color-mode]').onchange = (e) => this.setColorMode(e.target.value);
         el.querySelector('[data-cursor]').oninput = (e) => this.setCursor(addDays(this.span[0], Number(e.target.value)));
         el.querySelector('[data-play]').onclick = () => (this.playTimer ? this.stopPlay() : this.play());
         el.querySelector('[data-cursor-dd]').onclick = () => this.setCursor(this.schedule.project.dataDate || localToday(), { move: true });
         this.updateCursorUi();
+    }
+
+    // --- Schedule views -------------------------------------------------------------------------------------------------
+
+    // The floors the schedule's wall work is linked to (a level and an install stage), bottom to top.
+    linkedLevels() {
+        const names = linkedLevelNames(this.linked);
+        return this.views.levels.filter(l => names.has(l.name));
+    }
+
+    // Their walls (and a demo schedule's picked walls).
+    linkedWallIds() {
+        const levels = new Set(this.linkedLevels().map(l => l.name));
+        const ids = new Set(this.walls.filter(w => levels.has(w.level)).map(w => w.dbId));
+        for (const a of this.linked) if (a.demoWalls) for (const w of a.walls || []) ids.add(w.dbId);
+        return [...ids];
+    }
+
+    // Every wall again, or the linked ones while that view is on.
+    showDefault() {
+        if (this.linkedOnly && this.schedule) this.views.isolate(this.linkedWallIds(), { fit: false });
+        else this.views.showAll();
+    }
+
+    setLinkedOnly(on) {
+        if (on && !this.schedule) { this.message('Load a schedule first (Gantt tab): the linked walls come from it.', 'warn'); return; }
+        this.linkedOnly = on;
+        this.isolatedStage = null;
+        this.clearFocus();
+        this.showDefault();
+        if (on) this.message(`Showing the ${this.linkedWallIds().length.toLocaleString()} walls on the ${this.linkedLevels().length} floors the schedule's wall work is linked to.`);
+        this.updateViewButtons();
+    }
+
+    async setApart(on) {
+        if (!this.walls) return;
+        this.apartOn = on;
+        this.updateViewButtons();
+        if (!on) { await this.views.setLevelsApart(null); this.showDefault(); this.message(''); return; }
+        const levels = (this.linkedOnly && this.schedule ? this.linkedLevels() : this.views.levels.filter(l => this.views.wallsByLevel.get(l.name)?.length)).map(l => l.name);
+        await this.views.setLevelsApart(levels, { onProgress: (i, n, name) => {
+            if (!this.apartOn) return;
+            if (i < n) this.message(`Floors apart: loading ${name} (${i + 1} of ${n})…`, 'warn');
+            else this.message(`Floors apart: ${n} floors, each lifted over the one below. Colors and the timeline apply to every floor.`);
+        } });
+    }
+
+    async setAllPlans(on) {
+        if (!on) { this.allPlans.close(); this.updateViewButtons(); return; }
+        const levels = this.schedule ? this.linkedLevels() : this.views.levels.filter(l => this.views.wallsByLevel.get(l.name)?.length);
+        if (!levels.length) { this.message('No floors to show: load a schedule linked to the model first.', 'warn'); return; }
+        this.allPlans.colors = new Map(this.views.colors); // what the model shows now
+        const opening = this.allPlans.open(levels, { onClose: () => this.updateViewButtons() });
+        this.updateViewButtons();
+        await opening;
+    }
+
+    updateViewButtons() {
+        this.bar?.refresh();
+        const on = { linked: this.linkedOnly, apart: this.apartOn, plans: this.allPlans.isOpen };
+        this.panel.querySelectorAll('[data-view]').forEach(b => b.classList.toggle('active', !!on[b.dataset.view]));
     }
 
     // The 4D date. Moving it shows the plan on that day (from "Installed", it switches to "Planned on the date").
@@ -653,6 +806,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.compareCounts = c;
         }
         this.views.setColors(colors);
+        if (this.allPlans.isOpen) this.allPlans.setColors(colors);
         this.renderColorLegend();
         const legend = this.panel.querySelector('[data-legend]');
         if (!legend) return; // the Stages tab isn't showing
@@ -815,7 +969,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     searchChanged() {
         // The search's wall view ends when the search changes (unless an activity is picked).
-        if (this.isolatedBySchedule && !this.selectedAct) { this.views.showAll(); this.isolatedBySchedule = false; this.refresh(); }
+        if (this.isolatedBySchedule && !this.selectedAct) { this.showDefault(); this.isolatedBySchedule = false; this.refresh(); }
         this.renderSearch();
         this.renderBody();
     }
@@ -830,7 +984,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.views.showPlanFor(ids);
             this.isolatedBySchedule = true;
         } else if (this.isolatedBySchedule) {
-            this.views.showAll();
+            this.showDefault();
             this.isolatedBySchedule = false;
         }
         this.refresh();
@@ -840,7 +994,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     clearFocus() {
         if (!this.selectedAct) return;
         this.selectedAct = null;
-        if (this.isolatedBySchedule) { this.views.showAll(); this.isolatedBySchedule = false; }
+        if (this.isolatedBySchedule) { this.showDefault(); this.isolatedBySchedule = false; }
     }
 
     // --- Gantt tab -----------------------------------------------------------------------------------------------------
@@ -1033,11 +1187,13 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                 <dt>Level</dt><dd><select data-own="level">${levelOptions}</select><span class="muted pg-how">${escapeHtml(a.levelHow || '')}</span></dd>
                 ${ms ? '' : `<dt>Stage</dt><dd><select data-own="stage">${stageOptions}</select><span class="muted pg-how">${escapeHtml(a.stageHow || '')}</span></dd>`}
                 ${Object.keys(a.codes || {}).length ? `<dt>Codes</dt><dd>${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</dd>` : ''}
+                ${this.pdfBytes && this.schedule.source.pdfRows?.[a.id] ? `<dt>Source</dt><dd>PDF page ${this.schedule.source.pdfRows[a.id][0]} <button class="pg-btn" data-in-pdf title="The page of the imported PDF, this activity's row highlighted">Show in the PDF</button></dd>` : ''}
                 <dt>Before</dt><dd>${preds.map(l => rel(l, l.from)).join(', ') || '<span class="muted">none</span>'}</dd>
                 <dt>After</dt><dd>${succs.map(l => rel(l, l.to)).join(', ') || '<span class="muted">none</span>'}</dd>
             </dl></div>`;
         el.querySelectorAll('[data-goto]').forEach(x => x.onclick = (e) => { e.preventDefault(); this.selectActivity(x.dataset.goto); });
         el.querySelector('[data-clear-act]').onclick = () => this.selectActivity(a.id);
+        el.querySelector('[data-in-pdf]')?.addEventListener('click', () => this.showInPdf(a));
         const show = el.querySelector('[data-show-level]');
         if (show) show.onclick = () => this.views.setLevel(a.level);
         const sel = el.querySelector('[data-select-walls]');
@@ -1097,7 +1253,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.linkedCache = null;
         this.saveSchedule();
         const focus = this.focusActivity();
-        if (!focus && this.isolatedBySchedule) { this.views.showAll(); this.isolatedBySchedule = false; }
+        if (!focus && this.isolatedBySchedule) { this.showDefault(); this.isolatedBySchedule = false; }
         this.refresh();
         this.renderInfo();
         this.renderLinks();

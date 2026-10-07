@@ -40,3 +40,21 @@ export async function readSchedulePdf(file, { signal, onProgress = () => {} } = 
         throw err;
     } finally { signal?.removeEventListener('abort', cancel); await task.destroy(); }
 }
+
+// One page of a PDF drawn on a canvas, for showing the source of an imported schedule (Demo 3): bytes (Uint8Array),
+// the page number (1-based), the canvas, and the scale (1 = PDF points). Returns { pages, width, height } in points.
+// PDFPageProxy.render: https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFPageProxy.html#render
+export async function renderPdfPage(bytes, number, canvas, { scale = 1.5 } = {}) {
+    library ||= import(`${base}build/pdf.min.mjs`).catch(err => { library = null; throw new Error(`PDF reader could not load. Check your connection to jsDelivr. ${err.message}`); });
+    const pdfjs = await library;
+    pdfjs.GlobalWorkerOptions.workerSrc = `${base}build/pdf.worker.min.mjs`;
+    const task = pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false, cMapUrl: `${base}cmaps/`, cMapPacked: true, standardFontDataUrl: `${base}standard_fonts/` });
+    try {
+        const pdf = await task.promise, page = await pdf.getPage(Math.min(Math.max(1, number), pdf.numPages));
+        const at1 = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale });
+        canvas.width = Math.round(viewport.width);
+        canvas.height = Math.round(viewport.height);
+        await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
+        return { pages: pdf.numPages, width: at1.width, height: at1.height };
+    } finally { await task.destroy(); }
+}
