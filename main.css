@@ -714,3 +714,9 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .apart-label .al-bar { position: absolute; left: 5px; right: 5px; bottom: 1px; height: 2px; background: #e3e8ee; }
 .apart-label .al-bar i { position: absolute; left: 0; top: 0; bottom: 0; background: #59a14f; }
 .apart-label .al-bar b { position: absolute; top: -2px; width: 2px; height: 6px; margin-left: -1px; background: #1f3b57; }
+.apart-label.focus { border-color: #ff8a3d; background: #fff4ea; }
+.apart-label.focus.left { border-right-color: #ff8a3d; }
+.apart-label.focus.right { border-left-color: #ff8a3d; }
+/* Colored walls on a plan seen from far (plan-pop.mjs): drawn thicker over the plan; hidden while the view moves. */
+.plan-pop { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; transition: opacity 0.12s; }
+.plan-pop.moving { opacity: 0; }

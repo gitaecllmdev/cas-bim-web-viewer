@@ -6,6 +6,7 @@
 // loadModel options); Viewer3D start, finish, setThemingColor, clearThemingColors, worldToClient, CAMERA_CHANGE_EVENT;
 // Model getBoundingBox; Navigation fitBounds: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 import { toThemingColor, escapeHtml } from '../../helpers.js';
+import { PlanPop } from '../../plan-pop.mjs';
 
 export class AllPlans {
     constructor(views) {
@@ -35,6 +36,7 @@ export class AllPlans {
         const viewer = this.viewer = new Autodesk.Viewing.Viewer3D(box.querySelector('[data-ap-view]'), {});
         viewer.start();
         viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => this.placeLabels());
+        this.pop = new PlanPop(viewer); // the colored walls thicker while the plans are small (plan-pop.mjs)
         // The pane changes size (layout, dock): the viewer re-measures and the plans are framed again.
         this.resizer = new ResizeObserver(() => { if (this.viewer) { this.viewer.resize(); this.frame(); } });
         this.resizer.observe(box);
@@ -78,6 +80,7 @@ export class AllPlans {
             this.frame();
         }
         this.status(`${this.cells.length} plans`);
+        this.pop?.setColors([...this.colors.values()]);
         onProgress(plans.length, plans.length, '');
     }
 
@@ -107,6 +110,7 @@ export class AllPlans {
     setColors(colors) {
         this.colors = colors;
         for (const c of this.cells) this.colorCell(c);
+        this.pop?.setColors([...colors.values()]);
     }
 
     colorCell(c) {
@@ -124,6 +128,8 @@ export class AllPlans {
         this.run = (this.run || 0) + 1;
         this.resizer?.disconnect();
         this.resizer = null;
+        this.pop?.remove();
+        this.pop = null;
         this.viewer?.finish();
         this.viewer = null;
         this.box?.remove();

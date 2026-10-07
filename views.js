@@ -8,6 +8,7 @@
 // Section extension (setSectionBox, deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/SectionExtension/
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
+import { PlanPop } from './plan-pop.mjs';
 import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
@@ -109,10 +110,14 @@ export class Views {
             for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
             for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
             this.highlightPlan(viewer, model, this.isolated);
+            this.planPop?.setColors([...iso].map(id => this.colors.get(id) || PLAN_ISOLATED)); // seen from far, thicker
             return;
         }
         for (const [dbId, hex] of this.colors) viewer.setThemingColor(dbId, toThemingColor(hex), model);
-        if (viewer === this.viewer2d) this.highlightPlan(viewer, model, null);
+        if (viewer === this.viewer2d) {
+            this.highlightPlan(viewer, model, null);
+            this.planPop?.setColors([...this.colors.values()]); // seen from far, thicker
+        }
     }
 
     // The plan's selection highlight for the isolated walls (null: take it off, if it is still ours).
@@ -256,7 +261,7 @@ export class Views {
         layer.innerHTML = items.filter(it => it.y > -10 && it.y < H + 10).map(({ label, x, y, onLeft }) => {
             const bar = label.done != null ? `<span class="al-bar"><i style="width:${label.done}%"></i>${label.plan != null ? `<b style="left:${label.plan}%"></b>` : ''}</span>` : '';
             const tip = `${label.title}${label.text ? `: ${label.text}` : ''}`;
-            return `<div class="apart-label ${onLeft ? 'left' : 'right'}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px" title="${escapeHtml(tip)}"><b>${escapeHtml(label.title)}</b> ${escapeHtml(label.text || '')}${bar}</div>`;
+            return `<div class="apart-label ${onLeft ? 'left' : 'right'}${label.focus ? ' focus' : ''}" style="left:${x.toFixed(0)}px;top:${y.toFixed(0)}px" title="${escapeHtml(tip)}"><b>${escapeHtml(label.title)}</b> ${escapeHtml(label.text || '')}${bar}</div>`;
         }).join('');
     }
 
@@ -589,6 +594,7 @@ export class Views {
         viewer.start();
         viewer.setTheme('light-theme');
         this.viewer2d = viewer;
+        this.planPop = new PlanPop(viewer); // colored walls still show on a whole sheet (plan-pop.mjs)
         this.syncSelection(viewer);
         // Plan labels follow the camera: dimmed while it moves, re-placed (and the new view sampled) when it stops.
         viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, () => {

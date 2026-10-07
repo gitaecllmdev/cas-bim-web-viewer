@@ -157,6 +157,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.message(`Showing ${ids.length.toLocaleString()} wall${ids.length === 1 ? '' : 's'}: ${name === 'wip' ? 'in progress' : name}.`);
         }
         this.bar?.refresh();
+        if (this.views.apart) this.updateFloorLabels(); // the floors show that stage
     }
 
     setStageFromToolbar(name) {
@@ -556,18 +557,23 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     // Floors apart: each floor's name, how far it is (its walls at their stages) and, with a schedule, the plan on the
-    // timeline's date (p6.mjs levelPercents, up to the last wall stage the schedule reaches).
+    // timeline's date (p6.mjs levelPercents, up to the last wall stage the schedule reaches). An activity picked (or one
+    // stage shown): that stage instead, framed / boarded / taped / finished on every floor, the picked one's floor marked.
     updateFloorLabels(planned = null) {
+        const focus = this.focusActivity();
+        const stageName = focus?.stage || (STAGE_NAMES.includes(this.isolatedStage) && this.isolatedStage !== STAGE_NAMES[0] ? this.isolatedStage : null);
+        const stage = stageName ? STAGE_NAMES.indexOf(stageName) : null;
         if (this.schedule && !planned) {
             const ranked = [...this.wallOrder].sort((a, b) => this.stageIndex(b) - this.stageIndex(a));
             planned = plannedStages(ranked, this.linked.filter(a => !a.demoWalls), this.cursor, this.cal);
         }
         const top = this.schedule ? topStage(this.linked) : STAGE_NAMES.length - 1;
-        const per = levelPercents(this.walls, { stageIndexOf: (w) => this.stageIndex(w), plannedIndexOf: planned ? (w) => planned.get(w) : null, top });
+        const per = levelPercents(this.walls, { stageIndexOf: (w) => this.stageIndex(w), plannedIndexOf: planned ? (w) => planned.get(w) : null, top, stage });
+        const what = stageName ? stageName.toLowerCase() : 'done';
         this.views.setApartLabels((level) => {
             const r = per.get(level);
             if (!r) return { title: level };
-            return { title: level, text: `${r.done}% done${r.plan != null ? ` · plan ${r.plan}%` : ''}`, done: r.done, plan: r.plan };
+            return { title: level, text: `${r.done}% ${what}${r.plan != null ? ` · plan ${r.plan}%` : ''}`, done: r.done, plan: r.plan, focus: focus?.level === level };
         });
     }
 
@@ -806,7 +812,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             // A selected activity: its level's walls at its stage (or later) in the stage's color, the rest grey.
             colors.clear();
             const k = STAGE_NAMES.indexOf(focus.stage), st = STAGES[k];
-            if (st?.color) for (const w of this.wallsOf(focus)) colors.set(w.dbId, this.stageIndex(w) >= k ? st.color : NOT_YET);
+            // With the floors apart, every floor the schedule links to shows that stage, like the floor labels.
+            const shown = this.views.apart && st?.color && !focus.demoWalls ? this.walls.filter(w => linkedLevelNames(this.linked).has(w.level)) : this.wallsOf(focus);
+            if (st?.color) for (const w of shown) colors.set(w.dbId, this.stageIndex(w) >= k ? st.color : NOT_YET);
         } else if (this.schedule && this.colorMode !== 'actual') {
             colors.clear();
             // The plan says how many walls of a level should be at a stage, not which: the walls furthest along are
@@ -1000,9 +1008,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const a = this.focusActivity();
         if (a) {
             const ids = this.wallsOf(a).map(w => w.dbId);
-            this.views.isolate(ids);
+            // With the floors apart every floor stays in view, colored by the activity's stage (refresh).
+            if (!this.views.apart) { this.views.isolate(ids); this.isolatedBySchedule = true; }
             this.views.showPlanFor(ids);
-            this.isolatedBySchedule = true;
         } else if (this.isolatedBySchedule) {
             this.showDefault();
             this.isolatedBySchedule = false;

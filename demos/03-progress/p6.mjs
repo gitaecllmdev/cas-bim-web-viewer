@@ -637,21 +637,24 @@ export function linkedLevelNames(linked) {
 
 // How far each floor is, as a share of the work the schedule asks of its walls: each wall counts up to the last wall
 // stage the schedule reaches (top: 3 = Taped when nothing is scheduled to be finished; 4 = Finished), so a floor taped
-// throughout is 100%. walls: [{ level }], stageIndexOf(wall) -> 0..4, plannedIndexOf(wall) -> 0..4 | undefined (the
-// plan on a date, plannedStages). Returns Map(level -> { walls, done, plan }) with done and plan in % (plan null
-// without a plan for that floor).
-export function levelPercents(walls, { stageIndexOf, plannedIndexOf = null, top = 4 }) {
+// throughout is 100%. With a stage (an activity picked, or one stage shown: 1 Framed .. 4 Finished), the share of the
+// floor's walls at that stage or later instead. walls: [{ level }], stageIndexOf(wall) -> 0..4, plannedIndexOf(wall)
+// -> 0..4 | undefined (the plan on a date, plannedStages). Returns Map(level -> { walls, done, plan }) with done and
+// plan in % (plan null without a plan for that floor).
+export function levelPercents(walls, { stageIndexOf, plannedIndexOf = null, top = 4, stage = null }) {
     const out = new Map();
+    const count = (k) => (stage ? (k >= stage ? 1 : 0) : Math.min(k, top));
     for (const w of walls) {
         const r = out.get(w.level) || out.set(w.level, { walls: 0, done: 0, plan: null }).get(w.level);
         r.walls++;
-        r.done += Math.min(stageIndexOf(w), top);
+        r.done += count(stageIndexOf(w));
         const p = plannedIndexOf?.(w);
-        if (p !== undefined && p !== null) r.plan = (r.plan || 0) + Math.min(p, top);
+        if (p !== undefined && p !== null) r.plan = (r.plan || 0) + count(p);
     }
+    const whole = stage ? 1 : top;
     for (const r of out.values()) {
-        r.done = Math.round((100 * r.done) / (r.walls * top));
-        if (r.plan !== null) r.plan = Math.round((100 * r.plan) / (r.walls * top));
+        r.done = Math.round((100 * r.done) / (r.walls * whole));
+        if (r.plan !== null) r.plan = Math.round((100 * r.plan) / (r.walls * whole));
     }
     return out;
 }
