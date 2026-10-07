@@ -1,13 +1,16 @@
 // Panel page: what the QR code on a framing shop drawing opens (panel.html?p=<wall externalId>).
 // Shows the panel drawing (re-drawn from the saved layout inputs with the same code as Demo 6), the framing
 // conditions, a links list at the top (paste Egnyte or other document links) and comments.
-// Data: state 'shop-panel-<id>' (written by Demo 6 when the wall is picked) and 'panel-notes-<id>' (links, comments),
-// through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
+// Data: state 'shop-panel-<id>' (written by Demo 6 when the wall is picked) and 'panel-notes-<id>' (links, comments,
+// prefab lengths), through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
+// Prefab lengths: each cut-list mark's cut length, set in 1/8" steps (the table, or -/+ in the sheet's PREFAB LENGTH
+// column); the sheet and its PDF show them, blue when longer than the drawn length, green when shorter (prefab.mjs).
 import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf } from './demos/06-shop-drawings/sheet.mjs';
 import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
+import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './demos/06-shop-drawings/prefab.mjs';
 
 countVisit(); // the home page's view counter (hits.js)
 
@@ -23,7 +26,17 @@ const safeUrl = (u) => {
 const when = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : d.toLocaleString(); };
 const panelUrl = () => `${location.origin}${location.pathname}?p=${encodeURIComponent(key)}`;
 
-let record = null, notes = { links: [], comments: [] }, layout = null, info = null;
+let record = null, notes = { links: [], comments: [], prefab: {} }, layout = null, info = null;
+const emptyNotes = () => ({ links: [], comments: [], prefab: {} });
+// The sheet's inputs with this panel's prefab lengths; edit: the -/+ click areas (on screen, not in the PDF).
+const sheetInfo = (edit = false) => ({ ...info, prefab: prefabFor(layout.cutList, notes.prefab), prefabEdit: edit });
+
+// Prefab -/+ anywhere on the page (the table's buttons, the sheet's click areas), bound once.
+main.addEventListener('click', (e) => {
+    const step = e.target.closest?.('[data-prefab-step]'), reset = e.target.closest?.('[data-prefab-reset]');
+    if (step) { const [mark, n] = step.dataset.prefabStep.split('|'); stepMark(mark, Number(n)); }
+    else if (reset) stepMark(reset.dataset.prefabReset, 0);
+});
 
 start().catch(err => { main.innerHTML = `<p class="warn">Could not open this panel: ${escapeHtml(err.message || err)}</p>`; });
 
@@ -31,7 +44,7 @@ async function start() {
     if (!/^[a-z0-9-]{1,64}$/.test(key)) return notFound('This link has no panel in it.');
     record = await loadState(`shop-panel-${key}`).catch(() => ({}));
     if (!record?.frame) return notFound('This panel has not been published yet. Pick the wall in the viewer (Demo 6) so its panel page is saved.');
-    notes = { links: [], comments: [], ...(await loadState(notesName).catch(() => ({}))) };
+    notes = { ...emptyNotes(), ...(await loadState(notesName).catch(() => ({}))) };
     layout = entryLayout(record); // drawn from side B when it was flipped in the viewer
     info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null) };
     document.title = `${record.mark} · CAS BIM Web Viewer`;
@@ -91,7 +104,8 @@ function render() {
             ${layout.issues?.length ? `<div class="check-failed" style="margin-top:0.6em">Framing check failed (${layout.issues.length}): do not release.
                 ${layout.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</div>`
                 : '<div class="check-passed" style="margin-top:0.4em">✓ Framing check passed: no member through an opening, no crossing members, every opening framed.</div>'}
-            <div class="sheet" style="margin-top:0.6em">${renderSheet(layout, info).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"')}</div>
+            <div data-prefab>${prefabHtml(true)}</div>
+            <div class="sheet" data-sheet style="margin-top:0.6em">${sheetHtml()}</div>
         </section>
         ${info.conditions.length ? `<section class="card"><h2>Conditions <span class="muted">(from the model; verify in the field)</span></h2>
             <table class="conditions">${info.conditions.map(([k, v]) => `<tr><td>${escapeHtml(k)}</td><td>${escapeHtml(v)}</td></tr>`).join('')}</table></section>` : ''}
@@ -112,9 +126,46 @@ function render() {
     main.querySelector('[data-pdf]').onclick = () => downloadPdf();
 }
 
+const sheetHtml = () => renderSheet(layout, sheetInfo(true)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
+
+// The cut list with each mark's prefab length: -/+ 1/8", the change, and Reset (back to the drawn length).
+function prefabHtml(open) {
+    const set = prefabFor(layout.cutList, notes.prefab), stale = prefabStale(layout.cutList, notes.prefab);
+    return `<details class="prefab" ${open ? 'open' : ''}><summary><b>Prefab lengths</b>
+            <span class="muted">Set a cut length in 1/8" steps to suit the real-world cut (also −/+ in the sheet's PREFAB LENGTH column).
+            <span class="prefab-delta more">Blue: longer</span>, <span class="prefab-delta less">green: shorter</span> than the drawn length; shown on the sheet and the PDF.</span></summary>
+        ${stale.length ? `<p class="warn">Set against an earlier drawing of this panel, not applied: ${stale.map(p => `${escapeHtml(p.mark)} ${fmtFtIn(p.lengthIn)}${Number.isFinite(p.base) ? ` (drawn ${fmtFtIn(p.base)} then)` : ''}`).join(', ')}. Set them again if they still apply.</p>` : ''}
+        <table class="prefab-table"><thead><tr><th>Label</th><th class="num">Qty</th><th>Member type</th><th class="num">Length</th><th>Prefab length</th><th></th></tr></thead><tbody>
+        ${layout.cutList.map(r => {
+            const v = set[r.mark], st = prefabState(r, v), m = escapeHtml(r.mark);
+            return `<tr><td><b>${m}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b></td><td class="num">${fmtFtIn(r.lengthIn)}</td>
+                <td class="prefab-cell"><button class="secondary" data-prefab-step="${m}|-1" title="${m}: 1/8&quot; shorter" aria-label="${m} one eighth inch shorter">−</button>
+                    <span class="prefab-val ${st || ''}">${st ? fmtFtIn(v) : '<span class="muted">as drawn</span>'}</span>
+                    <button class="secondary" data-prefab-step="${m}|1" title="${m}: 1/8&quot; longer" aria-label="${m} one eighth inch longer">+</button></td>
+                <td>${st ? `<span class="prefab-delta ${st}">${fmtDelta(r, v)}</span> <button class="link" data-prefab-reset="${m}" title="Back to the drawn length">Reset</button>` : ''}</td></tr>`;
+        }).join('')}</tbody></table></details>`;
+}
+
+// One prefab change at a time (fast clicks queue up), each on the latest saved notes so nobody's change is dropped.
+let prefabQueue = Promise.resolve();
+function stepMark(mark, steps) {
+    const row = layout?.cutList.find(r => r.mark === mark);
+    if (!row) return;
+    prefabQueue = prefabQueue.then(async () => {
+        const latest = { ...emptyNotes(), ...(await loadState(notesName).catch(() => ({}))) };
+        latest.prefab = stepPrefab(latest.prefab, row, steps);
+        await saveState(notesName, latest);
+        notes = latest;
+        const box = main.querySelector('[data-prefab]'), open = box?.querySelector('details')?.open ?? true;
+        if (box) box.innerHTML = prefabHtml(open);
+        const sheet = main.querySelector('[data-sheet]');
+        if (sheet) sheet.innerHTML = sheetHtml();
+    }).catch(err => alert(`Prefab length not saved: ${err.message}`));
+}
+
 // Re-read before each change so two people adding notes at about the same time don't drop each other's.
 async function update(change) {
-    const latest = { links: [], comments: [], ...(await loadState(notesName).catch(() => ({}))) };
+    const latest = { ...emptyNotes(), ...(await loadState(notesName).catch(() => ({}))) };
     change(latest);
     await saveState(notesName, latest);
     notes = latest;
@@ -166,7 +217,7 @@ async function downloadPdf() {
         const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92));
         logo = { jpeg: new Uint8Array(await blob.arrayBuffer()), width: canvas.width, height: canvas.height };
     } catch { /* PDF without the logo */ }
-    const url = URL.createObjectURL(new Blob([renderSheetPdf(layout, info, logo)], { type: 'application/pdf' }));
+    const url = URL.createObjectURL(new Blob([renderSheetPdf(layout, sheetInfo(), logo)], { type: 'application/pdf' }));
     Object.assign(document.createElement('a'), { href: url, download: `shop-drawing-${record.mark}.pdf` }).click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
 }

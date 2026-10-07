@@ -12,7 +12,12 @@ const definitions = [
     ['startFlag', 'Start Actual', /^(str( act)?|start actual)$/], ['finishFlag', 'Finish Actual', /^(fin(a| act)?|finish actual)$/],
     ['pct', 'Activity % Complete', /^(activity % complete|physical % complete|% complete|activity %|physical %)$/],
     ['float', 'Total Float', /^total( float)?$/], ['preds', 'Predecessors', /^predecessors$/], ['succs', 'Successors', /^successors$/],
+    ['plannedDur', 'BL Duration', /^(bl duration|baseline duration|bl dur)$/],
 ];
+// Comparison layouts print the dates under a second header line, each Start / Finish / Dur under the schedule it comes
+// from ("UDNov25" over "Start", "ConJun25" over "Start"): the contract, baseline or target schedule's go to the planned
+// columns, the update's (any other) to the current ones.
+const BASELINE = /^(con|bl|base|target|orig|plan)/i;
 const norm = s => s.trim().toLowerCase().replace(/\s+/g, ' ');
 const join = items => items.map(i => i.str).join(' ').replace(/\s+/g, ' ').trim();
 const isId = s => /^(?=.*\d)[\w.\/-]+(?:[ -][\w.\/-]*)*$/.test(s) && s.length <= 64;
@@ -43,6 +48,21 @@ function headerOf(lines, page) {
             }
         }
         if (!anchors.some(a => a.key === 'id') || !anchors.some(a => a.key === 'name')) continue;
+        const sub = lines[at + 1];
+        if (sub && sub.y - line.y < line.h * 2.2 && !anchors.some(a => a.key === 'start')) {
+            for (const item of sub.items) {
+                const word = norm(item.str), kind = word === 'start' ? 'start' : word === 'finish' ? 'finish' : /^(dur|duration)$/.test(word) ? 'dur' : null;
+                if (!kind) continue;
+                const mid = item.x + item.w / 2;
+                const over = line.items.find(q => Math.abs(q.x + q.w / 2 - mid) < Math.max(q.w, item.w, 12));
+                const base = !!over && BASELINE.test(over.str.trim());
+                const key = kind === 'dur' ? (base ? 'plannedDur' : 'dur') : base ? (kind === 'start' ? 'plannedStart' : 'plannedFinish') : kind;
+                if (anchors.some(a => a.key === key)) continue;
+                const def = definitions.find(d => d[0] === key);
+                anchors.push({ key, label: def[1], x: Math.min(item.x, over?.x ?? item.x), right: Math.max(item.x + item.w, over ? over.x + over.w : 0) });
+            }
+            anchors.sort((a, b) => a.x - b.x);
+        }
         let bottom = line.y;
         for (const other of lines.slice(at + 1)) {
             if (other.y - line.y > line.h * 2.5) break;
@@ -65,23 +85,34 @@ function headerOf(lines, page) {
     }
     return null;
 }
+// The data date printed on the page: "Data Date: 29-Nov-25", or "Data Date - 29 November, 2025" (a comparison layout
+// prints two: the update's is the one that counts). Returned as DD-Mon-YYYY when the month is spelled out.
+function dataDateOf(text) {
+    const found = [...text.matchAll(/data\s*date\s*[:\-\u2013]?\s*(\d{1,2}[-/ ][A-Za-z0-9]{1,9},?[-/ ]\d{2,4})/gi)]
+        .map(m => ({ value: m[1], before: text.slice(Math.max(0, m.index - 40), m.index) }));
+    const pick = found.find(f => /update|current/i.test(f.before)) || found[0];
+    if (!pick) return '';
+    const long = /^(\d{1,2})[ -]([A-Za-z]{3})[A-Za-z]*,?[ -](\d{4})$/.exec(pick.value);
+    return long ? `${long[1].padStart(2, '0')}-${long[2]}-${long[3]}` : pick.value;
+}
+
 export function tableFromPages(pages, { file = '' } = {}) {
     const columns = [], rows = [], warnings = [], hierarchy = []; let dataDate = '', readable = 0, splitIds = 0;
     const warn = (page, message) => { if (warnings.length < 500) warnings.push({ page, message }); };
     for (const page of pages) {
         const lines = linesOf(page.items); readable += page.items.filter(i => i.str?.trim()).length;
         const text = lines.map(l => join(l.items)).join('\n');
-        dataDate ||= /data\s*date\s*:?\s*(\d{1,2}[-/][A-Za-z0-9]{1,3}[-/]\d{2,4})/i.exec(text)?.[1] || '';
+        dataDate ||= dataDateOf(text);
         const header = headerOf(lines, page);
         if (!header) { warn(page.number, 'No Activity ID / Activity Name header; page was not imported.'); continue; }
         for (const a of header.anchors) if (!columns.some(c => c.key === a.key)) columns.push({ key: a.key, label: a.label });
         const nameColumn = header.anchors.find(a => a.key === 'name');
-        const footer = lines.find(l => l.y > page.height * .85 && /page\s*:?\s*\d|run date|date revision|remaining level of effort/i.test(join(l.items)))?.y || page.height * .96;
+        const footer = lines.find(l => l.y > page.height * .85 && /page\s*:?\s*\d|run date|date revision|remaining level of effort/i.test(join(l.items)))?.y || page.height * .985;
         let previous = null;
         for (const line of lines) {
             if (line.y <= header.bottom + 2 || line.y >= footer) continue;
             const items = line.items.filter(i => i.x < header.right && i.x + i.w / 2 < header.right + 2);
-            if (!items.length || /^(data date|date printed|print date|run date|page\s*:?\s*\d|remaining level of effort|actual work|critical remaining|task filter)/i.test(join(items))) continue;
+            if (!items.length || /^(data date|date printed|print date|run date|page\s*:?\s*\d|remaining level of effort|actual work|critical remaining|task filter|(project )?(start|finish) date\s*:?\s*\d)/i.test(join(items))) continue;
             const cells = {};
             for (const item of items) {
                 // Some narrow P6 ID columns concatenate ID and name into a single PDF text run.

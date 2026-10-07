@@ -23,6 +23,7 @@ import { headOfWall, baseOfWall, summarizeNearby, conditionLines } from './condi
 import { CONFIG } from '../../config.js';
 import { INDEX_STATE, indexEntry } from './panels.mjs';
 import { DemoToolbar } from '../../toolbar.js';
+import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './prefab.mjs';
 
 const EXTENSION_ID = 'Drywall.ShopDrawings';
 const STATE_NAME = 'shop-drawings';
@@ -48,6 +49,13 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         this.viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
         this.viewer.addEventListener(Autodesk.Viewing.CAMERA_CHANGE_EVENT, this.onCamera);
         this.plainBackdrop();
+        this.onPrefabClick = (e) => {
+            const step = e.target.closest?.('[data-prefab-step]'), reset = e.target.closest?.('[data-prefab-reset]');
+            if (!step && !reset) return;
+            e.stopPropagation(); // not a click on the cut list row (highlight)
+            if (step) { const [mark, n] = step.dataset.prefabStep.split('|'); this.changePrefab(mark, Number(n)); } else this.changePrefab(reset.dataset.prefabReset, 0);
+        };
+        this.panel.addEventListener('click', this.onPrefabClick, true);
         this.stops = [
             onModelReady(this.viewer, (model) => this.init(model)),
             this.views.on('level', () => { if (this.walls && !this.busy) this.render(); }),
@@ -57,6 +65,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     unload() {
         this.stops.forEach(stop => stop());
+        this.panel.removeEventListener('click', this.onPrefabClick, true);
         this.bar?.remove();
         this.viewer.setGhosting(true);
         this.viewer.removeEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, this.onSelection);
@@ -181,9 +190,58 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             ${this.contextHtml()}
             <p class="muted">Click a mark here or a label in the 3D view to highlight all of its members.</p>
             <div data-hi-status>${this.highlightHtml()}</div>
-            <table><thead><tr><th>Mark</th><th class="num">Qty</th><th>Member</th><th class="num">Length</th></tr></thead><tbody>
-            ${lay.cutList.map(r => `<tr class="clickable ${r.mark === this.highlight ? 'hi' : ''}" data-mark="${escapeHtml(r.mark)}" title="Highlight the ${r.qty} ${escapeHtml(r.mark)} members"><td><b>${r.mark}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b><br><span class="muted">${escapeHtml(r.roles)}</span></td><td class="num">${fmtFtIn(r.lengthIn)}</td></tr>`).join('')}
+            <p class="muted">Prefab: set a mark's cut length in 1/8" steps (−/+ here or in the sheet's PREFAB LENGTH column):
+                <span class="sd-prefab-val more">blue</span> longer, <span class="sd-prefab-val less">green</span> shorter; on the sheet, the PDF and the panel page.</p>
+            <div data-prefab-stale>${this.prefabStaleHtml()}</div>
+            <table><thead><tr><th>Mark</th><th class="num">Qty</th><th>Member</th><th class="num">Length</th><th>Prefab</th></tr></thead><tbody>
+            ${lay.cutList.map(r => `<tr class="clickable ${r.mark === this.highlight ? 'hi' : ''}" data-mark="${escapeHtml(r.mark)}" title="Highlight the ${r.qty} ${escapeHtml(r.mark)} members"><td><b>${r.mark}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b><br><span class="muted">${escapeHtml(r.roles)}</span></td><td class="num">${fmtFtIn(r.lengthIn)}</td><td data-prefab-cell="${escapeHtml(r.mark)}">${this.prefabCellHtml(r)}</td></tr>`).join('')}
             </tbody></table>`;
+    }
+
+    // --- Prefab lengths (prefab.mjs): saved with the panel page's notes ('panel-notes-<wall>'), so the panel page,
+    // its PDF and this sheet show the same values ------------------------------------------------------------------
+
+    prefabCellHtml(r) {
+        const v = prefabFor([r], this.current?.prefab)[r.mark], st = prefabState(r, v), m = escapeHtml(r.mark);
+        return `<span class="sd-prefab"><button data-prefab-step="${m}|-1" title="${m}: 1/8&quot; shorter">−</button><span class="sd-prefab-val ${st || ''}" title="${st ? `${fmtDelta(r, v)} from the drawn length` : 'As drawn'}">${st ? fmtFtIn(v) : '–'}</span><button data-prefab-step="${m}|1" title="${m}: 1/8&quot; longer">+</button>${st ? `<button class="link" data-prefab-reset="${m}" title="Back to the drawn length">↺</button>` : ''}</span>`;
+    }
+
+    // Values set against an earlier drawing (this scan drew the mark at another length): listed, not applied.
+    prefabStaleHtml() {
+        const c = this.current, stale = c?.layout ? prefabStale(c.layout.cutList, c.prefab) : [];
+        return stale.length ? `<p class="warn">Prefab lengths set against an earlier drawing of this panel, not applied: ${stale.map(p => `${escapeHtml(p.mark)} ${fmtFtIn(p.lengthIn)}${Number.isFinite(p.base) ? ` (drawn ${fmtFtIn(p.base)} then)` : ''}`).join(', ')}.</p>` : '';
+    }
+
+    async loadPrefab(c) {
+        const notes = await loadState(`panel-notes-${c.wall.externalId}`).catch(() => ({}));
+        if (c !== this.current) return;
+        c.prefab = notes?.prefab || {};
+        this.refreshPrefab();
+    }
+
+    refreshPrefab() {
+        const c = this.current;
+        for (const td of this.panel.querySelectorAll('[data-prefab-cell]')) {
+            const r = c?.layout?.cutList.find(x => x.mark === td.dataset.prefabCell);
+            if (r) td.innerHTML = this.prefabCellHtml(r);
+        }
+        const stale = this.panel.querySelector('[data-prefab-stale]');
+        if (stale) stale.innerHTML = this.prefabStaleHtml();
+        if (this.modal) this.refreshSheetPreview();
+    }
+
+    // One change at a time (fast clicks queue up), each on the latest saved notes (links and comments kept).
+    changePrefab(mark, steps) {
+        const c = this.current, row = c?.layout?.cutList.find(r => r.mark === mark);
+        if (!row) return;
+        const name = `panel-notes-${c.wall.externalId}`;
+        this.prefabQueue = (this.prefabQueue || Promise.resolve()).then(async () => {
+            const latest = { links: [], comments: [], ...(await loadState(name).catch(() => ({}))) };
+            latest.prefab = stepPrefab(latest.prefab, row, steps);
+            await saveState(name, latest);
+            c.prefab = latest.prefab;
+            if (c === this.current) this.refreshPrefab();
+        }).catch(err => alert(`Prefab length not saved: ${err.message}`));
     }
 
     contextHtml() {
@@ -274,9 +332,10 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             await ensure3dShown(this.viewer, this.views); // picked on the plan with the 2D-only layout: bring the 3D view back
             const geom = await this.scan(dbId);
             this.plainBackdrop(); // the scan puts ghosting back on
-            this.current = { dbId, wall, geom, mark: `${wall.typeMark}-${dbId}` };
+            this.current = { dbId, wall, geom, mark: `${wall.typeMark}-${dbId}`, prefab: {} };
             this.highlight = null;
             this.relayout(false);
+            this.loadPrefab(this.current);
             this.views.isolate([dbId], { fit: false });
             // The 2D pane shows the wall on its own level's master plan (without re-applying the level cut in 3D).
             const plan = this.views.planFor(wall.level);
@@ -637,6 +696,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             sourceNote: 'Revit model via APS Viewer; framing laid out from the wall geometry',
             conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c), sheet: this.sheetPref(c),
             elev: c.ctx?.elev || null, // levels and what is above and below the panel (sheet.mjs draws them on the elevation)
+            prefab: c.layout ? prefabFor(c.layout.cutList, c.prefab) : {}, // the PREFAB LENGTH column
         };
     }
 
@@ -674,7 +734,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
     }
 
     async showSheet() {
-        const svg = await this.sheetSvg({ highlight: this.highlight });
+        const svg = await this.sheetSvg({ highlight: this.highlight, prefabEdit: true });
         this.modal?.remove();
         this.modal = document.createElement('div');
         this.modal.style.cssText = 'position:fixed;inset:0;z-index:50;background:rgba(0,0,0,0.55);display:flex;flex-direction:column;padding:1em;box-sizing:border-box';
@@ -685,6 +745,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             <div style="flex:1;overflow:auto;background:#777;display:flex;justify-content:center;align-items:flex-start;padding:1em">
                 <div data-preview style="background:white;width:min(100%, calc((100vh - 9em) * ${sheetSize(this.viewLayout(), this.sheetPref()).W} / ${sheetSize(this.viewLayout(), this.sheetPref()).H}));box-shadow:0 2px 12px rgba(0,0,0,0.4)">${this.previewSvg(svg)}</div></div>`;
         document.body.appendChild(this.modal);
+        this.modal.addEventListener('click', this.onPrefabClick, true); // -/+ in the sheet's PREFAB LENGTH column
         this.bindChips();
         const $ = (s) => this.modal.querySelector(s);
         $('[data-close]').onclick = () => { this.modal.remove(); this.modal = null; };
@@ -709,7 +770,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
 
     async refreshSheetPreview() {
         const modal = this.modal;
-        const svg = await this.sheetSvg({ highlight: this.highlight });
+        const svg = await this.sheetSvg({ highlight: this.highlight, prefabEdit: true });
         if (modal !== this.modal) return; // closed or reopened meanwhile
         modal.querySelector('[data-preview]').innerHTML = this.previewSvg(svg);
         modal.querySelector('[data-chips]').innerHTML = this.markChips();
@@ -745,8 +806,8 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const c = this.current;
         downloadCsv(`cut-list-${c.mark}.csv`, [
             [`${c.mark} - FRAMING CUT LIST`], [`Wall type: ${c.wall.wallType}`, `Level: ${c.wall.level}`, `Length: ${fmtFtIn(c.layout.lengthIn)}`, `Height: ${fmtFtIn(c.layout.heightIn)}`], [],
-            ['Mark', 'Qty', 'Member type', 'Length', 'Length (in)', 'Members'],
-            ...c.layout.cutList.map(r => [r.mark, r.qty, r.type, fmtFtIn(r.lengthIn), r.lengthIn, r.roles]),
+            ['Mark', 'Qty', 'Member type', 'Length', 'Length (in)', 'Prefab length', 'Prefab (in)', 'Members'],
+            ...c.layout.cutList.map(r => { const p = prefabFor([r], c.prefab)[r.mark]; return [r.mark, r.qty, r.type, fmtFtIn(r.lengthIn), r.lengthIn, p ? fmtFtIn(p) : '', p ?? '', r.roles]; }),
         ]);
     }
 

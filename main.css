@@ -249,6 +249,13 @@ body {
 .demo-panel tr.clickable:hover { background: #f3f6fa; }
 .demo-panel tr.selected { background: #e3edf7; }
 .demo-panel tr.hi, .demo-panel tr.hi:hover { background: #ffe3cc; } /* highlighted member mark (Demo 6) */
+/* Prefab lengths (Demo 6 cut list): -/+ 1/8", blue longer, green shorter (prefab.mjs colors). */
+.sd-prefab { display: inline-flex; gap: 2px; align-items: center; white-space: nowrap; }
+.sd-prefab button { padding: 0 0.4em; min-width: 1.5em; line-height: 1.4; }
+.sd-prefab-val { display: inline-block; min-width: 4.6em; text-align: center; border-radius: 3px; padding: 0 0.2em; font-variant-numeric: tabular-nums; }
+.sd-prefab-val.more { color: #1f5fbf; background: #e3edfb; font-weight: 700; }
+.sd-prefab-val.less { color: #1a7f37; background: #e2f4e6; font-weight: 700; }
+.prefab-hit:hover { fill-opacity: 0.18; }
 .demo-panel tr.subtotal td { font-weight: 600; }
 .demo-panel tr.total td { font-weight: 700; border-top: 2px solid #999; }
 .demo-panel .swatch { display: inline-block; width: 0.9em; height: 0.9em; border-radius: 2px; vertical-align: -0.1em; margin-right: 0.4em; border: 1px solid rgba(0,0,0,0.2); }

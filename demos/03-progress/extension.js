@@ -164,7 +164,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             const [map, saved, schedule] = await Promise.all([loadPropertyMap(), loadState(this.stateName), loadState(this.scheduleState).catch(() => ({}))]);
             this.map = map;
             this.stages = saved.stages || {};
-            this.walls = (await getWallData(model, map)).walls;
+            // The day the field progress was recorded, when the saved progress says (a demo data set does): the plan
+            // timeline opens there, so "installed vs plan" compares the walls with the plan on that day.
+            this.asOf = /^\d{4}-\d{2}-\d{2}$/.test(saved.asOf || '') ? saved.asOf : null;
+            this.walls =(await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
             if (schedule?.activities?.length) this.useSchedule(schedule);
@@ -198,8 +201,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.span = scheduleSpan(schedule.activities);
         this.linkedCache = null;
         this.selectedAct = null;
-        const start = schedule.project.dataDate || localToday();
-        this.cursor = this.span ? (start < this.span[0] ? this.span[0] : start > this.span[1] ? this.span[1] : start) : start;
+        const asOf = this.asOf && this.span && this.asOf >= this.span[0] && this.asOf <= this.span[1] ? this.asOf : null;
+        const start = asOf || schedule.project.dataDate || localToday();
+        this.cursor =this.span ? (start < this.span[0] ? this.span[0] : start > this.span[1] ? this.span[1] : start) : start;
         this.calMonth = this.cursor.slice(0, 7);
         this.scrolled = false;
         this.gantt.collapsed = this.foldSet(this.gantt.fold);
@@ -216,7 +220,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.linkedCache = this.schedule ? linkActivities(this.schedule, this.levels) : [];
             // Demo schedules (moved to this year and this project): every activity not linked to a level and a stage
             // gets a repeatable set of walls on this model (p6.mjs randomWallLinks), so each one shows something.
-            if (this.schedule?.source.demo && this.walls) {
+            // A model's own schedule moved in time (keepLinks) keeps its level links.
+            if (this.schedule?.source.demo && !this.schedule.source.demo.keepLinks && this.walls) {
                 const byLevel = new Map();
                 for (const w of this.wallOrder) if (w.level) (byLevel.get(w.level) || byLevel.set(w.level, []).get(w.level)).push(w.dbId);
                 // Every wall activity gets its own walls, picked so the share already at its stage matches how far along
@@ -331,7 +336,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     <b class="pg-title">Install Progress</b>
                     <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
-                    ${d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">${d.years ? `demo ${d.years > 0 ? '+' : ''}${d.years} y` : 'demo'}</span>` : ''}
+                    ${d?.day ? `<span class="pg-chip demo" title="Demo: dates moved ${d.shiftDays.toLocaleString()} days (whole weeks) so ${fmtDay(d.day)} falls today. Original: ${escapeHtml(d.originalProject)} (data date ${d.originalDataDate ? fmtDay(d.originalDataDate) : '–'}). Schedule ⋯ › Undo restores them.">dates adjusted</span>`
+                        : d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">${d.years ? `demo ${d.years > 0 ? '+' : ''}${d.years} y` : 'demo'}</span>` : ''}
                     <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">⬆ Upload<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
                     <label class="pg-check" title="Demo: an uploaded schedule is moved to this year and shown as this project (dates by whole weeks; locations and walls assigned to the model). Shifted holidays are not the new year's real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}>Demo</label>
                     ${s ? '<button class="pg-btn" data-links-toggle title="Links: which model level and install stage each activity stands for">🔗</button>' : ''}
@@ -411,7 +417,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         if (!s) { el.innerHTML = '<span class="muted">No schedule</span>'; return; }
         const linked = this.linked.filter(a => a.level && a.stage).length, random = this.linked.filter(a => a.demoWalls).length, other = this.linked.filter(a => a.scope === 'other').length;
         el.innerHTML = `<b title="${escapeHtml(s.source.file)}">${escapeHtml(s.project.name)}</b>${s.source.sample ? ' <span class="tk-src gap" title="A made-up P6 schedule for the sample model">sample</span>' : ''}
-            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'} · ${s.activities.length} activities · ${linked} linked to walls${random ? ` (${random} to walls picked at random for the demo)` : ''}${other ? ` · ${other} not wall work (greyed)` : ''}</span>`;
+            <span class="muted">· data date ${s.project.dataDate ? `${fmtDay(s.project.dataDate)}${s.project.estimatedDataDate ? ' (estimated)' : ''}` : '–'}${this.asOf ? ` · field progress as of ${fmtDay(this.asOf)}` : ''} · ${s.activities.length} activities · ${linked} linked to walls${random ? ` (${random} to walls picked at random for the demo)` : ''}${other ? ` · ${other} not wall work (greyed)` : ''}</span>`;
     }
 
     // Model colors: installed stages, the plan on a date (4D), or installed vs plan; a date slider for the last two.
@@ -424,7 +430,9 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             <b data-cursor-label class="pg-cursor-label"></b>
             <button class="pg-btn" data-play title="Play the plan day by day">▶</button>
             <button class="pg-btn" data-cursor-dd title="Back to the schedule's data date">Data date</button>
+            ${this.asOf ? `<button class="pg-btn" data-cursor-asof title="The day the field progress was recorded (${fmtDay(this.asOf)}): compare the walls with the plan then">Status</button>` : ''}
             <span class="pg-legend" data-color-legend></span>`;
+        el.querySelector('[data-cursor-asof]')?.addEventListener('click', () => this.setCursor(this.asOf, { move: true }));
         el.querySelector('[data-color-mode]').onchange = (e) => this.setColorMode(e.target.value);
         el.querySelector('[data-cursor]').oninput = (e) => this.setCursor(addDays(this.span[0], Number(e.target.value)));
         el.querySelector('[data-play]').onclick = () => (this.playTimer ? this.stopPlay() : this.play());
@@ -592,7 +600,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const undoButton = this.panel.querySelector('[data-undo]');
         if (undoButton) undoButton.hidden = !this.undoStages;
         try {
-            await saveState(this.stateName, { stages, updatedAt: new Date().toISOString() });
+            await saveState(this.stateName, { stages, ...(this.asOf ? { asOf: this.asOf } : {}), updatedAt: new Date().toISOString() });
             if (saved) saved.textContent = `Saved ${new Date().toLocaleTimeString()}`;
         } catch (err) {
             if (saved) saved.innerHTML = `<span class="warn">Not saved: ${escapeHtml(err.message)}</span>`;
@@ -883,9 +891,14 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.fitGantt();
         if (keep) { g.scrollLeft = keep[0]; g.scrollTop = keep[1]; }
         else if (!this.scrolled) {
-            // First view: the data date a third of the way across, and the first work in progress (with its group) at the top.
-            this.scrollGanttTo(this.schedule.project.dataDate || localToday(), { always: true });
-            let row = g.querySelector('.pg-g-row.st-active');
+            // First view: the timeline's date (the data date, or the day the field progress was recorded) a third of the
+            // way across, and the first work in progress (with its group) at the top: in progress in P6, else wall work
+            // under way on that date.
+            this.scrollGanttTo(this.cursor, { always: true });
+            let row = g.querySelector('.pg-g-row.st-active') || [...g.querySelectorAll('.pg-g-row.act:not(.other)')].find(r => {
+                const a = this.activity(r.dataset.act);
+                return a && a.start <= this.cursor && a.finish >= this.cursor;
+            });
             while (row && !row.classList.contains('wbs')) row = row.previousElementSibling;
             if (row) g.scrollTop = row.offsetTop;
             this.scrolled = true;

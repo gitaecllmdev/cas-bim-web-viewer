@@ -9,6 +9,7 @@ import { fmtFtIn, FUNCTIONS, isDoor } from '../common/framing.mjs';
 import { toPdf, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
+import { prefabState, PREFAB_COLORS } from './prefab.mjs';
 
 // Sheet sizes (landscape, inches). 'auto' takes the smallest one that draws the panel at 1/4" = 1'-0" or larger, so
 // long exterior walls stay readable; past 36 x 48 the sheet is 36" tall and as wide as the panel needs (a roll plot).
@@ -93,6 +94,7 @@ function toSvg(ops) {
         if (o.t === 'rect') return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
         if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
         if (o.t === 'circle') return `<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${o.r}" fill="none" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
+        if (o.t === 'hit') return `<rect class="prefab-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="#1f5fbf" fill-opacity="0" style="cursor:pointer" data-prefab-step="${esc(o.step)}"><title>${esc(o.title)}</title></rect>`;
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
     }).join('\n');
@@ -104,7 +106,9 @@ ${body}
 
 // info: { mark, project, level, wallType, date, drawnBy, logoHref, sourceNote, qrUrl (the panel page: QR code in the
 //   title block), highlight (optional member mark, e.g. 'C0': its members and cut list row are colored; leave it out
-//   for exports), sheet ('auto' default, or a SHEETS key) }. The framing conditions go on the panel page, not the sheet.
+//   for exports), sheet ('auto' default, or a SHEETS key), prefab ({ [mark]: inches }: the PREFAB LENGTH column,
+//   prefab.mjs prefabFor), prefabEdit (on screen only: -/+ click areas in that column) }.
+//   The framing conditions go on the panel page, not the sheet.
 //   A flipped layout (flipLayout) is drawn as seen from side B.
 export function renderSheet(layout, info) {
     return toSvg(sheetOps(layout, info));
@@ -128,25 +132,52 @@ export function sheetOps(layout, info) {
     // Border
     out.push(rect(0.25, 0.25, W - 0.5, H - 0.5, { width: 0.02 }));
 
-    // --- Cut list (top left), the CAS panel shop columns. PREFAB LENGTH is left blank on purpose: the prefab team
-    // writes in a cut length when they override one.
+    // --- Cut list (top left), the CAS panel shop columns. PREFAB LENGTH stays blank (the prefab team writes in a cut
+    // length when they override one) unless one was set on the panel page or in Demo 6 (info.prefab, prefab.mjs):
+    // blue when longer than the LENGTH, green when shorter.
     const cx = 0.45, cw = [0.42, 0.32, 0.7, 1.05, 0.75, 0.8], rowH = 0.19, tableW = cw.reduce((a, b) => a + b);
     let cy = 0.45;
     out.push(rect(cx, cy, tableW, rowH, { fill: '#e9e9e9', width: 0.01 }));
     out.push(text(cx + tableW / 2, cy + 0.135, `${info.mark} - FRAMING CUT LIST`, { size: 0.1, weight: 'bold', anchor: 'middle' }));
     cy += rowH;
-    const row = (vals, bold, fill = 'none') => {
+    const row = (vals, bold, fill = 'none', cells = {}) => {
         let x = cx;
         vals.forEach((v, i) => {
-            out.push(rect(x, cy, cw[i], rowH, { fill, width: 0.006 }));
-            out.push(text(x + cw[i] / 2, cy + 0.135, v, { size: bold ? 0.07 : 0.08, anchor: 'middle', weight: bold ? 'bold' : 'normal' }));
+            const c = cells[i] || {};
+            out.push(rect(x, cy, cw[i], rowH, { fill: c.fill || fill, width: 0.006 }));
+            out.push(text(x + cw[i] / 2, cy + 0.135, v, { size: bold ? 0.07 : 0.08, anchor: 'middle', weight: bold || c.color ? 'bold' : 'normal', fill: c.color || COLORS.text }));
             x += cw[i];
         });
         cy += rowH;
     };
     row(['LABEL', 'QTY', 'FUNCTION', 'MEMBER TYPE', 'LENGTH', 'PREFAB LENGTH'], true);
-    for (const c of cutList) row([c.mark, String(c.qty), c.func || '', c.type, fmtFtIn(c.lengthIn), ''], false, c.mark === info.highlight ? COLORS.hiRow : 'none');
+    let prefabSet = false;
+    for (const c of cutList) {
+        const p = info.prefab?.[c.mark], st = prefabState(c, p), y0 = cy;
+        if (st) prefabSet = true;
+        row([c.mark, String(c.qty), c.func || '', c.type, fmtFtIn(c.lengthIn), st ? fmtFtIn(p) : ''], false, c.mark === info.highlight ? COLORS.hiRow : 'none',
+            st ? { 5: { fill: PREFAB_COLORS[`${st}Fill`], color: PREFAB_COLORS[st] } } : {});
+        // On screen only (info.prefabEdit, never in an export): click the left of the cell for 1/8" shorter, the right
+        // for 1/8" longer ('hit' areas the page binds; the PDF skips them).
+        if (info.prefabEdit) {
+            const px = cx + cw.slice(0, 5).reduce((a, b) => a + b, 0), zw = 0.2;
+            out.push(text(px + 0.06, y0 + 0.14, '-', { size: 0.11, anchor: 'middle', weight: 'bold', fill: '#8a9099' }));
+            out.push(text(px + cw[5] - 0.06, y0 + 0.14, '+', { size: 0.1, anchor: 'middle', weight: 'bold', fill: '#8a9099' }));
+            out.push({ t: 'hit', x: px, y: y0, w: zw, h: rowH, step: `${c.mark}|-1`, title: `${c.mark}: 1/8" shorter` });
+            out.push({ t: 'hit', x: px + cw[5] - zw, y: y0, w: zw, h: rowH, step: `${c.mark}|1`, title: `${c.mark}: 1/8" longer` });
+        }
+    }
     out.push(text(cx, cy + 0.16, `GRAND TOTAL: ${cutList.reduce((a, c) => a + c.qty, 0)}`, { size: 0.08, weight: 'bold' }));
+    if (prefabSet) { // the key, right of the total: PREFAB LENGTH [blue] LONGER [green] SHORTER
+        const parts = [['PREFAB LENGTH:', COLORS.text, null], ['LONGER', PREFAB_COLORS.more, PREFAB_COLORS.moreFill], ['SHORTER', PREFAB_COLORS.less, PREFAB_COLORS.lessFill]];
+        const sz = 0.07, gap = 0.06, widths = parts.map(([t]) => textWidth(t, sz, true));
+        let x = cx + tableW - widths.reduce((a, b) => a + b, 0) - gap * (parts.length - 1) - 0.02;
+        parts.forEach(([t, color, bg], i) => {
+            if (bg) out.push(rect(x - 0.02, cy + 0.06, widths[i] + 0.04, 0.13, { fill: bg, stroke: 'none', width: 0 }));
+            out.push(text(x, cy + 0.16, t, { size: sz, weight: 'bold', fill: color }));
+            x += widths[i] + gap;
+        });
+    }
 
     // Legend: only the function codes on this panel.
     let ly = cy + 0.45;

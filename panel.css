@@ -84,3 +84,14 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .home-foot .hits-visits li:first-child { border-top: none; }
 .home-foot .hits-visits p { margin: 8px 0 0; font-size: 0.85em; }
 .home-for { font-size: 0.85em; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em; }
+/* Prefab lengths (panel.html): the cut list with -/+ 1/8" per mark; blue longer, green shorter (prefab.mjs colors). */
+details.prefab { margin-top: 0.6em; }
+details.prefab summary { cursor: pointer; }
+.prefab-table td { vertical-align: middle; }
+.prefab-cell { white-space: nowrap; }
+.prefab-cell button { min-width: 2.2em; padding: 0.15em 0.5em; font-weight: 700; }
+.prefab-val { display: inline-block; min-width: 6.2em; text-align: center; padding: 0.1em 0.3em; border-radius: 4px; font-variant-numeric: tabular-nums; }
+.prefab-val.more { color: #1f5fbf; background: #e3edfb; font-weight: 700; }
+.prefab-val.less { color: #1a7f37; background: #e2f4e6; font-weight: 700; }
+.prefab-delta.more { color: #1f5fbf; } .prefab-delta.less { color: #1a7f37; }
+.sheet .prefab-hit:hover { fill-opacity: 0.18; }

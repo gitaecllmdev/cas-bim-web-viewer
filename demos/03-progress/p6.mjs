@@ -237,7 +237,19 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
     const fraction = pctValues.length && pctValues.every(n => n <= 1) && body.some(r => /\d\.\d/.test(get(r, 'pct')));
     const num = (v) => { const n = parseFloat(String(v).replace(/[^\d.-]/g, '')); return Number.isNaN(n) ? null : n; };
     const wbsNames = [...new Set(body.map(r => get(r, 'wbs')).filter(Boolean))];
-    const wbs = wbsNames.map((name, i) => ({ id: `W${i + 1}`, code: name, name, parent: null }));
+    // A PDF's WBS is the path of the summary bands over the activity ("Project / Level 2", p6-pdf.mjs): rebuilt as a
+    // tree, and a band over every activity (the project, as P6 prints it) names the project instead.
+    let wbs = wbsNames.map((name, i) => ({ id: `W${i + 1}`, code: name, name, parent: null })), projectName = '';
+    if (format === 'pdf') {
+        const paths = wbsNames.map(p => p.split(' / '));
+        if (paths.length && body.every(r => get(r, 'wbs')) && paths.every(p => p.length > 1 && p[0] === paths[0][0])) projectName = paths[0][0];
+        const nodes = new Map(), from = projectName ? 1 : 0;
+        for (const p of paths) for (let i = from; i < p.length; i++) {
+            const code = p.slice(0, i + 1).join(' / ');
+            if (!nodes.has(code)) nodes.set(code, { id: `W${nodes.size + 1}`, code, name: p[i], parent: i > from ? nodes.get(p.slice(0, i).join(' / ')).id : null });
+        }
+        wbs = [...nodes.values()];
+    }
     const links = [];
     const activities = body.map(r => {
         const s = parseDateText(get(r, 'start')), f = parseDateText(get(r, 'finish'));
@@ -259,7 +271,7 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
         if (get(r, 'level')) codes.Location = get(r, 'level');
         if (get(r, 'stage')) codes.Stage = get(r, 'stage');
         return {
-            id, name: get(r, 'name'), wbs: wbs.find(w => w.name === get(r, 'wbs'))?.id || null,
+            id, name: get(r, 'name'), wbs: wbs.find(w => w.code === get(r, 'wbs'))?.id || null,
             type, status, start, finish,
             plannedStart: parseDateText(get(r, 'plannedStart')).day || start, plannedFinish: parseDateText(get(r, 'plannedFinish')).day || finish,
             actualStart: as, actualFinish: af, dur, rem: num(get(r, 'rem')) ?? 0, float: num(get(r, 'float')),
@@ -273,7 +285,7 @@ export function scheduleFromRows(rows, { file = '', format = 'csv', importedAt =
     const known = new Set(activities.map(a => a.id));
     return {
         source: { file, format, importedAt },
-        project: { id: '', name: file.replace(/\.[^.]+$/, '') || 'P6 schedule', dataDate: dataDate || (actuals.length ? cal.add(addDays(actuals.at(-1), 1), 0) : ''), estimatedDataDate: !dataDate },
+        project: { id: '', name: projectName || file.replace(/\.[^.]+$/, '') || 'P6 schedule', dataDate: dataDate || (actuals.length ? cal.add(addDays(actuals.at(-1), 1), 0) : ''), estimatedDataDate: !dataDate },
         calendar: { name: 'Standard 5-day (not in the file)', workDays: cal.workDays, holidays: [], hoursPerDay: 8 },
         wbs, activities, links: links.filter(l => known.has(l.from) && known.has(l.to)), map: { levels: {}, stages: {}, activities: {} },
     };
@@ -303,7 +315,7 @@ export function matchLevel(text, levelNames) {
 }
 
 const NOT_A_STAGE = /layout|inspect|survey|mobili[sz]|submittal|deliver|milestone|dry-?in/i;
-const STAGE_WORDS = [['Framed', /\bfram|\bstud/i], ['Taped', /\btap|\bmud|\bembed|\bjoint/i], ['Finished', /\bfinish|\bsand|\bpunch|\bprime/i], ['Boarded', /\bboard|\bhang|\bsheath|\bgyp|\bdrywall|\bclose[ -]?up|\bclose walls/i]];
+const STAGE_WORDS = [['Framed', /\bfram|\bstud/i], ['Taped', /\btap|\bmud|\bembed|\bjoint/i], ['Finished', /\bfinish|\bsand|\bpunch|\bprime/i], ['Boarded', /\bboard|\bhang|\bsheath|\bgyp|\bgwb\b|\bsheetrock|\bdrywall|\bclose[ -]?up|\bclose walls/i]];
 export function matchStage(text) {
     const t = String(text || '').trim();
     if (!t) return null;
@@ -318,8 +330,8 @@ const LOCATION_CODE = /locat|level|floor|area|zone/i, STAGE_CODE = /stage|phase|
 // Wall work or not, from the activity name. Only wall work is linked to walls; MEP and other trades are shown greyed.
 // MEP and other-trade words win over wall words ("electrical finish", "curtain wall", "door frames", "paint walls").
 const MEP_WORDS = /\b(mep|mech(anical)?|elec(trical)?|plumb(ing)?|hvac|duct(s|work)?|pip(e|es|ing)|sprinklers?|fire (alarm|protection|sprinklers?)|conduits?|wir(e|es|ing)|cabl(e|es|ing)|low[- ]voltage|telecom|lighting|luminaires?|switchgear|panelboards?|transformers?|generators?|vav|ahu|rtu|boilers?|chillers?|controls|bms|building automation|med(ical)? gas|domestic water|sanitary|sleeves?|hangers? for (duct|pipe)|grounding|bus ?bars?|equipment racks?|racks|electric vehicle|ev chargers?|chargers?|rough[- ]?in|tanks?|pre-?action)\b/i;
-const OTHER_TRADE_WORDS = /\b(concrete|rebar|reinforc\w*|form(work|s)|pour|slab|deck|topping|structural steel|steel erection|erect steel|steel (beams?|columns?)|misc(\.|ellaneous)? ?(metals|steel)|toilet|specialties|roof(s|ing)?|waterproof\w*|glazing|curtain ?wall|storefront|windows?|doors?|hardware|floor(s|ing)?|carpet|tile|paint(ing)?|casework|millwork|carpentry|ceilings?|act|excavat\w*|grading|paving|landscap\w*|demolition|abatement|scaffold\w*|crane|mobiliz\w*|submittals?|permits?|procure\w*|fabricat\w*|deliver\w*|survey|elevator (install\w*|cabs?|rails?|equipment)|conveying|piles?|drill\w*|caissons?|foundations?|footings?|grade beams?|underpinning|shoring|soil|nail|backfill\w*|compact\w*|earthwork|cmu|masonry|brick|stone|precast|tilt[- ]?up|form|columns?|plywood|clean\w*|vendor|submit\w*|resubmit\w*|commission\w*|meetings?|award\w*|contracts?|negotiat\w*|approv\w*|review\w*|shop drawings?|bim|model(s|ing)?|clash|sign[- ]?off|notice|design|bid(s|ding)?|rfis?|rfps?|pricing|budget|buyout|coordination|loe|level of effort|pit|retaining|damp ?proof\w*|subdrain|ramps?|site|pavers?|lagging|anchors?|embeds|all trades|punch ?list\w*|back-punch|contractor|architect|owner|notify|demobiliz\w*|substantial)\b/i;
-const WALL_WORDS = /\b(lay ?out|fram(e|es|ed|ing)|studs?|track|cfs|partitions?|walls?|shaft ?(wall|liner)s?|furring|soffits?|headers?|backing|blocking|drywall|gypsum|gyp|gwb|sheetrock|boards?|hang(ing)?|sheath(ing)?|tap(e|ing)|mud|finish(ing)?|sand(ing)?|punch|insulat\w*|batts?|fire ?caulk\w*|firestop\w*|corner bead|close[- ]?up|close walls|control joints?)\b/i;
+const OTHER_TRADE_WORDS = /\b(concrete|rebar|reinforc\w*|form(work|s)|pour|slab|deck|topping|structural steel|steel erection|erect steel|steel (beams?|columns?)|misc(\.|ellaneous)? ?(metals|steel)|toilet|specialties|roof(s|ing)?|waterproof\w*|glazing|curtain ?wall|storefront|windows?|doors?|hardware|floor(s|ing)?|carpet|tile|paint(ing)?|casework|millwork|carpentry|ceilings?|act|excavat\w*|grading|paving|landscap\w*|demolition|abatement|scaffold\w*|crane|mobiliz\w*|submittals?|permits?|procure\w*|fabricat\w*|deliver\w*|survey|elevator (install\w*|cabs?|rails?|equipment)|conveying|piles?|drill\w*|caissons?|foundations?|footings?|grade beams?|underpinning|shoring|soil|nail|backfill\w*|compact\w*|earthwork|cmu|masonry|brick|stone|precast|tilt[- ]?up|form|columns?|plywood|clean\w*|vendor|submit\w*|resubmit\w*|commission\w*|meetings?|award\w*|contracts?|negotiat\w*|approv\w*|review\w*|shop drawings?|bim|model(s|ing)?|clash|sign[- ]?off|notice|design|bid(s|ding)?|rfis?|rfps?|pricing|budget|buyout|coordination|loe|level of effort|pit|retaining|damp ?proof\w*|subdrain|ramps?|site|pavers?|lagging|anchors?|embeds|all trades|punch ?list\w*|back-punch|contractor|architect|owner|notify|demobiliz\w*|substantial|supervis\w*|forem[ae]n|superintendents?)\b/i;
+const WALL_WORDS = /\b(lay ?out|fram(e|es|ed|ing)|studs?|track|cfs|partitions?|walls?|shaft ?(wall|liner)s?|furring|soffits?|headers?|backing|blocking|drywall|gypsum|gyp|gwb|sheetrock|boards?|hang(ing)?|sheath(ing)?|tap(e|ing)|mud|finish(ing)?|sand(ing)?|punch|insulat\w*|batts?|fire ?caulk\w*|firestop\w*|(corner )?beads?|close[- ]?up|close walls|control joints?)\b/i;
 export function workScope(name) {
     const t = String(name || '');
     let m;
@@ -502,24 +514,28 @@ export function ganttRows(linked, schedule, { keep = () => true, collapsed = new
 export const completeGroups = (linked, schedule) => ganttRows(linked, schedule).filter(r => r.kind === 'wbs' && r.complete).map(r => r.id);
 
 // Demo-only transformation. Keep the original for exact Undo, including the original links and calendar.
-export function demoShift(schedule, { today = new Date(), project = 'Demo project' } = {}) {
+// By default the data date moves to the same day this year. With `day` (a day of the original schedule, such as the
+// field progress status date) that day moves to today instead, so the work under way then is under way now.
+// keepLinks: the schedule is this model's own, so its activities keep their level links (no demo walls).
+export function demoShift(schedule, { today = new Date(), project = 'Demo project', day = '', keepLinks = false } = {}) {
     const original = structuredClone(schedule.source?.original || schedule);
     const out = structuredClone(original);
-    const anchor = out.project.dataDate || out.activities.map(a => a.start).filter(Boolean).sort()[0];
+    const anchor = day || out.project.dataDate || out.activities.map(a => a.start).filter(Boolean).sort()[0];
     if (!anchor) throw new Error('No schedule date is available for the demo move.');
     const years = today.getFullYear() - Number(anchor.slice(0, 4));
-    const target = Date.UTC(today.getFullYear(), Number(anchor.slice(5, 7)) - 1, Number(anchor.slice(8, 10)));
+    const target = day ? Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()) : Date.UTC(today.getFullYear(), Number(anchor.slice(5, 7)) - 1, Number(anchor.slice(8, 10)));
     let shiftDays = 7 * Math.round((target - dayMs(anchor)) / (7 * DAY));
     // Whole-week rounding near New Year must still put the anchor in the selected year.
     const movedYear = Number(addDays(anchor, shiftDays).slice(0, 4));
-    if (movedYear < today.getFullYear()) shiftDays += 7;
-    if (movedYear > today.getFullYear()) shiftDays -= 7;
+    if (!day && movedYear < today.getFullYear()) shiftDays += 7;
+    if (!day && movedYear > today.getFullYear()) shiftDays -= 7;
     const shift = value => value ? addDays(value, shiftDays) : value;
     for (const a of out.activities) for (const key of ['start', 'finish', 'plannedStart', 'plannedFinish', 'actualStart', 'actualFinish']) a[key] = shift(a[key]);
     out.project.dataDate = shift(out.project.dataDate);
     out.calendar.holidays = (out.calendar.holidays || []).map(shift);
     out.source.original = original;
-    out.source.demo = { originalProject: original.project.name, originalId: original.project.id, originalDataDate: original.project.dataDate, shiftDays, years, at: today.toISOString(), levelAssignments: {} };
+    out.source.demo = { originalProject: original.project.name, originalId: original.project.id, originalDataDate: original.project.dataDate, shiftDays, years, at: today.toISOString(), levelAssignments: {},
+        ...(day ? { day } : {}), ...(keepLinks ? { keepLinks } : {}) };
     out.project.name = `${project} – demo schedule`;
     out.project.id = `demo-${original.project.id || original.source.file || 'schedule'}`;
     return out;
