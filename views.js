@@ -25,6 +25,7 @@ export class Views {
         this.colors = new Map(); // dbId -> hex
         this.appliedTo = new WeakMap(); // model -> the colors map last applied to it in full or by changes (setColors)
         this.isolated = null; // dbIds, or null for no isolation
+        this.isolateOnPlan = true; // false: isolated in 3D only, the plan shows every wall in its color (isolate { plan })
         this.hidden = [];
         this.level = null; // level object from getLevels(), or null for the whole building
         this.levels = [];
@@ -73,6 +74,10 @@ export class Views {
         }
     }
 
+    get planIsolated() {
+        return !!this.isolated && this.isolateOnPlan;
+    }
+
     // [viewer, model] for each viewer that has a model loaded; with the floors apart (setLevelsApart), each floor's copy
     // in 3D instead of the (hidden) building model.
     get active() {
@@ -95,7 +100,7 @@ export class Views {
         this.colors = new Map(colors);
         for (const [viewer, model] of this.active) {
             if (viewer === this.viewer2d && this.planCovered) { this.appliedTo.delete(model); continue; }
-            if (this.appliedTo.get(model) === prev && !(viewer === this.viewer2d && this.isolated)) this.recolor(viewer, model, prev);
+            if (this.appliedTo.get(model) === prev && !(viewer === this.viewer2d && this.planIsolated)) this.recolor(viewer, model, prev);
             else this.applyColors(viewer, model);
         }
     }
@@ -131,7 +136,7 @@ export class Views {
             this.appliedTo.set(model, this.colors);
             return;
         }
-        if (viewer === this.viewer2d && this.isolated) {
+        if (viewer === this.viewer2d && this.planIsolated) {
             const iso = new Set(this.isolated);
             for (const walls of this.wallsByLevel.values()) for (const id of walls) if (!iso.has(id)) viewer.setThemingColor(id, toThemingColor(PLAN_OTHER_WALLS), model);
             for (const id of iso) viewer.setThemingColor(id, toThemingColor(this.colors.get(id) || PLAN_ISOLATED), model);
@@ -168,9 +173,11 @@ export class Views {
     }
 
     // Isolate dbIds in both viewers (null/empty = show everything again). Fits the 3D view. The plan shows it with
-    // colors instead (applyColors).
-    isolate(ids, { fit = true } = {}) {
+    // colors instead (applyColors); plan: false leaves the plan as it is (every wall in its color: when the isolated set
+    // is most of the walls, e.g. every panel of the Panel Tracker, and the colors already say which).
+    isolate(ids, { fit = true, plan = true } = {}) {
         this.isolated = ids?.length ? [...ids] : null;
+        this.isolateOnPlan = plan;
         for (const [viewer, model] of this.active) {
             if (viewer === this.viewer2d) this.applyColors(viewer, model);
             else this.isolateIn(viewer, model);
@@ -453,7 +460,13 @@ export class Views {
         this.placePlanLabels(store); // what is known already, right away
         // Sample the view on a 7 px grid, ~250 points per step so the page stays responsive.
         const W = v.container.clientWidth, H = v.container.clientHeight, step = 7;
-        const size = (() => { const a = v.clientToWorld(0, 0)?.point, b = v.clientToWorld(step, 0)?.point; return a && b ? Math.hypot(b.x - a.x, b.y - a.y) : 0; })();
+        // Sheet units per grid step, from the sheet's extents on screen (worldToClient): clientToWorld finds nothing off the
+        // sheet, e.g. in the margin above a wide sheet. Model.getBoundingBox: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Model/
+        const size = (() => {
+            const box = model.getBoundingBox(), a = v.worldToClient(box.min), b = v.worldToClient(new THREE.Vector3(box.max.x, box.min.y, box.min.z));
+            const px = a && b ? Math.abs(b.x - a.x) : 0;
+            return px ? ((box.max.x - box.min.x) / px) * step : 0;
+        })();
         if (!size) return;
         const pts = [];
         for (let y = step / 2; y < H; y += step) for (let x = step / 2; x < W; x += step) pts.push([x, y]);

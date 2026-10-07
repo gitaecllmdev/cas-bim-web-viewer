@@ -23,7 +23,7 @@ import { csvText, xlsxBytes } from '../common/table-export.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import {
     STAGES, NOT_STARTED, stageIndex, readTracker, statusOf, statusFor, skippedOf, markStage, unmarkStage, findPanel,
-    effectiveRecord, counts, isLate, floorDates, demoHistory, revitRows, readRevitRows, importRevit,
+    effectiveRecord, counts, isLate, floorDates, numberPanels, completeFloor, demoFloors, demoHistory, revitRows, readRevitRows, importRevit,
 } from './tracker.mjs';
 
 const EXTENSION_ID = 'Drywall.PanelTracker';
@@ -110,63 +110,73 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             this.install = new Map(Object.entries(progress?.stages || {}));
             this.tracker = readTracker(saved);
             this.project = document.querySelector('#models option:checked')?.textContent || 'This model';
-            const shops = Object.keys(this.index).length;
-            if (!this.source || (this.source === 'shops' && !shops)) this.source = shops ? 'shops' : 'walls';
+            if (!this.source || (this.source === 'shops' && !Object.keys(this.index).length)) this.source = 'walls';
             this.prepare();
             this.render();
-            if (this.only) this.views.isolate(this.onlyIds()); // and framed in 3D
+            if (this.only) this.views.isolate(this.onlyIds(), { plan: this.only !== 'panels' }); // and framed in 3D
         } catch (err) {
             console.error(err);
             this.panel.querySelector('[data-status]').textContent = `Could not start the tracker: ${err.message || err}`;
         }
     }
 
-    // --- Panels, floors, demo history ------------------------------------------------------------------------------
+    // --- Panels, numbers, floors, demo data ----------------------------------------------------------------------
 
-    // The source's panels { key, dbId, mark, level, wallType, shop }, each floor's framing dates, the demo history.
+    // Every panel { key, dbId, mark, alt, level, wallType, shop, framed }: each framed wall (takeoff rules) and each shop
+    // drawing panel (Demo 6), numbered P<floor>-<001> floor by floor (a concept; the shop mark kept as alt). Then the
+    // source's panels, each floor's framing (the demo's, or the schedule's), and the demo data. Numbers and demo data
+    // are over every panel, so a panel keeps them whichever list shows it.
     prepare() {
-        const out = [];
-        if (this.source === 'shops') {
-            for (const e of Object.values(this.index)) {
-                const w = this.byExt.get(e.key);
-                out.push({ key: e.key, dbId: w?.dbId, mark: e.mark, level: e.level || w?.level || NOT_SET, wallType: e.wallType || w?.wallType || NOT_SET, shop: true });
-            }
-        } else {
-            for (const w of this.walls) {
-                if (assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope !== 'framed') continue;
-                const shop = this.index[w.externalId];
-                const code = /^_?([A-Z0-9][A-Z0-9.]*)\s*-/i.exec(w.wallType || '')?.[1] || 'W';
-                out.push({ key: w.externalId, dbId: w.dbId, mark: shop?.mark || `${code}-${w.dbId}`, level: w.level || NOT_SET, wallType: w.wallType || NOT_SET, shop: !!shop });
-            }
+        const all = new Map();
+        for (const w of this.walls) {
+            if (assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope !== 'framed') continue;
+            all.set(w.externalId, { key: w.externalId, dbId: w.dbId, level: w.level || NOT_SET, wallType: w.wallType || NOT_SET, framed: true });
         }
-        const nat = (a, b) => String(a).localeCompare(String(b), undefined, { numeric: true });
-        const order = this.views.levels.map(l => l.name), have = new Set(out.map(p => p.level));
+        for (const e of Object.values(this.index)) {
+            const w = this.byExt.get(e.key), p = all.get(e.key) || { key: e.key, dbId: w?.dbId, level: e.level || w?.level || NOT_SET, wallType: e.wallType || w?.wallType || NOT_SET, framed: false };
+            all.set(e.key, { ...p, shop: true, alt: e.mark });
+        }
+        const nat = (x, y) => String(x).localeCompare(String(y), undefined, { numeric: true });
+        const order = this.views.levels.map(l => l.name), have = new Set([...all.values()].map(p => p.level));
         this.levels = [...order.filter(l => have.has(l)), ...[...have].filter(l => !order.includes(l)).sort(nat)];
-        out.sort((a, b) => this.levels.indexOf(a.level) - this.levels.indexOf(b.level) || nat(a.mark, b.mark));
+        const every = [...all.values()].sort((x, y) => this.levels.indexOf(x.level) - this.levels.indexOf(y.level) || (x.dbId || 1e12) - (y.dbId || 1e12) || nat(x.key, y.key));
+        const numbers = numberPanels(every);
+        for (const p of every) p.mark = numbers.get(p.key);
+        const out = every.filter(p => (this.source === 'shops' ? p.shop : p.framed));
         this.panels = out;
-        this.byKey = new Map(out.map(p => [p.key, p]));
+        this.byKey = new Map(every.map(p => [p.key, p])); // any panel (a recent record from the other list too)
         this.byDb = new Map(out.filter(p => p.dbId).map(p => [p.dbId, p]));
-        // Each floor's framing: the schedule's framing activities linked to it (Demo 3), else spread in build order.
+        // Recorded data: each floor's framing from the schedule's framing activities linked to it (Demo 3).
         const starts = {}, finishes = {};
         if (this.schedule) {
-            for (const a of linkActivities(this.schedule, order)) {
-                if (a.scope === 'other' || a.stage !== 'Framed' || !a.level || !a.start) continue;
-                if (!starts[a.level] || a.start < starts[a.level]) starts[a.level] = a.start;
-                if (a.finish && (!finishes[a.level] || a.finish > finishes[a.level])) finishes[a.level] = a.finish;
+            for (const act of linkActivities(this.schedule, order)) {
+                if (act.scope === 'other' || act.stage !== 'Framed' || !act.level || !act.start) continue;
+                if (!starts[act.level] || act.start < starts[act.level]) starts[act.level] = act.start;
+                if (act.finish && (!finishes[act.level] || act.finish > finishes[act.level])) finishes[act.level] = act.finish;
             }
         }
         this.today = localToday();
-        this.floors = floorDates(this.levels, { starts, finishes, today: this.today });
-        this.demoRecs = demoHistory(out, { floors: this.floors, today: this.today, installed: p => this.installed(p), installKnown: this.install.size > 0 });
+        this.schedFloors = floorDates(this.levels, { starts, finishes, today: this.today });
+        // Demo data: one floor complete, the others part way (tracker.mjs demoHistory).
+        this.complete = completeFloor(this.levels);
+        this.demoFloors = demoFloors(this.levels, { today: this.today, complete: this.complete });
+        this.demoRecs = demoHistory(every, { levels: this.levels, today: this.today, complete: this.complete });
+    }
+
+    // Each floor's framing dates: the demo's with the demo data, else the schedule's.
+    get floors() {
+        return this.demo ? this.demoFloors : this.schedFloors;
     }
 
     installed(p) {
         return INSTALLED.has(this.install.get(p.key));
     }
 
-    // What a panel shows: its records, over the demo history (when on), framing complete from Install Progress.
+    // What a panel shows: its records, over the demo data (when on); without the demo data, framing complete also from
+    // Install Progress (its framed walls).
     recordOf(p) {
-        return effectiveRecord(this.tracker.panels[p.key], this.demo ? this.demoRecs[p.key] : null, { installed: this.installed(p) });
+        return this.demo ? effectiveRecord(this.tracker.panels[p.key], this.demoRecs[p.key])
+            : effectiveRecord(this.tracker.panels[p.key], null, { installed: this.installed(p) });
     }
 
     startOf(p) {
@@ -201,7 +211,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
     scan(text, via = 'scan') {
         const found = findPanel(this.panels, text);
         if (found.panel) return this.record(found.panel.key, this.stage, via);
-        const other = this.source === 'shops' ? 'Every framed wall' : 'Shop drawing panels';
+        const other = this.source === 'shops' ? 'Framed walls' : 'Shop drawing panels';
         if (found.matches.length) {
             this.toast(`${found.matches.length} panels match "${text}": pick one.<div class="pt-picks">${found.matches.map(p => `<button data-act="rec" data-v="${escapeHtml(p.key)}">${escapeHtml(p.mark)}</button>`).join('')}</div>`, 'warn', true);
         } else this.toast(`No panel "${escapeHtml(text)}" in ${this.source === 'shops' ? 'the shop drawing panels' : 'the framed walls'} of this model. Try ${other}.`, 'bad', true);
@@ -300,7 +310,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         }, on);
         p.addEventListener('change', (e) => {
             const t = e.target;
-            if (t.name === 'pt-src') { this.source = t.value; this.pick(null); this.prepare(); this.render(); if (this.only) this.views.isolate(this.onlyIds()); }
+            if (t.name === 'pt-src') { this.source = t.value; this.pick(null); this.prepare(); this.render(); if (this.only) this.views.isolate(this.onlyIds(), { plan: this.only !== 'panels' }); }
             else if (t.matches('[data-demo]')) { this.demo = t.checked; pref('demo', String(t.checked)); this.update(); }
             else if (t.matches('[data-click]')) this.setRecordOnClick(t.checked);
             else if (t.matches('[data-date]')) { this.date = t.value || localToday(); this.renderScanHead(); }
@@ -317,8 +327,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
     }
 
     render() {
-        const shops = Object.keys(this.index).length;
-        const framed = this.source === 'walls' ? this.panels.length : this.walls.filter(w => assemblyFor(w.wallType ?? NOT_SET, this.rules, this.overrides).scope === 'framed').length;
+        const every = [...this.byKey.values()], shops = every.filter(p => p.shop).length, framed = every.filter(p => p.framed).length;
         this.panel.innerHTML = `<div class="demo-panel pt">
             <div class="pt-head">
                 <span class="pt-logo" aria-hidden="true"></span>
@@ -328,10 +337,10 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
             <div class="pt-sub">
                 <label class="pt-you" title="Saved with each step you record (and on the panel pages)">You <input data-name placeholder="Your name" value="${escapeHtml(this.you)}"></label>
                 <span class="pt-seg" role="radiogroup" aria-label="Panels">
-                    <label class="${this.source === 'shops' ? 'on' : ''}"><input type="radio" name="pt-src" value="shops" ${this.source === 'shops' ? 'checked' : ''}>Shop drawing panels <b>${shops}</b></label>
-                    <label class="${this.source === 'walls' ? 'on' : ''}"><input type="radio" name="pt-src" value="walls" ${this.source === 'walls' ? 'checked' : ''}>Every framed wall <b>${framed.toLocaleString()}</b></label>
+                    <label class="${this.source === 'walls' ? 'on' : ''}" title="Every framed wall as a panel, numbered P<floor>-<001> (a concept)"><input type="radio" name="pt-src" value="walls" ${this.source === 'walls' ? 'checked' : ''}>Framed walls <b>${framed.toLocaleString()}</b></label>
+                    ${shops ? `<label class="${this.source === 'shops' ? 'on' : ''}" title="Only the walls with a shop drawing (Demo 6)"><input type="radio" name="pt-src" value="shops" ${this.source === 'shops' ? 'checked' : ''}>Shop drawing panels <b>${shops}</b></label>` : ''}
                 </span>
-                <label class="pt-check" title="A made-up history so the model shows something: reviewed, shipped and delivered ahead of each floor's framing start (the schedule), a few held up. Never saved; what you record wins over it."><input type="checkbox" data-demo ${this.demo ? 'checked' : ''}>Demo history</label>
+                <label class="pt-check" title="${escapeHtml(`Made-up progress for the concept: ${this.complete} complete, the floors under it nearly done, each floor over it further behind with its panels split over the steps. Never saved; what you record wins over it. Untick: only what is recorded, framing complete also from Install Progress.`)}"><input type="checkbox" data-demo ${this.demo ? 'checked' : ''}>Demo data</label>
             </div>
             <div class="pt-pipe" data-pipe></div>
             <div class="pt-tabs" role="tablist">${Object.entries(TABS).map(([k, l]) => `<button role="tab" data-act="tab" data-v="${k}" class="${k === this.tab ? 'on' : ''}">${l}</button>`).join('')}</div>
@@ -367,7 +376,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                 <b>${c.reached[i].toLocaleString()}</b><span class="pt-of">${pct(c.reached[i])}%</span><i class="pt-bar"><b style="width:${pct(c.reached[i])}%"></b></i></button>`).join('')
             + `<div class="pt-pipe-foot"><span>${escapeHtml(this.views.level?.name || 'All levels')}: ${c.total.toLocaleString()} panels · ${c.none.toLocaleString()} not started</span>
                 ${c.late ? `<button class="pt-late ${this.only === 'late' ? 'on' : ''}" data-act="only" data-v="late" title="Not on site yet, and their floor's framing has started (the schedule): show only them">⚠ ${c.late} late</button>` : ''}
-                <span class="muted">${this.demo ? 'with demo history' : ''}</span></div>`;
+                <span class="muted">${this.demo ? `demo data · ${escapeHtml(this.complete)} complete` : ''}</span></div>`;
     }
 
     renderBody() {
@@ -402,8 +411,9 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         } else if (this.tab === 'labels') {
             const list = this.shown;
             el.innerHTML = `<section class="pt-info"><h3>QR labels</h3>
-                <p>A label per panel: its QR code (its panel page, the same link as the QR code on its shop drawing), mark, floor and wall type. Scan it here
-                    (camera or handheld scanner) to record a step, or with any phone camera to open its panel page.</p>
+                <p>A label per panel: its QR code, panel number, floor and wall type. The QR code holds the panel number; for a panel with a shop drawing,
+                    its panel page link (the same as on the sheet), so any phone camera opens the page to record a step. Scan any label here (camera or
+                    handheld scanner) to record a step.</p>
                 <p><button data-act="print">Print ${list.length.toLocaleString()} labels</button> <span class="muted">${escapeHtml(this.views.level?.name || 'All levels')} (pick a level in the header for one floor's) · 3 x 10 per letter page</span></p>
                 <div class="pt-labels">${list.slice(0, 6).map(p => this.labelHtml(p)).join('')}</div>${list.length > 6 ? `<p class="muted">… and ${list.length - 6} more.</p>` : ''}</section>`;
         } else {
@@ -459,7 +469,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                         : !r ? `<button class="pt-mini" data-act="step" data-v="${escapeHtml(p.key)}|${s.key}" title="Record ${escapeHtml(s.name.toLowerCase())} ${day(this.date)}">Record</button>` : ''}</li>`;
             }).join('')}</ol>
             ${this.install.has(p.key) ? `<p class="muted">Install Progress: ${escapeHtml(this.install.get(p.key))}</p>` : ''}
-            <div class="pt-card-acts">${p.shop ? `<a href="panel.html?p=${encodeURIComponent(p.key)}" target="_blank" rel="noopener">Shop drawing ↗</a>`
+            <div class="pt-card-acts">${p.shop ? `<a href="panel.html?p=${encodeURIComponent(p.key)}" target="_blank" rel="noopener">Shop drawing ${escapeHtml(p.alt || '')} ↗</a>`
                 : `<a href="index.html?demo=06-shop-drawings&layout=split&panel=${encodeURIComponent(p.key)}${urn ? `#${urn}` : ''}" target="_blank" rel="noopener">Draw its shop drawing ↗</a>`}
                 ${p.dbId ? `<button class="link" data-act="zoom" data-v="${escapeHtml(p.key)}">Zoom to it</button>` : '<span class="muted">not in this model</span>'}</div>
         </section>`;
@@ -517,7 +527,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         for (const p of this.panels) if (p.dbId) colors.set(p.dbId, this.colorOf(p));
         this.views.setColors(colors);
         this.views.setPlanLabels((id) => { const p = this.byDb.get(id); return p ? { text: p.mark, color: this.colorOf(p) } : null; });
-        if (this.only) this.views.isolate(this.onlyIds(), { fit: false });
+        if (this.only) this.views.isolate(this.onlyIds(), { fit: false, plan: this.only !== 'panels' });
         this.bar?.refresh();
     }
 
@@ -532,7 +542,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         if (key) {
             const ids = this.onlyIds();
             if (!ids.length) { this.only = was; this.toast('No panel there right now.', 'info'); }
-            else this.views.isolate(ids);
+            else this.views.isolate(ids, { plan: key !== 'panels' });
         }
         if (!this.only) { this.views.showAll(); this.show(); }
         this.renderPipeline();
@@ -672,7 +682,9 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         }
     }
 
-    labelUrl(p) {
+    // What a label's QR code holds: a shop drawing panel's page link (as on its sheet), else the panel number.
+    labelText(p) {
+        if (!p.shop) return p.mark;
         const base = CONFIG.publicUrl || new URL('.', location.href).href;
         return `${base.replace(/\/?$/, '/')}panel.html?p=${encodeURIComponent(p.key)}`;
     }
@@ -680,10 +692,10 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
     labelHtml(p) {
         let svg = '';
         try {
-            const qr = qrEncode(this.labelUrl(p)), n = qr.size + 8;
+            const qr = qrEncode(this.labelText(p)), n = qr.size + 8;
             svg = `<svg viewBox="0 0 ${n} ${n}" shape-rendering="crispEdges"><rect width="${n}" height="${n}" fill="#fff"/>${qrRects(qr).map(r => `<rect x="${r.x + 4}" y="${r.y + 4}" width="${r.w}" height="${r.h}"/>`).join('')}</svg>`;
         } catch { /* too long for a QR code */ }
-        return `<div class="pt-label">${svg}<div><b>${escapeHtml(p.mark)}</b><span>${escapeHtml(p.level)}</span><em>${escapeHtml(String(p.wallType).replace(/^_/, '').slice(0, 60))}</em><small>${escapeHtml(this.project)}</small></div></div>`;
+        return `<div class="pt-label">${svg}<div><b>${escapeHtml(p.mark)}</b><span>${escapeHtml(p.level)}${p.alt ? ` · shop ${escapeHtml(p.alt)}` : ''}</span><em>${escapeHtml(String(p.wallType).replace(/^_/, '').slice(0, 60))}</em><small>${escapeHtml(this.project)}</small></div></div>`;
     }
 
     printLabels() {
