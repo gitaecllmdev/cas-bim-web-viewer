@@ -5,10 +5,12 @@
 // prefab lengths), through loadState/saveState: the local server, the Worker's shared store (CONFIG.stateUrl), or this browser.
 // Prefab lengths: each cut-list mark's cut length, set in 1/8" steps (the table, or -/+ in the sheet's PREFAB LENGTH
 // column); the sheet and its PDF show them, blue when longer than the drawn length, green when shorter (prefab.mjs).
+// The prefab card puts the schedule beside the elevation: hover a row for its members, click to keep them highlighted;
+// the members of a mark with a prefab length are blue / green there.
 import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf } from './demos/06-shop-drawings/sheet.mjs';
+import { renderSheet, renderSheetPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
 import { INDEX_STATE, sortPanels, entryLayout } from './demos/06-shop-drawings/panels.mjs';
 import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './demos/06-shop-drawings/prefab.mjs';
 
@@ -28,15 +30,22 @@ const panelUrl = () => `${location.origin}${location.pathname}?p=${encodeURIComp
 
 let record = null, notes = { links: [], comments: [], prefab: {} }, layout = null, info = null;
 const emptyNotes = () => ({ links: [], comments: [], prefab: {} });
+let pinned = null, hovered = null; // the prefab card's highlighted mark
 // The sheet's inputs with this panel's prefab lengths; edit: the -/+ click areas (on screen, not in the PDF).
 const sheetInfo = (edit = false) => ({ ...info, prefab: prefabFor(layout.cutList, notes.prefab), prefabEdit: edit });
 
 // Prefab -/+ anywhere on the page (the table's buttons, the sheet's click areas), bound once.
 main.addEventListener('click', (e) => {
-    const step = e.target.closest?.('[data-prefab-step]'), reset = e.target.closest?.('[data-prefab-reset]');
+    const step = e.target.closest?.('[data-prefab-step]'), reset = e.target.closest?.('[data-prefab-reset]'), row = e.target.closest?.('tr[data-mark]');
     if (step) { const [mark, n] = step.dataset.prefabStep.split('|'); stepMark(mark, Number(n)); }
     else if (reset) stepMark(reset.dataset.prefabReset, 0);
+    else if (row) { pinned = pinned === row.dataset.mark ? null : row.dataset.mark; renderPrefab(); }
 });
+main.addEventListener('mouseover', (e) => {
+    const row = e.target.closest?.('tr[data-mark]'), mark = row?.dataset.mark || null;
+    if (mark !== hovered && (row || !e.target.closest?.('[data-prefab]'))) { hovered = mark; renderElevation(); }
+});
+main.addEventListener('mouseleave', () => { if (hovered) { hovered = null; renderElevation(); } });
 
 start().catch(err => { main.innerHTML = `<p class="warn">Could not open this panel: ${escapeHtml(err.message || err)}</p>`; });
 
@@ -46,7 +55,7 @@ async function start() {
     if (!record?.frame) return notFound('This panel has not been published yet. Pick the wall in the viewer (Demo 6) so its panel page is saved.');
     notes = { ...emptyNotes(), ...(await loadState(notesName).catch(() => ({}))) };
     layout = entryLayout(record); // drawn from side B when it was flipped in the viewer
-    info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null) };
+    info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null), keyplan: record.keyplan || null };
     document.title = `${record.mark} · CAS BIM Web Viewer`;
     document.getElementById('panel-title').textContent = `${record.mark} · ${record.info?.wallType || ''} · ${record.info?.level || ''}`;
     render();
@@ -95,6 +104,13 @@ function render() {
             </form>
         </section>
         <section class="card">
+            <h2>Prefab lengths <span class="muted">· ${escapeHtml(record.mark)}</span></h2>
+            <p class="muted" style="margin:0 0 0.5em">Set a cut length in 1/8" steps to suit the real-world cut: <span class="prefab-delta more">blue longer</span>,
+                <span class="prefab-delta less">green shorter</span> than the drawn length, on the sheet and the PDF too. Hover a row to see its members in the
+                elevation; click it to keep them highlighted.</p>
+            <div class="pe-grid"><div data-prefab>${prefabHtml()}</div><div class="pe-elev" data-elev>${elevationHtml()}</div></div>
+        </section>
+        <section class="card">
             <div class="row" style="justify-content:space-between">
                 <div><h2 style="margin:0">${escapeHtml(record.mark)}: framing elevation</h2>
                     <span class="muted">${escapeHtml(record.info?.wallType || '')} · ${fmtFtIn(layout.lengthIn)} × ${fmtFtIn(layout.heightIn)} ·
@@ -104,7 +120,6 @@ function render() {
             ${layout.issues?.length ? `<div class="check-failed" style="margin-top:0.6em">Framing check failed (${layout.issues.length}): do not release.
                 ${layout.issues.slice(0, 6).map(i => escapeHtml(i.message)).join(' · ')}</div>`
                 : '<div class="check-passed" style="margin-top:0.4em">✓ Framing check passed: no member through an opening, no crossing members, every opening framed.</div>'}
-            <div data-prefab>${prefabHtml(true)}</div>
             <div class="sheet" data-sheet style="margin-top:0.6em">${sheetHtml()}</div>
         </section>
         ${info.conditions.length ? `<section class="card"><h2>Conditions <span class="muted">(from the model; verify in the field)</span></h2>
@@ -127,23 +142,29 @@ function render() {
 }
 
 const sheetHtml = () => renderSheet(layout, sheetInfo(true)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
+// The elevation alone (sheet.mjs renderSheetRegion), the highlighted mark in orange, adjusted marks blue / green.
+const elevationHtml = () => renderSheetRegion(layout, { ...sheetInfo(), highlight: hovered || pinned, prefabMembers: true }, 'elevation')
+    .replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
+const renderElevation = () => { const el = main.querySelector('[data-elev]'); if (el) el.innerHTML = elevationHtml(); };
+function renderPrefab() {
+    const box = main.querySelector('[data-prefab]');
+    if (box) box.innerHTML = prefabHtml();
+    renderElevation();
+}
 
 // The cut list with each mark's prefab length: -/+ 1/8", the change, and Reset (back to the drawn length).
-function prefabHtml(open) {
+function prefabHtml() {
     const set = prefabFor(layout.cutList, notes.prefab), stale = prefabStale(layout.cutList, notes.prefab);
-    return `<details class="prefab" ${open ? 'open' : ''}><summary><b>Prefab lengths</b>
-            <span class="muted">Set a cut length in 1/8" steps to suit the real-world cut (also −/+ in the sheet's PREFAB LENGTH column).
-            <span class="prefab-delta more">Blue: longer</span>, <span class="prefab-delta less">green: shorter</span> than the drawn length; shown on the sheet and the PDF.</span></summary>
-        ${stale.length ? `<p class="warn">Set against an earlier drawing of this panel, not applied: ${stale.map(p => `${escapeHtml(p.mark)} ${fmtFtIn(p.lengthIn)}${Number.isFinite(p.base) ? ` (drawn ${fmtFtIn(p.base)} then)` : ''}`).join(', ')}. Set them again if they still apply.</p>` : ''}
+    return `${stale.length ? `<p class="warn">Set against an earlier drawing of this panel, not applied: ${stale.map(p => `${escapeHtml(p.mark)} ${fmtFtIn(p.lengthIn)}${Number.isFinite(p.base) ? ` (drawn ${fmtFtIn(p.base)} then)` : ''}`).join(', ')}. Set them again if they still apply.</p>` : ''}
         <table class="prefab-table"><thead><tr><th>Label</th><th class="num">Qty</th><th>Member type</th><th class="num">Length</th><th>Prefab length</th><th></th></tr></thead><tbody>
         ${layout.cutList.map(r => {
             const v = set[r.mark], st = prefabState(r, v), m = escapeHtml(r.mark);
-            return `<tr><td><b>${m}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b></td><td class="num">${fmtFtIn(r.lengthIn)}</td>
+            return `<tr data-mark="${m}" class="${r.mark === pinned ? 'hi' : ''}" title="Hover to see the ${r.qty} ${m} members in the elevation; click to keep them highlighted"><td><b>${m}</b></td><td class="num">${r.qty}</td><td>${escapeHtml(r.type)} <b>${escapeHtml(r.func || '')}</b></td><td class="num">${fmtFtIn(r.lengthIn)}</td>
                 <td class="prefab-cell"><button class="secondary" data-prefab-step="${m}|-1" title="${m}: 1/8&quot; shorter" aria-label="${m} one eighth inch shorter">−</button>
                     <span class="prefab-val ${st || ''}">${st ? fmtFtIn(v) : '<span class="muted">as drawn</span>'}</span>
                     <button class="secondary" data-prefab-step="${m}|1" title="${m}: 1/8&quot; longer" aria-label="${m} one eighth inch longer">+</button></td>
                 <td>${st ? `<span class="prefab-delta ${st}">${fmtDelta(r, v)}</span> <button class="link" data-prefab-reset="${m}" title="Back to the drawn length">Reset</button>` : ''}</td></tr>`;
-        }).join('')}</tbody></table></details>`;
+        }).join('')}</tbody></table>`;
 }
 
 // One prefab change at a time (fast clicks queue up), each on the latest saved notes so nobody's change is dropped.
@@ -156,8 +177,7 @@ function stepMark(mark, steps) {
         latest.prefab = stepPrefab(latest.prefab, row, steps);
         await saveState(notesName, latest);
         notes = latest;
-        const box = main.querySelector('[data-prefab]'), open = box?.querySelector('details')?.open ?? true;
-        if (box) box.innerHTML = prefabHtml(open);
+        renderPrefab();
         const sheet = main.querySelector('[data-sheet]');
         if (sheet) sheet.innerHTML = sheetHtml();
     }).catch(err => alert(`Prefab length not saved: ${err.message}`));

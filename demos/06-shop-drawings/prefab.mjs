@@ -5,7 +5,8 @@
 // On the sheet the PREFAB LENGTH cell stays blank until a value is set; then it shows it, blue when longer than the
 // LENGTH and green when shorter.
 export const PREFAB_STEP = 0.125; // 1/8"
-export const PREFAB_COLORS = { more: '#1f5fbf', less: '#1a7f37', moreFill: '#e3edfb', lessFill: '#e2f4e6' };
+// Text and cell fill (the cut list), and the member fill in the web view's elevation.
+export const PREFAB_COLORS = { more: '#1f5fbf', less: '#1a7f37', moreFill: '#e3edfb', lessFill: '#e2f4e6', moreMember: '#8fb4ea', lessMember: '#93d4a3' };
 
 // Lengths are compared as printed: to the nearest 1/8" (framing.mjs fmtFtIn).
 const round8 = (v) => Math.round(v / PREFAB_STEP) * PREFAB_STEP;

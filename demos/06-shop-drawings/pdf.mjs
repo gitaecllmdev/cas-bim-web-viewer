@@ -1,5 +1,6 @@
 // Minimal vector PDF writer for the shop drawing primitives in ./sheet.mjs (text, line, rect, poly, circle, image).
-// No dependencies: standard Helvetica fonts (not embedded), one page, uncompressed content, a JPEG logo.
+// No dependencies: standard Helvetica fonts (not embedded), one page, uncompressed content, a JPEG logo, and other
+// JPEG images given as data URLs with their pixel size (the key plan), embedded as they are (DCTDecode).
 // Sheet coordinates are inches with y down; PDF uses points (72 per inch) with y up.
 // PDF reference: ISO 32000-1 (PDF 1.7), §7 file structure, §8 graphics, §9 text.
 
@@ -28,12 +29,17 @@ function rgb(color) {
 // PDF string literal in WinAnsi (Latin-1 range); other characters become '?'.
 const pdfString = (s) => `(${[...s].map(ch => (ch.charCodeAt(0) > 255 ? '?' : ch)).join('').replace(/([\\()])/g, '\\$1')})`;
 const latin1 = (str) => { const b = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) b[i] = str.charCodeAt(i) & 0xff; return b; };
+const JPEG_URL = /^data:image\/jpeg;base64,/;
+// An image fitted in its box, keeping its aspect ratio (like preserveAspectRatio="xMidYMid meet"): [x, y, w, h] in inches.
+const fitBox = (o, pw, ph) => { const k = Math.min(o.w / pw, o.h / ph), w = pw * k, h = ph * k; return [o.x + (o.w - w) / 2, o.y + (o.h - h) / 2, w, h]; };
 
 // ops: primitives from sheet.mjs; logo: { jpeg: Uint8Array, width, height } for the op with id 'logo'.
 export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = 'Shop drawing' } = {}) {
     const P = 72, Hpt = heightIn * P;
     const X = (x) => num(x * P), Y = (y) => num(Hpt - y * P);
     const c = ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'];
+    const images = []; // JPEG data URL images: { name, bytes, width, height }
+    const imageBase = logo ? 9 : 8; // their object numbers follow the fonts, the info and the logo
     for (const o of ops) {
         if (o.t === 'line') {
             const col = rgb(o.stroke) || '0 0 0';
@@ -65,20 +71,23 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
             const tx = o.x * P + shift * Math.cos(a), ty = Hpt - o.y * P + shift * Math.sin(a);
             c.push(`BT /${bold ? 'F2' : 'F1'} ${num(size)} Tf ${rgb(o.fill) || '0 0 0'} rg ${num(Math.cos(a))} ${num(Math.sin(a))} ${num(-Math.sin(a))} ${num(Math.cos(a))} ${num(tx)} ${num(ty)} Tm ${pdfString(o.s)} Tj ET`);
         } else if (o.t === 'image' && o.id === 'logo' && logo) {
-            // Fit the image in its box, keeping its aspect ratio (like preserveAspectRatio="xMidYMid meet").
-            const scale = Math.min(o.w / logo.width, o.h / logo.height);
-            const w = logo.width * scale, h = logo.height * scale;
-            const x = o.x + (o.w - w) / 2, y = o.y + (o.h - h) / 2;
+            const [x, y, w, h] = fitBox(o, logo.width, logo.height);
             c.push(`q ${num(w * P)} 0 0 ${num(h * P)} ${X(x)} ${num(Hpt - (y + h) * P)} cm /Im1 Do Q`);
+        } else if (o.t === 'image' && o.id !== 'logo' && JPEG_URL.test(o.href || '') && o.px?.[0] > 0 && o.px?.[1] > 0) {
+            const name = `Im${images.length + 2}`;
+            images.push({ name, bytes: latin1(atob(o.href.replace(JPEG_URL, ''))), width: o.px[0], height: o.px[1] });
+            const [x, y, w, h] = fitBox(o, o.px[0], o.px[1]);
+            c.push(`q ${num(w * P)} 0 0 ${num(h * P)} ${X(x)} ${num(Hpt - (y + h) * P)} cm /${name} Do Q`);
         }
     }
     const content = latin1(c.join('\n'));
 
-    // Objects: 1 catalog, 2 pages, 3 page, 4 content, 5-6 fonts, 7 info, 8 image (optional).
+    // Objects: 1 catalog, 2 pages, 3 page, 4 content, 5-6 fonts, 7 info, 8 logo (optional), then the other images.
+    const xobjects = [...(logo ? ['/Im1 8 0 R'] : []), ...images.map((im, i) => `/${im.name} ${imageBase + i} 0 R`)];
     const objects = [
         latin1('<< /Type /Catalog /Pages 2 0 R >>'),
         latin1('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
-        latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${logo ? ' /XObject << /Im1 8 0 R >>' : ''} >> /Contents 4 0 R >>`),
+        latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjects.length ? ` /XObject << ${xobjects.join(' ')} >>` : ''} >> /Contents 4 0 R >>`),
         [latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')],
         latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
         latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
@@ -87,6 +96,10 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
     if (logo) {
         objects.push([latin1(`<< /Type /XObject /Subtype /Image /Width ${logo.width} /Height ${logo.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${logo.jpeg.length} >>\nstream\n`),
             logo.jpeg, latin1('\nendstream')]);
+    }
+    for (const im of images) {
+        objects.push([latin1(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),
+            im.bytes, latin1('\nendstream')]);
     }
     const chunks = [latin1('%PDF-1.4\n%\xe2\xe3\xcf\xd3\n')];
     let offset = chunks[0].length;

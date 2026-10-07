@@ -24,6 +24,7 @@ import { CONFIG } from '../../config.js';
 import { INDEX_STATE, indexEntry } from './panels.mjs';
 import { DemoToolbar } from '../../toolbar.js';
 import { prefabFor, prefabState, stepPrefab, fmtDelta, prefabStale } from './prefab.mjs';
+import { captureKeyplan } from './keyplan.js';
 
 const EXTENSION_ID = 'Drywall.ShopDrawings';
 const STATE_NAME = 'shop-drawings';
@@ -346,6 +347,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             c.ctx = await this.readContext(c).catch(err => { console.warn('Framing context not read:', err); return { level: wall.level, error: err.message || String(err) }; });
             c.reading = false;
             if (this.context) await this.showContext(); else await this.elevationCamera();
+            c.keyplan = await this.captureKeyplan(c).catch(err => { console.warn('Key plan not captured:', err); return null; });
             this.savePanel(c).catch(err => console.warn('Panel page not saved:', err.message));
         } catch (err) {
             console.error(err);
@@ -657,11 +659,14 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         const info = await this.sheetInfo(c);
         delete info.logoHref;
         delete info.qrUrl;
+        delete info.prefab; // with the panel's notes (prefab.mjs)
+        delete info.keyplan;
+        const keyplan = c.keyplan || (await loadState(`shop-panel-${c.wall.externalId}`).catch(() => ({})))?.keyplan || null;
         const record = {
             key: c.wall.externalId, mark: c.mark, dbId: c.dbId, urn: location.hash.slice(1), savedAt: new Date().toISOString(),
             frame: { lengthIn: c.geom.lengthIn, heightIn: c.geom.heightIn, openings: c.geom.openings, studIn: a.studIn, rows: a.rows,
                 spacingIn: a.spacingIn || this.settings.spacingIn, mils: this.settings.mils, member: a.member, notes: c.geom.notes || [] },
-            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], view: { flip: this.isFlipped(c), sheet: this.sheetPref(c) },
+            info, conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], view: { flip: this.isFlipped(c), sheet: this.sheetPref(c) }, keyplan,
         };
         await saveState(`shop-panel-${c.wall.externalId}`, record);
         // One index write at a time, so walking through walls quickly doesn't drop entries.
@@ -683,6 +688,29 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         nav.setView(center.clone().add(dir.multiplyScalar((size / 2 / Math.tan((fov * Math.PI) / 360)) * 0.8)), center, g.up);
     }
 
+    // --- Key plan (the title block, sheet.mjs): ./keyplan.js ------------------------------------------------------
+
+    captureKeyplan(c) {
+        return captureKeyplan(this, c);
+    }
+
+    // Key plans for the panels saved before there were any (or all of them with { all: true }), without re-scanning
+    // the walls: each panel's saved drawing stays as it is. Returns { added, skipped }.
+    async addKeyplans({ all = false, keys = null } = {}) {
+        const index = await loadState(this.names.index).catch(() => ({}));
+        let added = 0, skipped = 0;
+        for (const key of keys || Object.keys(index.panels || {})) {
+            const record = await loadState(`shop-panel-${key}`).catch(() => null);
+            const wall = record?.dbId != null && this.byDbId.get(record.dbId);
+            if (!record?.frame || !wall || wall.externalId !== key || (record.keyplan && !all)) { skipped++; continue; }
+            const keyplan = await this.captureKeyplan({ dbId: record.dbId, wall, mark: record.mark }).catch(err => { console.warn(key, err); return null; });
+            if (!keyplan) { skipped++; continue; }
+            await saveState(`shop-panel-${key}`, { ...record, keyplan });
+            added++;
+        }
+        return { added, skipped };
+    }
+
     // --- Sheet, exports -----------------------------------------------------------------------------------------
 
     async sheetInfo(c = this.current) {
@@ -697,6 +725,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c), sheet: this.sheetPref(c),
             elev: c.ctx?.elev || null, // levels and what is above and below the panel (sheet.mjs draws them on the elevation)
             prefab: c.layout ? prefabFor(c.layout.cutList, c.prefab) : {}, // the PREFAB LENGTH column
+            keyplan: c.keyplan || null, // the title block's key plan (captureKeyplan)
         };
     }
 

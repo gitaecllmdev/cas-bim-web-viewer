@@ -85,9 +85,9 @@ function wrap(str, size, maxW) {
     return lines;
 }
 
-// SVG for a list of primitives (ops.size: the sheet).
-function toSvg(ops) {
-    const { W, H } = ops.size;
+// SVG for a list of primitives (ops.size: the sheet), or only the part of it in box [x, y, w, h].
+function toSvg(ops, box = null) {
+    const [bx, by, W, H] = box || [0, 0, ops.size.W, ops.size.H];
     const body = ops.map(o => {
         if (o.t === 'text') return `<text x="${n(o.x)}" y="${n(o.y)}" font-size="${o.size}" text-anchor="${o.anchor}" font-weight="${o.weight}" fill="${o.fill}"${o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : ''}>${esc(o.s)}</text>`;
         if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
@@ -98,8 +98,8 @@ function toSvg(ops) {
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
     }).join('\n');
-    return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}in" height="${H}in" viewBox="0 0 ${W} ${H}" font-family="Arial, Helvetica, sans-serif">
-<rect x="0" y="0" width="${W}" height="${H}" fill="white"/>
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="${n(W)}in" height="${n(H)}in" viewBox="${n(bx)} ${n(by)} ${n(W)} ${n(H)}" font-family="Arial, Helvetica, sans-serif">
+<rect x="${n(bx)}" y="${n(by)}" width="${n(W)}" height="${n(H)}" fill="white"/>
 ${body}
 </svg>`;
 }
@@ -107,11 +107,20 @@ ${body}
 // info: { mark, project, level, wallType, date, drawnBy, logoHref, sourceNote, qrUrl (the panel page: QR code in the
 //   title block), highlight (optional member mark, e.g. 'C0': its members and cut list row are colored; leave it out
 //   for exports), sheet ('auto' default, or a SHEETS key), prefab ({ [mark]: inches }: the PREFAB LENGTH column,
-//   prefab.mjs prefabFor), prefabEdit (on screen only: -/+ click areas in that column) }.
+//   prefab.mjs prefabFor), prefabEdit (on screen only: -/+ click areas in that column), prefabMembers (on screen only:
+//   members of a mark with a prefab length filled blue / green in the elevation), keyplan ({ href: JPEG data URL, w, h
+//   in pixels, level }: the key plan in the title block, captured by Demo 6) }.
 //   The framing conditions go on the panel page, not the sheet.
 //   A flipped layout (flipLayout) is drawn as seen from side B.
 export function renderSheet(layout, info) {
     return toSvg(sheetOps(layout, info));
+}
+
+// One part of the sheet as its own SVG: 'elevation' (the elevation with its ordinates, levels and context, and the two
+// track plans), for the web view beside the prefab lengths table (core/client/panel.js).
+export function renderSheetRegion(layout, info, region = 'elevation') {
+    const ops = sheetOps(layout, info), [x0, y0, x1, y1] = ops.regions[region];
+    return toSvg(ops, [x0, y0, x1 - x0, y1 - y0]);
 }
 
 // Vector PDF (bytes). logo: { jpeg: Uint8Array, width, height } in pixels, or null.
@@ -144,7 +153,7 @@ export function sheetOps(layout, info) {
         let x = cx;
         vals.forEach((v, i) => {
             const c = cells[i] || {};
-            out.push(rect(x, cy, cw[i], rowH, { fill: c.fill || fill, width: 0.006 }));
+            out.push(rect(x, cy, cw[i], rowH, { fill: c.fill || fill, width: 0.01 }));
             out.push(text(x + cw[i] / 2, cy + 0.135, v, { size: bold ? 0.07 : 0.08, anchor: 'middle', weight: bold || c.color ? 'bold' : 'normal', fill: c.color || COLORS.text }));
             x += cw[i];
         });
@@ -167,6 +176,7 @@ export function sheetOps(layout, info) {
             out.push({ t: 'hit', x: px + cw[5] - zw, y: y0, w: zw, h: rowH, step: `${c.mark}|1`, title: `${c.mark}: 1/8" longer` });
         }
     }
+    out.push(rect(cx, 0.45, tableW, cy - 0.45, { width: 0.02 })); // the table's outline
     out.push(text(cx, cy + 0.16, `GRAND TOTAL: ${cutList.reduce((a, c) => a + c.qty, 0)}`, { size: 0.08, weight: 'bold' }));
     if (prefabSet) { // the key, right of the total: PREFAB LENGTH [blue] LONGER [green] SHORTER
         const parts = [['PREFAB LENGTH:', COLORS.text, null], ['LONGER', PREFAB_COLORS.more, PREFAB_COLORS.moreFill], ['SHORTER', PREFAB_COLORS.less, PREFAB_COLORS.lessFill]];
@@ -284,10 +294,15 @@ export function sheetOps(layout, info) {
         out.push(line(X(o.left), Y(o.top), X(o.right), Y(o.bottom), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
         out.push(line(X(o.left), Y(o.bottom), X(o.right), Y(o.top), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
     }
-    // Members, colored by function like the CAS legend
+    // Members, colored by function like the CAS legend (on screen, info.prefabMembers: a mark with a prefab length in
+    // blue when longer, green when shorter)
+    const rowOf = new Map(cutList.map(c => [c.mark, c]));
+    const prefabOf = (m) => (info.prefabMembers && rowOf.has(m.mark) ? prefabState(rowOf.get(m.mark), info.prefab?.[m.mark]) : null);
     for (const m of members) {
+        const st = prefabOf(m);
         out.push(rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
-            : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 }));
+            : st ? { fill: PREFAB_COLORS[`${st}Member`], stroke: PREFAB_COLORS[st], width: 0.012 }
+                : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 }));
     }
     // Tags on every member. Verticals: at mid-height, beside the stud (no box over it, so the member reads unbroken):
     // left of it, or right of it when a stud stands right against its left side (a jamb pair); level text when the
@@ -404,6 +419,9 @@ export function sheetOps(layout, info) {
     plan(topStrip, true);
     plan(botStrip, false);
 
+    // The elevation's region (renderSheetRegion): with its ordinates either side and the track plans' ordinates.
+    out.regions = { elevation: [Math.max(0.25, X(0) - 0.95), Math.max(0.25, topStrip - 0.75), Math.min(W - 0.25, X(L) + 0.95), Math.min(tbY - 0.05, botStrip + stripH + 0.7)] };
+
     // View title under the drawing
     const titleY = Math.min(botStrip + stripH + 0.85, tbY - 0.3);
     out.push({ t: 'circle', cx: X(0) + 0.14, cy: titleY - 0.04, r: 0.13, stroke: '#000', width: 0.012 });
@@ -413,16 +431,30 @@ export function sheetOps(layout, info) {
     out.push(text(X(0) + 0.36, titleY + 0.2, `SCALE: ${scaleLabel}`, { size: 0.085 }));
 
     // --- Title block
-    // Cells from the left: logo, project, drawing (takes the extra width on a larger sheet), studs, review, QR, sheet.
-    const cells = [[0.25, 1.35], [1.35, 5.2], [5.2, W - 7.1], [W - 7.1, W - 4.4], [W - 4.4, W - 2.85], [W - 2.85, W - 1.65], [W - 1.65, W - 0.25]];
+    // Cells from the left: logo, project, drawing (takes the extra width on a larger sheet), key plan, studs, review,
+    // QR, sheet. Long values wrap in their cell.
+    const kx = W - 9.95; // the key plan cell: kx to W - 7.1
+    const cells = [[0.25, 1.35], [1.35, 4.15], [4.15, kx], [kx, W - 7.1], [W - 7.1, W - 4.4], [W - 4.4, W - 2.85], [W - 2.85, W - 1.65], [W - 1.65, W - 0.25]];
     out.push(rect(0.25, tbY, W - 0.5, tbH, { width: 0.02 }));
     for (const [a] of cells.slice(1)) out.push(line(a, tbY, a, tbY + tbH, { width: 0.01 }));
     out.push({ t: 'image', id: 'logo', href: info.logoHref, x: 0.33, y: tbY + 0.1, w: 0.95, h: 0.95 });
-    const field = (x, y, label, value, size = 0.1) => out.push(text(x, y, label, { size: 0.065, fill: '#555' }), text(x, y + 0.15, value, { size, weight: 'bold' }));
-    field(1.45, tbY + 0.2, 'PROJECT', info.project);
-    field(1.45, tbY + 0.6, 'SOURCE', info.sourceNote || 'Model-based framing layout', 0.08);
-    field(5.3, tbY + 0.2, 'DRAWING', `FRAMING ELEVATION - ${info.mark}`, 0.12);
-    field(5.3, tbY + 0.6, 'LEVEL / WALL TYPE', `${info.level} / ${info.wallType}`, 0.08);
+    const field = (x, y, label, value, size = 0.1, maxW = Infinity, lines = 1) => {
+        out.push(text(x, y, label, { size: 0.065, fill: '#555' }));
+        wrap(String(value ?? ''), size, maxW).slice(0, lines).forEach((ln, i) => out.push(text(x, y + 0.15 + i * size * 1.2, ln, { size, weight: 'bold' })));
+    };
+    field(1.45, tbY + 0.2, 'PROJECT', info.project, 0.1, 2.6, 2);
+    field(1.45, tbY + 0.6, 'SOURCE', info.sourceNote || 'Model-based framing layout', 0.07, 2.6, 3);
+    field(4.25, tbY + 0.2, 'DRAWING', `FRAMING ELEVATION - ${info.mark}`, 0.1, kx - 4.35, 2);
+    field(4.25, tbY + 0.6, 'LEVEL / WALL TYPE', `${info.level} / ${info.wallType}`, 0.07, kx - 4.35, 3);
+    // Key plan: the wall's floor plan around it (the wall in red, the room names), the whole floor inset (Demo 6).
+    const kp = info.keyplan;
+    out.push(text(kx + 0.08, tbY + 0.13, `KEY PLAN${kp?.level ? ` - ${String(kp.level).toUpperCase()}` : ''}`, { size: 0.065, fill: '#555' }));
+    if (kp?.href) {
+        out.push({ t: 'image', id: 'keyplan', href: kp.href, px: [kp.w, kp.h], x: kx + 0.06, y: tbY + 0.18, w: W - 7.1 - kx - 0.12, h: tbH - 0.24 });
+        out.push(rect(kx + 0.06, tbY + 0.18, W - 7.1 - kx - 0.12, tbH - 0.24, { width: 0.006, stroke: '#9aa0a6' }));
+    } else {
+        out.push(text((kx + W - 7.1) / 2, tbY + 0.68, 'PICK THE WALL IN THE VIEWER TO ADD IT', { size: 0.06, anchor: 'middle', fill: '#8d8d8d' }));
+    }
     field(W - 7.0, tbY + 0.2, 'STUDS', `${layout.studType} @ ${layout.spacingIn}" O.C.`);
     field(W - 7.0, tbY + 0.6, 'TRACK', layout.trackType);
     out.push(text(W - 3.625, tbY + 0.3, 'FOR REVIEW', { size: 0.1, anchor: 'middle', weight: 'bold', fill: '#b00020' }));

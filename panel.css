@@ -6,7 +6,7 @@ body { margin: 0; font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Arial, s
     background: var(--accent); color: #fff; }
 .bar .brand { color: #fff; font-weight: 700; text-decoration: none; }
 #panel-title { opacity: 0.9; }
-main { max-width: 1100px; margin: 0 auto; padding: 12px 16px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
+main { max-width: 1280px; margin: 0 auto; padding: 12px 16px 48px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 12px; }
 .card { min-width: 0; background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; }
 .card h2 { margin: 0 0 0.5em; font-size: 1.05em; }
 .muted { color: var(--muted); }
@@ -85,8 +85,6 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .home-foot .hits-visits p { margin: 8px 0 0; font-size: 0.85em; }
 .home-for { font-size: 0.85em; font-weight: 600; color: var(--accent); text-transform: uppercase; letter-spacing: 0.03em; }
 /* Prefab lengths (panel.html): the cut list with -/+ 1/8" per mark; blue longer, green shorter (prefab.mjs colors). */
-details.prefab { margin-top: 0.6em; }
-details.prefab summary { cursor: pointer; }
 .prefab-table td { vertical-align: middle; }
 .prefab-cell { white-space: nowrap; }
 .prefab-cell button { min-width: 2.2em; padding: 0.15em 0.5em; font-weight: 700; }
@@ -95,3 +93,11 @@ details.prefab summary { cursor: pointer; }
 .prefab-val.less { color: #1a7f37; background: #e2f4e6; font-weight: 700; }
 .prefab-delta.more { color: #1f5fbf; } .prefab-delta.less { color: #1a7f37; }
 .sheet .prefab-hit:hover { fill-opacity: 0.18; }
+/* Prefab card (panel.html): the schedule beside the elevation; stacked on a phone. */
+.pe-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; }
+@media (max-width: 900px) { .pe-grid { grid-template-columns: minmax(0, 1fr); } }
+.pe-elev { position: sticky; top: 52px; background: #fff; border: 1px solid var(--line); border-radius: 4px; }
+.pe-elev svg { display: block; width: 100%; height: auto; }
+.prefab-table tr[data-mark] { cursor: pointer; }
+.prefab-table tr[data-mark]:hover td { background: #fff4ea; }
+.prefab-table tr.hi td { background: #ffe3cc; }
