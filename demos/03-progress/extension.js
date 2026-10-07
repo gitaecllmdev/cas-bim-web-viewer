@@ -592,7 +592,18 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.apartOn = on;
         this.updateViewButtons();
         if (!on) { await this.views.setLevelsApart(null); this.showDefault(); this.message(''); return; }
-        const levels = (this.linkedOnly && this.schedule ? this.linkedLevels() : this.views.levels.filter(l => this.views.wallsByLevel.get(l.name)?.length)).map(l => l.name);
+        // Every floor, nothing filtered, so what shows is clear: no level cut (the header's Level: All levels), no picked
+        // activity, no stage shown alone, no search's walls, not only the linked walls.
+        this.selectedAct = null;
+        this.isolatedBySchedule = false;
+        this.isolatedStage = null;
+        this.linkedOnly = false;
+        this.updateViewButtons();
+        this.views.showAll();
+        if (this.views.level) await this.views.setLevel(null);
+        this.refresh();
+        this.renderBody();
+        const levels = this.views.levels.filter(l => this.views.wallsByLevel.get(l.name)?.length).map(l => l.name);
         this.updateFloorLabels();
         await this.views.setLevelsApart(levels, { onProgress: (i, n, name) => {
             if (!this.apartOn) return;
