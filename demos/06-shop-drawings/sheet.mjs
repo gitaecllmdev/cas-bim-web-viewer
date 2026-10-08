@@ -110,7 +110,9 @@ ${body}
 //   prefab.mjs prefabFor), prefabEdit (on screen only: -/+ click areas in that column), prefabMembers (on screen only:
 //   members of a mark with a prefab length filled blue / green in the elevation), keyplan ({ href: JPEG data URL, w, h
 //   in pixels, level }: the key plan in the title block, captured by Demo 6), keyplanNote (the key plan cell's text when
-//   there is none), qrLabel (the text under the QR code) }.
+//   there is none), qrLabel (the text under the QR code), linkNote (the QR code's title block cell without one) }.
+//   The QR code (qrUrl: best a short link, demos/common/panel-link.mjs) is printed large beside the legend, so a phone
+//   reads it from a few feet away; on a long cut list it shrinks to fit, and under 1" it goes in the title block.
 //   The framing conditions go on the panel page, not the sheet.
 //   A flipped layout (flipLayout) is drawn as seen from side B.
 export function renderSheet(layout, info) {
@@ -204,6 +206,18 @@ export function sheetOps(layout, info) {
         out.push(rect(cx, ly - 0.075, 0.14, 0.09, { fill: FUNC_COLOR[code] || COLORS.stud, stroke: '#555', width: 0.005 }));
         out.push(text(cx + 0.2, ly, `${code}: ${FUNCTIONS[code]}`, { size: 0.07 }));
         ly += 0.14;
+    }
+    // Beside the legend: the QR code to the panel page, up to 1.8" (black modules on white, the sheet its quiet zone).
+    const drawQr = (url, x, y, size) => {
+        const qr = qrEncode(url), m = size / qr.size;
+        for (const r of qrRects(qr)) out.push(rect(x + r.x * m, y + r.y * m, r.w * m, r.h * m, { fill: '#000000', stroke: 'none', width: 0 }));
+    };
+    const qrTop = cy + 0.42, qrSize = info.qrUrl ? Math.min(1.8, tbY - 0.2 - qrTop - 0.3) : 0, qrBig = qrSize >= 1;
+    if (qrBig) {
+        const qx = cx + tableW - qrSize;
+        drawQr(info.qrUrl, qx, qrTop, qrSize);
+        out.push(text(qx + qrSize / 2, qrTop + qrSize + 0.17, info.qrLabel || 'SCAN: PANEL PAGE', { size: 0.09, anchor: 'middle', weight: 'bold' }));
+        ly = Math.max(ly, qrTop + qrSize + 0.32);
     }
     // Only the exceptions from the scan (a gap across the wall, lifts, double rows): the rest is on the panel page.
     for (const note of layout.notes) {
@@ -503,11 +517,16 @@ export function sheetOps(layout, info) {
         out.push(text(W - 4.3, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : 'CHECK: PASSED',
             { size: 0.075, weight: 'bold', fill: layout.issues.length ? '#b00020' : '#1e7b34' }));
     }
-    if (info.qrUrl) {
-        // QR code to the panel page (drawing, conditions, links, comments): black modules on white.
-        const qr = qrEncode(info.qrUrl), qs = 0.92, qx = W - 2.85 + (1.2 - qs) / 2, qy = tbY + 0.07, m = qs / qr.size;
-        for (const r of qrRects(qr)) out.push(rect(qx + r.x * m, qy + r.y * m, r.w * m, r.h * m, { fill: '#000000', stroke: 'none', width: 0 }));
+    if (info.qrUrl && !qrBig) {
+        // No room beside the legend: the QR code to the panel page here (drawing, conditions, links, comments).
+        drawQr(info.qrUrl, W - 2.85 + 0.14, tbY + 0.07, 0.92);
         out.push(text(W - 2.25, tbY + 1.12, info.qrLabel || 'SCAN: PANEL PAGE', { size: 0.055, anchor: 'middle', weight: 'bold' }));
+    } else if (info.qrUrl || info.linkNote) {
+        // The panel page's link as text (the QR code is beside the legend), or why there is none.
+        out.push(text(W - 2.77, tbY + 0.2, info.qrUrl ? 'PANEL PAGE' : 'LINK', { size: 0.065, fill: '#555' }));
+        const lines = wrap(info.qrUrl ? info.qrUrl.replace(/^https?:\/\//, '') : info.linkNote, 0.06, 0.98).slice(0, 6);
+        lines.forEach((ln, i) => out.push(text(W - 2.77, tbY + 0.4 + i * 0.1, ln, { size: 0.06, weight: info.qrUrl ? 'bold' : 'normal' })));
+        if (info.qrUrl) out.push(text(W - 2.77, tbY + 1.1, 'QR CODE: BESIDE THE LEGEND', { size: 0.05, fill: '#555' }));
     }
     out.push(text(W - 1.55, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
     out.push(text(W - 0.95, tbY + 0.7, info.mark, { size: 0.2, anchor: 'middle', weight: 'bold' }));

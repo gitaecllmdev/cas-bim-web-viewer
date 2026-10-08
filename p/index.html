@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Panel · CAS BIM Web Viewer</title>
+    <!-- A panel's short link, p/?<code> (the QR code on its shop drawing and its label; demos/common/panel-link.mjs):
+         on to its page, which finds the panel by the code. -->
+    <script>
+        var code = (location.search.slice(1).match(/^[0-9a-z]{6}/i) || [''])[0].toLowerCase();
+        location.replace('../panel.html' + (code ? '?s=' + code : ''));
+    </script>
+</head>
+<body>
+    <p>Opening the panel… <a href="../panels.html">All panel shops</a></p>
+</body>
+</html>

@@ -154,6 +154,61 @@ export const openingBox = (o, H = Infinity) => {
     return { left, right, bottom, top: bottom + (Number(o.heightIn) || 0), kind };
 };
 
+// --- Grips (the elevation editor's shape handles, like Revit's): pure, each from the state before the drag ------------
+// The top of the panel as points, left end to right end, whatever its kind.
+export function shapePoints(shape) {
+    const { lengthIn: L, heightIn: H, top } = shapeTop(shape);
+    return top ? top.map(p => [...p]) : [[0, H], [L, H]];
+}
+const minH = 12;
+// An end of the panel moved to x (in the panel's inches as it was; the left end below 0 extends it to the left), the
+// openings left where they are on the wall; never past an opening, the peak, a drawn point, or under 1 ft long.
+export function moveEnd(panel, side, to) {
+    const p = structuredClone(panel), s = p.shape, L = shapeTop(s).lengthIn, ops = p.openings || [];
+    const pts = s.kind === 'custom' ? s.points : null, peakAt = s.kind === 'gable' ? s.peakAtIn ?? L / 2 : null;
+    if (side === 'right') {
+        const newL = round16(Math.max(to, 12, ...ops.map(o => o.leftIn + o.widthIn), peakAt != null ? peakAt + 1 : 0, pts ? pts[pts.length - 2][0] + 1 : 0));
+        s.lengthIn = newL;
+        if (pts) pts[pts.length - 1][0] = newL;
+        return p;
+    }
+    const d = round16(Math.min(to, L - 12, ...ops.map(o => o.leftIn), peakAt != null ? peakAt - 1 : Infinity, pts ? pts[1][0] - 1 : Infinity));
+    s.lengthIn = round16(L - d);
+    if (peakAt != null) s.peakAtIn = round16(peakAt - d);
+    if (pts) s.points = pts.map(([x, h], i) => [i === 0 ? 0 : round16(x - d), h]);
+    for (const o of ops) o.leftIn = round16(o.leftIn - d);
+    return p;
+}
+// The height at an end (a rectangle stays one: both ends).
+export function setEndHeight(shape, side, h) {
+    const s = structuredClone(shape), v = round16(Math.max(minH, h));
+    if (s.kind === 'rect') s.heightIn = v;
+    else if (s.kind === 'custom') s.points[side === 'left' ? 0 : s.points.length - 1][1] = v;
+    else s[side === 'left' ? 'leftIn' : 'rightIn'] = v;
+    return s;
+}
+// A run of the top (i: 1 for the first, between points i-1 and i) moved up or down by dy.
+export function moveRun(shape, i, dy) {
+    const s = structuredClone(shape), up = (v) => round16(Math.max(minH, v + dy));
+    if (s.kind === 'rect') s.heightIn = up(s.heightIn);
+    else if (s.kind === 'rake') { s.leftIn = up(s.leftIn); s.rightIn = up(s.rightIn); }
+    else if (s.kind === 'gable') { s.peakIn = up(s.peakIn); if (i === 1) s.leftIn = up(s.leftIn); else s.rightIn = up(s.rightIn); }
+    else { s.points[i - 1][1] = up(s.points[i - 1][1]); s.points[i][1] = up(s.points[i][1]); }
+    return s;
+}
+// An opening resized by a grip: 'l', 'r', 't', 'b' (an edge) or 'tl', 'tr', 'bl', 'br' (a corner) dragged to [x, y];
+// at least 6" each way, inside the panel, under maxTop. A door's bottom stays on the floor, a steel penetration's top
+// up through the top of the wall.
+export function resizeOpening(o, grip, [x, y], { L, maxTop = Infinity }) {
+    const kind = kindOf(o), b = openingBox(o, Infinity);
+    let { left, right, bottom, top } = b;
+    if (grip.includes('l')) left = Math.min(right - 6, Math.max(0, x));
+    if (grip.includes('r')) right = Math.max(left + 6, Math.min(L, x));
+    if (grip.includes('t') && kind !== 'steel') top = Math.min(maxTop, Math.max(bottom + 6, y));
+    if (grip.includes('b') && kind !== 'door') bottom = Math.max(3, Math.min(kind === 'steel' ? y : top - 6, y));
+    return { ...o, leftIn: round16(left), widthIn: round16(right - left), sillIn: kind === 'door' ? 0 : round16(bottom), heightIn: kind === 'steel' ? 0 : round16(top - bottom) };
+}
+
 // A drawn outline (an elevation polygon, flat at the bottom: a future export of wall outlines) as a shape: the length
 // across it and its top edge as points; a rectangle when the top is level.
 export function outlineShape(outline) {

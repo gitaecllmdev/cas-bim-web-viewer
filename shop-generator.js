@@ -6,14 +6,12 @@
 // The elevation editor: the core members (top track, on-center studs, bottom track) over it; tools to select and move,
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
-import { fmtFtIn, topAt, topMin, pitchText } from './demos/common/framing.mjs';
+import { fmtFtIn, topAt, topMin, underMin, pitchText } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf } from './demos/06-shop-drawings/sheet.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
-// The QR code on the sheet only when its link is short enough to scan off paper: up to 73 modules in its 0.92" box (0.3 mm each).
-const QR_MAX = 340;
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos' };
 const main = document.getElementById('gen');
 const $ = (sel) => main.querySelector(sel);
@@ -205,9 +203,12 @@ function addOpening(p, kind) {
     const o = { kind, widthIn: prev?.widthIn ?? size.widthIn, heightIn: kind === 'steel' ? 0 : prev?.heightIn ?? Math.min(size.heightIn, H - 12), head: '', jamb: '', sill: '' };
     o.sillIn = kind === 'door' ? 0 : kind === 'steel' ? prev?.sillIn ?? Math.max(3, H - 24) : prev?.sillIn ?? Math.min(size.sillIn, Math.max(3, H - o.heightIn - 12));
     const free = (left) => p.openings.every(x => left + o.widthIn + 6 <= x.leftIn || left >= x.leftIn + x.widthIn + 6);
+    // Centered when free, else the first free spot from the left (6" steps); with no room anywhere, centered (the check
+    // then says it overlaps).
     const centered = Math.round((L - o.widthIn) / 2);
-    const after = p.openings.length ? Math.max(...p.openings.map(x => x.leftIn + x.widthIn)) + 18 : 12;
-    o.leftIn = free(centered) ? centered : Math.min(after, Math.max(0, L - o.widthIn - 6));
+    let spot = free(centered) ? centered : null;
+    for (let x = 6; spot == null && x <= L - o.widthIn - 6; x += 6) if (free(x)) spot = x;
+    o.leftIn = spot ?? Math.max(0, centered);
     p.openings.push(o);
     selectNew(p, p.openings.length - 1);
 }
@@ -484,15 +485,36 @@ function renderSketch() {
         parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
-    // Handles to drag (select and move).
-    const handle = (x, y, what, title) => `<circle cx="${x}" cy="${Y(y)}" r="${u * 1.6}" class="sk-handle" data-drag="${what}"><title>${esc(title)}</title></circle>`;
+    // Grips (shape handles, as in Revit): round at the panel's corners, arrows at the middle of its edges (an end moves
+    // the end out or in, the openings staying where they are; a run of the top moves up or down); square at the
+    // selected opening's corners, diamonds at the middle of its edges (resize it).
+    const handle = (x, y, what, title) => `<circle cx="${x}" cy="${Y(y)}" r="${u * 1.5}" class="sk-handle" data-drag="${what}"><title>${esc(title)}</title></circle>`;
+    const arrow = (x, y, dir, what, title) => { // a double arrow across the edge
+        const a = u * 2.1, w = u * 1.1, [dx, dy] = dir === 'h' ? [1, 0] : [0, 1], px = -dy, py = dx;
+        const tip = (sg) => `${x + dx * a * sg},${Y(y) - dy * a * sg} ${x + dx * a * 0.25 * sg + px * w},${Y(y) - (dy * a * 0.25 * sg + py * w)} ${x + dx * a * 0.25 * sg - px * w},${Y(y) - (dy * a * 0.25 * sg - py * w)}`;
+        return `<g class="sk-arrow" data-drag="${what}"><title>${esc(title)}</title><circle cx="${x}" cy="${Y(y)}" r="${a * 1.05}" class="sk-arrow-hit"/><polygon points="${tip(1)}"/><polygon points="${tip(-1)}"/></g>`;
+    };
+    const grip = (x, y, what, title, diamond = false) => { const g = u * 1.05; return diamond
+        ? `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" transform="rotate(45 ${x} ${Y(y)})" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`
+        : `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`; };
     const s = p.shape;
     if (tool === 'select' && valid) {
-        if (s.kind === 'rect') parts.push(handle(L, H, 'size', 'Drag to change the length and height'));
-        else parts.push(handle(L, 0, 'len', 'Drag to change the length'));
-        if (s.kind === 'rake' || s.kind === 'gable') parts.push(handle(0, at(0), 'left', 'Height at the left end'), handle(L, at(L), 'right', 'Height at the right end'));
+        const pts = G.shapePoints(s);
+        pts.slice(1).forEach(([x1, h1], k) => { const [x0, h0] = pts[k]; parts.push(arrow((x0 + x1) / 2, (h0 + h1) / 2, 'v', `pg:run:${k + 1}`, 'Drag the top up or down here')); });
+        parts.push(arrow(0, at(0) / 2, 'h', 'pg:l', 'Drag the left end out or in (the openings stay where they are)'), arrow(L, at(L) / 2, 'h', 'pg:r', 'Drag the right end out or in'));
+        parts.push(handle(0, 0, 'pg:bl', 'The left end: drag it out or in'), handle(L, 0, 'pg:br', 'The right end: drag it out or in'),
+            handle(0, at(0), 'pg:tl', s.kind === 'rect' ? 'The left end and the height' : 'The left end and its height'), handle(L, at(L), 'pg:tr', s.kind === 'rect' ? 'The right end and the height' : 'The right end and its height'));
         if (s.kind === 'gable') parts.push(handle(Math.min(L, Math.max(0, s.peakAtIn ?? L / 2)), Number(s.peakIn) || H, 'peak', 'The peak: drag up, down or sideways'));
-        if (s.kind === 'custom') s.points.forEach((pt, i) => parts.push(handle(pt[0], pt[1], `pt:${i}`, `Point ${i + 1}: drag it; double-click to remove`)));
+        if (s.kind === 'custom') s.points.slice(1, -1).forEach((pt, k) => parts.push(handle(pt[0], pt[1], `pt:${k + 1}`, `Point ${k + 2}: drag it; double-click to remove`)));
+        if (sel != null && boxes[sel]) {
+            const o = p.openings[sel], b = boxes[sel], topY = b.through ? Math.max(at(b.left), at(b.right)) : b.top, mx = (b.left + b.right) / 2, my = (b.bottom + topY) / 2;
+            const sides = [['l', b.left, my, 'Its left side'], ['r', b.right, my, 'Its right side'], ['t', mx, topY, 'Its head'], ['b', mx, b.bottom, 'Its sill']]
+                .filter(([g]) => !(g === 't' && o.kind === 'steel') && !(g === 'b' && o.kind === 'door'));
+            const corners = [['tl', b.left, topY], ['tr', b.right, topY], ['bl', b.left, b.bottom], ['br', b.right, b.bottom]]
+                .filter(([g]) => !(g[0] === 't' && o.kind === 'steel') && !(g[0] === 'b' && o.kind === 'door'));
+            for (const [g, x, y, title] of sides) parts.push(grip(x, y, `og:${sel}:${g}`, `${title}: drag to resize`, true));
+            for (const [g, x, y] of corners) parts.push(grip(x, y, `og:${sel}:${g}`, 'Drag this corner to resize'));
+        }
     }
     // Context: dimensions all around what is moved, selected or pointed at.
     const ctx = [];
@@ -513,7 +535,7 @@ function renderSketch() {
         }
         return o;
     };
-    const dragged = /^op:(\d+)$/.exec(drag?.moved ? drag.what : '');
+    const dragged = /^o[pg]:(\d+)/.exec(drag?.moved ? drag.what : '');
     if (tool === 'select') {
         if (dragged) openingDims(Number(dragged[1]), 'sk-ctx live');
         else if (sel != null && boxes[sel]) openingDims(sel, 'sk-ctx');
@@ -525,9 +547,11 @@ function renderSketch() {
             const label = dx < 1e-6 ? `${fmtFtIn(dy)} high` : dy < 1e-6 ? fmtFtIn(dx) : `${fmtFtIn(Math.hypot(dx, dy))} along · ${fmtFtIn(dx)} run · ${fmtFtIn(dy)} rise · ${pitchText(dy / dx)}`;
             ctx.push(`<line x1="${x1}" y1="${Y(y1)}" x2="${x2}" y2="${Y(y2)}" class="sk-edge-on"/>`, t((x1 + x2) / 2 + (dx < 1e-6 ? (x1 < L / 2 ? -fs : fs) : 0), Y((y1 + y2) / 2) + (dx < 1e-6 ? 0 : y1 + y2 < 1e-6 ? fs * 2.6 : -fs * 0.8), label, { cls: 'sk-ctx-t', size: cs * 1.1, a: dx < 1e-6 ? (x1 < L / 2 ? 'end' : 'start') : 'middle' }));
         }
-        const point = (drag?.moved && /^(pt:\d+|peak|left|right)$/.test(drag.what) ? drag.what : null) || (/^(pt:\d+|peak|left|right)$/.test(hover || '') ? hover : null);
+        const corner = /^(pt:\d+|peak|pg:tl|pg:tr|pg:bl|pg:br|pg:l|pg:r)$/;
+        const point = (drag?.moved && corner.test(drag.what) ? drag.what : null) || (corner.test(hover || '') ? hover : null);
         if (point && valid) {
-            const [px, ph] = point.startsWith('pt:') ? s.points[Number(point.slice(3))] || [0, 0] : point === 'peak' ? [s.peakAtIn ?? L / 2, s.peakIn] : point === 'left' ? [0, at(0)] : [L, at(L)];
+            const [px, ph] = point.startsWith('pt:') ? s.points[Number(point.slice(3))] || [0, 0] : point === 'peak' ? [s.peakAtIn ?? L / 2, s.peakIn]
+                : /^pg:(tl|bl|l)$/.test(point) ? [0, at(0)] : [L, at(L)];
             ctx.push(dimH(0, px, ph + fs * 1.2, fmtFtIn(px)), dimH(px, L, ph + fs * 1.2, fmtFtIn(L - px)), dimV(px, 0, ph, `${fmtFtIn(ph)} high`, 'sk-ctx', true));
         }
     }
@@ -582,7 +606,7 @@ function bindSketch(svg) {
         e.preventDefault();
         if (tool === 'perimeter') { drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return; }
         if (tool === 'opening') { rectDraw = { a: [snap(q[0]), snap(q[1])], b: [snap(q[0]), snap(q[1])] }; drag = { what: 'rect', x: e.clientX, y: e.clientY, moved: false }; return; }
-        drag = { what: h?.dataset.drag || 'none', start: q, moved: false, orig: structuredClone({ shape: p.shape, openings: p.openings }), x: e.clientX, y: e.clientY };
+        drag = { what: h?.dataset.drag || 'none', start: q, moved: false, orig: structuredClone({ shape: p.shape, openings: p.openings }), x: e.clientX, y: e.clientY, view0: { ...view } };
         const m = /^op:(\d+)$/.exec(drag.what);
         if (m && sel !== Number(m[1])) { sel = Number(m[1]); if (ask !== sel) ask = null; renderCatalogue(); renderChips(); renderSketch(); }
     });
@@ -629,11 +653,25 @@ function bindSketch(svg) {
 }
 function applyDrag(d, [x, y]) {
     const p = cur(), s = p.shape, L = G.shapeTop(s).lengthIn, minH = 12;
-    const [what, n] = d.what.split(':'), i = Number(n);
-    if (what === 'size') { s.lengthIn = Math.max(12, snap(x)); s.heightIn = Math.max(minH, snap(y)); }
-    if (what === 'len') { const v = Math.max(12, snap(x)); if (s.kind === 'custom') setCustomLength(p, v); else s.lengthIn = v; }
-    if (what === 'left') s.leftIn = Math.max(minH, snap(y));
-    if (what === 'right') s.rightIn = Math.max(minH, snap(y));
+    const [what, n, g] = d.what.split(':'), i = Number(n);
+    if (what === 'pg') { // the panel's ends and top, from how it was when the drag started
+        const x0 = x + (d.shift || 0), base = { ...p, shape: structuredClone(d.orig.shape), openings: structuredClone(d.orig.openings) };
+        let next = base;
+        if (n === 'run') next = { ...base, shape: G.moveRun(base.shape, Number(g), snap(y - d.start[1])) };
+        if (/^(l|tl|bl)$/.test(n)) next = G.moveEnd(base, 'left', snap(x0));
+        if (/^(r|tr|br)$/.test(n)) next = G.moveEnd(base, 'right', snap(x0));
+        if (n === 'tl' || n === 'tr') next = { ...next, shape: G.setEndHeight(next.shape, n === 'tl' ? 'left' : 'right', snap(y)) };
+        p.shape = next.shape;
+        p.openings = next.openings;
+        // The left end moved: the panel starts at it now, so the view moves with it and the rest stays put on screen.
+        if (/^(l|tl|bl)$/.test(n)) { const moved = G.shapeTop(d.orig.shape).lengthIn - G.shapeTop(p.shape).lengthIn; d.shift = moved; view.x = d.view0.x - moved; }
+        return;
+    }
+    if (what === 'og') { // a grip of the selected opening
+        const o0 = d.orig.openings[i], { heightIn: H, top } = G.shapeTop(s), b = G.openingBox(o0, H), leg = G.parseMember(p.members.track)?.flangeIn ?? 1.25;
+        p.openings[i] = G.resizeOpening(o0, g, [snap(x), snap(y)], { L, maxTop: underMin(top, b.left, b.right, H, leg) });
+        return;
+    }
     if (what === 'peak') { s.peakAtIn = Math.min(L - 1, Math.max(1, snap(x))); s.peakIn = Math.max(minH, snap(y)); }
     if (what === 'pt') {
         const pts = s.points, last = pts.length - 1;
@@ -749,11 +787,12 @@ function renderChips() {
 }
 
 // --- The sheet ---------------------------------------------------------------------------------------------------------
+// No QR code on these sheets: a panel typed in here has no page of its own, and a link holding the whole panel makes a
+// dense code that won't scan from a distance (Copy link shares it).
 function sheetInfo(p) {
-    const url = `${location.origin}${location.pathname}#p=${G.encodePanel(p)}`;
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', ...(url.length <= QR_MAX ? { qrUrl: url, qrLabel: 'SCAN: OPEN IN THE GENERATOR' } : {}) };
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.' };
 }
 function framed(p) {
     const errors = G.panelErrors(p);

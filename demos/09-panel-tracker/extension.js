@@ -22,6 +22,7 @@ import { INDEX_STATE } from '../06-shop-drawings/panels.mjs';
 import { linkActivities, fmtDay } from '../03-progress/p6.mjs';
 import { csvText, xlsxBytes } from '../common/table-export.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
+import { shortLink } from '../common/panel-link.mjs';
 import { reviztoButton, showReviztoConcept, REVIZTO_API } from '../../revizto-concept.js';
 import {
     STAGES, NOT_STARTED, stageIndex, readTracker, statusOf, statusFor, skippedOf, markStage, unmarkStage, findPanel,
@@ -576,7 +577,7 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                     stage: () => this.setStage(v), tab: () => this.setTab(v), pick: () => this.pick(v, { select: true }), rec: () => this.record(v, this.stage, 'manual'),
                     undo: () => { const [k, s] = v.split('|'); this.undo(k, s); }, step: () => { const [k, s] = v.split('|'); this.record(k, s, 'card'); },
                     close: () => this.pick(null), camera: () => this.openCamera(), switch: () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '03-progress' } })),
-                    xlsx: () => this.exportList('xlsx'), csv: () => this.exportList('csv'), revit: () => this.exportRevit(), print: () => this.printLabels(),
+                    xlsx: () => this.exportList('xlsx'), csv: () => this.exportList('csv'), revit: () => this.exportRevit(), print: () => this.printLabels(v === 'large'),
                     only: () => this.showOnly(this.only === v ? 'panels' : v), zoom: () => this.zoomTo(v), 'clear-filters': () => this.clearFilters(), 'rz-panel': () => this.rzPanel(v),
                 })[t.dataset.act]?.();
                 return;
@@ -707,7 +708,9 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
                 <p>A label per panel: its QR code, panel number, floor and wall type. The QR code holds the panel number; for a panel with a shop drawing,
                     its panel page link (the same as on the sheet), so any phone camera opens the page to record a step. Scan any label here (camera or
                     handheld scanner) to record a step.</p>
-                <p><button data-act="print">Print ${list.length.toLocaleString()} labels</button> <span class="muted">${escapeHtml(this.filterSummary)} (the slicers above) · 3 x 10 per letter page</span></p>
+                <p><button data-act="print" data-v="large" title="2 x 4 in labels, 10 per letter page (e.g. Avery 5163): a 1.8 in QR code, read from a few feet away">Print ${list.length.toLocaleString()} large labels</button>
+                    <button class="secondary" data-act="print" data-v="small" title="1 x 2 5/8 in labels, 30 per letter page (e.g. Avery 5160)">Small labels</button>
+                    <span class="muted">${escapeHtml(this.filterSummary)} (the slicers above) · large: 2 x 5, small: 3 x 10 per letter page</span></p>
                 <div class="pt-labels">${list.slice(0, 6).map(p => this.labelHtml(p)).join('')}</div>${list.length > 6 ? `<p class="muted">… and ${list.length - 6} more.</p>` : ''}</section>`;
         } else {
             el.innerHTML = `<section class="pt-info"><h3>Revit: pull the status, report back</h3>
@@ -991,11 +994,9 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         }
     }
 
-    // What a label's QR code holds: a shop drawing panel's page link (as on its sheet), else the panel number.
+    // What a label's QR code holds: a shop drawing panel's short page link (as on its sheet), else the panel number.
     labelText(p) {
-        if (!p.shop) return p.mark;
-        const base = CONFIG.publicUrl || new URL('.', location.href).href;
-        return `${base.replace(/\/?$/, '/')}panel.html?p=${encodeURIComponent(p.key)}`;
+        return p.shop ? shortLink(CONFIG.publicUrl || new URL('.', location.href).href, p.key) : p.mark;
     }
 
     labelHtml(p) {
@@ -1007,16 +1008,17 @@ class PanelTrackerExtension extends Autodesk.Viewing.Extension {
         return `<div class="pt-label">${svg}<div><b>${escapeHtml(p.mark)}</b><span>${escapeHtml(p.level)}${p.alt ? ` · shop ${escapeHtml(p.alt)}` : ''}</span><em>${escapeHtml(String(p.wallType).replace(/^_/, '').slice(0, 60))}</em><small>${escapeHtml(this.project)}</small></div></div>`;
     }
 
-    printLabels() {
+    // large: 2 x 4 in labels, 2 x 5 per letter page, a 1.8 in QR code; else 1 x 2 5/8 in, 3 x 10 per page.
+    printLabels(large = false) {
         const list = this.shown;
         const w = window.open('', '_blank');
         if (!w) { alert('Allow pop-ups for this site to print the labels.'); return; }
         w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Panel labels · ${escapeHtml(this.project)}</title><style>
-            @page { size: letter; margin: 0.5in 0.19in; } body { margin: 0; font: 9pt system-ui, sans-serif; }
-            .sheet { display: grid; grid-template-columns: repeat(3, 2.625in); grid-auto-rows: 1in; column-gap: 0.125in; }
-            .pt-label { display: flex; gap: 0.06in; align-items: center; overflow: hidden; padding: 0.04in 0.08in; box-sizing: border-box; break-inside: avoid; }
-            .pt-label svg { width: 0.9in; height: 0.9in; flex: none; } .pt-label div { display: flex; flex-direction: column; min-width: 0; }
-            .pt-label b { font-size: 12pt; } .pt-label em { font-style: normal; font-size: 7pt; color: #333; } .pt-label small { font-size: 6.5pt; color: #666; }
+            @page { size: letter; margin: 0.5in ${large ? '0.156in' : '0.19in'}; } body { margin: 0; font: 9pt system-ui, sans-serif; }
+            .sheet { display: grid; grid-template-columns: repeat(${large ? '2, 4in' : '3, 2.625in'}); grid-auto-rows: ${large ? '2in' : '1in'}; column-gap: ${large ? '0.188in' : '0.125in'}; }
+            .pt-label { display: flex; gap: ${large ? '0.12in' : '0.06in'}; align-items: center; overflow: hidden; padding: 0.04in 0.08in; box-sizing: border-box; break-inside: avoid; }
+            .pt-label svg { width: ${large ? '1.8in' : '0.9in'}; height: ${large ? '1.8in' : '0.9in'}; flex: none; } .pt-label div { display: flex; flex-direction: column; min-width: 0; }
+            .pt-label b { font-size: ${large ? '22pt' : '12pt'}; } .pt-label span { font-size: ${large ? '11pt' : '9pt'}; } .pt-label em { font-style: normal; font-size: ${large ? '9pt' : '7pt'}; color: #333; } .pt-label small { font-size: ${large ? '8pt' : '6.5pt'}; color: #666; }
             @media screen { body { padding: 1em; } .pt-label { outline: 1px dashed #ccc; } }</style></head>
             <body><div class="sheet">${list.map(p => this.labelHtml(p)).join('')}</div><script>window.onload = () => window.print();<\/script></body></html>`);
         w.document.close();

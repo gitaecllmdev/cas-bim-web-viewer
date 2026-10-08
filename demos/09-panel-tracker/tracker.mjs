@@ -4,6 +4,7 @@
 // the panel key being its wall's Revit UniqueId (the viewer's externalId), so a Revit add-in can pull it and report
 // back with the same rows (revitRows / readRevitRows).
 import { addDays, parseDateText, parseCsv } from '../03-progress/p6.mjs';
+import { linkCode, shortCode } from '../common/panel-link.mjs';
 
 export const STAGES = [
     { key: 'bim', name: 'BIM review', short: 'BIM', done: 'BIM review completed', color: '#3d6fd6' },
@@ -57,12 +58,15 @@ export function unmarkStage(tracker, key, stage) {
     return true;
 }
 
-// What a scan or a typed text names: the QR code of a shop drawing (its panel page link, ...panel.html?p=<key>), a
-// panel key (a Revit UniqueId), or a mark. Returns { key } or { mark } or null.
+// What a scan or a typed text names: the QR code of a shop drawing or label (its short link, .../p/?<code>, or the
+// panel page link, ...panel.html?p=<key>), a panel key (a Revit UniqueId), or a mark. Returns { code }, { key },
+// { mark } or null.
 const UNIQUE_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}-[0-9a-f]{8}$/i;
 export function parseScan(text) {
     const s = String(text ?? '').trim();
     if (!s) return null;
+    const code = linkCode(s);
+    if (code) return { code };
     if (/^https?:\/\//i.test(s) || /[?&]p=/.test(s)) {
         try {
             const p = new URL(s, 'https://x.invalid/').searchParams.get('p');
@@ -78,6 +82,7 @@ export function parseScan(text) {
 export function findPanel(panels, text) {
     const q = parseScan(text);
     if (!q) return { matches: [] };
+    if (q.code) { const p = panels.find(x => x.key && shortCode(x.key) === q.code); return p ? { panel: p } : { matches: [] }; }
     if (q.key) { const p = panels.find(x => x.key === q.key); return p ? { panel: p } : { matches: [] }; }
     const t = q.mark.toLowerCase();
     const names = (x) => [x.mark, x.alt].filter(Boolean).map(n => String(n).toLowerCase());

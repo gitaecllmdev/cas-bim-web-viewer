@@ -110,6 +110,9 @@ button.link.danger { color: var(--warn); }
 .sk-op-sub { fill: #444; pointer-events: none; }
 .sk-handle { fill: var(--accent); stroke: #fff; stroke-width: 2px; cursor: grab; }
 .sk-handle:hover { fill: #ff8a3d; }
+.sk-arrow { cursor: grab; } .sk-arrow polygon { fill: var(--accent); stroke: #fff; stroke-width: 1.2px; } .sk-arrow:hover polygon { fill: #ff8a3d; }
+.sk-arrow-hit { fill: rgba(255, 255, 255, .55); stroke: none; }
+.sk-grip { fill: #fff; stroke: #e65100; stroke-width: 2px; cursor: nwse-resize; } .sk-grip:hover { fill: #ff8a3d; }
 .sk-rect { fill: rgba(27, 106, 165, .12); stroke: #1b6aa5; stroke-width: 2px; stroke-dasharray: 6 3; }
 .sk-rect.door { fill: rgba(160, 24, 24, .1); stroke: #a01818; } .sk-rect.steel { fill: rgba(93, 64, 55, .12); stroke: #5d4037; }
 .sk-peri { fill: none; stroke: var(--accent); stroke-width: 2.4px; stroke-linejoin: round; }

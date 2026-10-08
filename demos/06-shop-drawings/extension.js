@@ -16,6 +16,7 @@
 import { loadPropertyMap, getWallData, onModelReady, getBulkProperties, propValue, escapeHtml, fetchJson, downloadCsv, loadState, saveState, markContextNode, stateFor } from '../../helpers.js';
 import { assemblyFor, boardFor } from '../02-takeoff/calc.mjs';
 import { frameWall, fmtFtIn, flipLayout } from '../common/framing.mjs';
+import { shortLink } from '../common/panel-link.mjs';
 import { renderSheet, renderSheetPdf, sheetSize, SHEETS } from './sheet.mjs';
 import { scanWall, lookAtWall, saveScan, ensure3dShown } from '../common/wallscan.js';
 import { roomsBeside, probeSlabs, probeNearby, probeBands, contextBox, wallPoint, wallSize } from './context.js';
@@ -635,6 +636,11 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
         return `${base.replace(/\/?$/, '/')}panel.html?p=${encodeURIComponent(c.wall.externalId || c.mark)}`;
     }
 
+    // The QR code's link: the short one (demos/common/panel-link.mjs), coarse enough to scan from a distance.
+    qrUrl(c) {
+        return shortLink(CONFIG.publicUrl || new URL('.', location.href).href, c.wall.externalId || c.mark);
+    }
+
     // Previous / Next wall in the list below (the level in the header, longest first), so a level's shops can be walked
     // through without going back to the model.
     stepperHtml() {
@@ -722,7 +728,7 @@ class ShopDrawingsExtension extends Autodesk.Viewing.Extension {
             board: a.layers ? `${a.layers[0]} + ${a.layers[1]} layers, ${boardFor(c.wall, a)}` : '-', fireRating: c.wall.fireRating,
             date: new Date().toISOString().slice(0, 10), drawnBy: 'CAS BIM Web Viewer', logoHref: this.logo,
             sourceNote: 'Revit model via APS Viewer; framing laid out from the wall geometry',
-            conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.panelUrl(c), sheet: this.sheetPref(c),
+            conditions: c.ctx ? conditionLines({ ...c.ctx, url: null }) : [], qrUrl: this.qrUrl(c), sheet: this.sheetPref(c),
             elev: c.ctx?.elev || null, // levels and what is above and below the panel (sheet.mjs draws them on the elevation)
             prefab: c.layout ? prefabFor(c.layout.cutList, c.prefab) : {}, // the PREFAB LENGTH column
             keyplan: c.keyplan || null, // the title block's key plan (captureKeyplan)

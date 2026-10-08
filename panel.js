@@ -10,7 +10,8 @@
 // Panel tracker (Demo 7): the panel's steps from BIM review to framing complete, recorded here too (the QR code on the
 // sheet or a label opens this page on a phone): state 'panel-tracker' of the panel's model (tracker.mjs); framing
 // complete also from Install Progress (Demo 3).
-import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';
+import { loadState, saveState, escapeHtml, sharedStateOn, stateFor, fetchJson } from './helpers.js';
+import { shortCode, shortLink } from './demos/common/panel-link.mjs';
 import { countVisit } from './hits.js';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
@@ -23,16 +24,27 @@ import { fmtDay } from './demos/03-progress/p6.mjs';
 countVisit(); // the home page's view counter (hits.js)
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
-const key = (new URLSearchParams(location.search).get('p') || '').toLowerCase();
+const params = new URLSearchParams(location.search);
+let key = (params.get('p') || '').toLowerCase();
 const main = document.getElementById('panel-main');
-const notesName = `panel-notes-${key}`;
+let notesName = `panel-notes-${key}`;
 
 // Only http(s) links are kept and shown (no javascript:, data: and the like).
 const safeUrl = (u) => {
     try { const x = new URL(String(u).trim()); return /^https?:$/.test(x.protocol) ? x.href : null; } catch { return null; }
 };
 const when = (iso) => { const d = new Date(iso); return Number.isNaN(+d) ? '' : d.toLocaleString(); };
-const panelUrl = () => `${location.origin}${location.pathname}?p=${encodeURIComponent(key)}`;
+// The QR code's link: the short one (p/?<code>), so the code stays coarse enough to scan from a distance.
+const qrLink = () => shortLink(new URL('.', location.href).href, key);
+// The panel a short code names: the first in the site's panel lists (one per model) whose key gives that code.
+async function keyForCode(code) {
+    for (const m of await fetchJson('samples/urns.json').catch(() => [])) {
+        const index = await loadState(await stateFor(INDEX_STATE, m.urn)).catch(() => ({}));
+        const found = Object.keys(index.panels || {}).find(k => shortCode(k) === code);
+        if (found) return found;
+    }
+    return null;
+}
 
 let record = null, notes = { links: [], comments: [], prefab: {} }, layout = null, info = null;
 let tracking = null; // { name, tracker, installed }: the panel tracker of the panel's model
@@ -57,12 +69,19 @@ main.addEventListener('mouseleave', () => { if (hovered) { hovered = null; rende
 start().catch(err => { main.innerHTML = `<p class="warn">Could not open this panel: ${escapeHtml(err.message || err)}</p>`; });
 
 async function start() {
+    const code = (params.get('s') || '').toLowerCase();
+    if (!key && /^[0-9a-z]{6}$/.test(code)) { // a short link (the QR code on a sheet or label)
+        key = (await keyForCode(code)) || '';
+        if (!key) return notFound('This QR code\'s panel is not in the panel list of this site yet.');
+        notesName = `panel-notes-${key}`;
+        history.replaceState(null, '', `${location.pathname}?p=${encodeURIComponent(key)}`);
+    }
     if (!/^[a-z0-9-]{1,64}$/.test(key)) return notFound('This link has no panel in it.');
     record = await loadState(`shop-panel-${key}`).catch(() => ({}));
     if (!record?.frame) return notFound('This panel has not been published yet. Pick the wall in the viewer (Demo 6) so its panel page is saved.');
     notes = { ...emptyNotes(), ...(await loadState(notesName).catch(() => ({}))) };
     layout = entryLayout(record); // drawn from side B when it was flipped in the viewer
-    info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: panelUrl(), logoHref: await dataUrl(LOGO_URL).catch(() => null), keyplan: record.keyplan || null };
+    info = { ...record.info, sheet: record.view?.sheet || 'auto', conditions: record.conditions || [], qrUrl: qrLink(), logoHref: await dataUrl(LOGO_URL).catch(() => null), keyplan: record.keyplan || null };
     document.title = `${record.mark} · CAS BIM Web Viewer`;
     document.getElementById('panel-title').textContent = `${record.mark} · ${record.info?.wallType || ''} · ${record.info?.level || ''}`;
     render();
