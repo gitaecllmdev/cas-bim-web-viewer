@@ -11,8 +11,8 @@
 //                on-center stud, '=track' = as the bottom track; a steel penetration has no header, a door no sill) }],
 //   members: { stud (on center), track (bottom track; '' = as the stud), topTrack ('' = as the bottom track), spacingIn,
 //              header, jamb, sill (the openings' members; '' = as the bottom track / the stud) } } (SSMA names).
-//   layout: 'optimized' (default: the first stud placed so the openings take the fewest stud pieces) | 'standard'
-//   (studs on center from the left end), revit (kept as it came: the model's wall this panel is, its place by the grids;
+//   optimizeOpenings: false (default: studs on center from the left end) | true (the opening optimizer: the first stud
+//   placed so the openings take the fewest stud pieces, every bay within the spacing), revit (kept as it came: the model's wall this panel is, its place by the grids;
 //   see docs/panel-exchange.md) }.
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, source, grids, levels, panels: [panel] }.
 import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin } from '../common/framing.mjs';
@@ -388,7 +388,7 @@ export function frameInputs(panel) {
     });
     const inputs = { lengthIn, heightIn, top, openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
         trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) || 16 };
-    if (panel.layout !== 'standard') {
+    if (panel.optimizeOpenings) {
         const start = bestLayoutStart(inputs);
         if (start !== inputs.spacingIn) inputs.layoutStartIn = start;
     }
@@ -435,7 +435,7 @@ export function bestLayoutStart(inputs) {
 export function layoutInfo(panel) {
     const inputs = frameInputs(panel), sp = inputs.spacingIn;
     const standard = pieces(frameWall({ ...inputs, layoutStartIn: undefined }));
-    return { optimized: panel.layout !== 'standard', start: inputs.layoutStartIn || sp, spacing: sp, pieces: inputs.layoutStartIn ? pieces(frameWall(inputs)) : standard, standardPieces: standard };
+    return { optimized: !!panel.optimizeOpenings, start: inputs.layoutStartIn || sp, spacing: sp, pieces: inputs.layoutStartIn ? pieces(frameWall(inputs)) : standard, standardPieces: standard };
 }
 
 // The panel framed: the layout as drawn (side B: mirrored), with a note for each built-up opening member.
@@ -491,7 +491,7 @@ function unlinked(panel) {
 export function newPanel(prev = null, marks = []) {
     let mark = prev ? nextMark(prev.mark) : 'P-101';
     while (marks.includes(mark)) mark = nextMark(mark);
-    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
+    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
     return { ...unlinked(prev), id: rid(), mark, openings: [] };
 }
 // A copy (a free panel even when the original is the model's: one wall, one panel).
@@ -560,7 +560,7 @@ export function cleanPanel(p = {}) {
     const members = { ...DEFAULT_MEMBERS, ...Object.fromEntries(Object.entries(p.members || {}).map(([k, v]) => [k, k === 'spacingIn' ? Number(v) || 16 : str(v)])) };
     return {
         id: str(p.id, 40) || rid(), mark: str(p.mark, 40) || 'P-101', level: str(p.level), wallType: str(p.wallType, 120), group: str(p.group), sideB: !!p.sideB,
-        layout: p.layout === 'standard' ? 'standard' : 'optimized',
+        optimizeOpenings: !!p.optimizeOpenings, // the opening optimizer: off unless asked for
         ...(p.revit && typeof p.revit === 'object' ? { revit: structuredClone(p.revit) } : {}), // the model's wall: kept as it came, for the trip back
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
         openings: (p.openings || []).map(o => {
@@ -590,7 +590,7 @@ const trim = (a) => { const out = [...a]; while (out.length && (out[out.length -
 export function encodePanel(panel) {
     const p = cleanPanel(panel);
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
-        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill])), p.layout === 'standard' ? 1 : '']);
+        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill])), '', p.optimizeOpenings ? 1 : '']);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -600,8 +600,8 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], standard] = data;
-    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, layout: standard === 1 ? 'standard' : 'optimized',
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize] = data;
+    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1,
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
         openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill })) });

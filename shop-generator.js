@@ -7,7 +7,7 @@
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf, renderSheetsPdf } from './demos/06-shop-drawings/sheet.mjs';
+import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
 
@@ -87,6 +87,7 @@ main.addEventListener('input', (e) => {
         if (peak) peak.value = lenText(v / 2);
     } else setPath(onSet ? set : p, onSet ? path.slice(4) : path, v);
     if (kind) { setKind(p, Number(kind[1]), v); renderCatalogue(); renderChips(); }
+    if (path === 'optimizeOpenings') notice(v ? 'Opening optimizer on: the studs on center start where the openings take the fewest stud pieces, every bay within the spacing.' : 'Opening optimizer off: studs on center from the left end.');
     if (/^openings\.\d+\.(widthIn|leftIn)$/.test(path)) syncCatalogueFields(path);
     changed();
 });
@@ -163,6 +164,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'del-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
         'del-op': () => { if (!G.canEdit(p, `openings.${i}`)) return lockedNotice('the model\'s openings'); p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
         center: () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
+        preview: () => flipPreview(),
         'peri-finish': () => finishPerimeter(),
         'peri-undo': () => { peri?.pts.pop(); renderSketch(); renderHint(); },
         'peri-cancel': () => setTool('select'),
@@ -224,7 +226,8 @@ function selectNew(p, i) {
 
 // --- Rendering ---------------------------------------------------------------------------------------------------------
 function renderAll() {
-    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet();
+    unflip();
+    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet(); renderLayoutInfo();
     fit(); refresh(true);
 }
 let refreshTimer = 0;
@@ -322,26 +325,21 @@ function renderCore() {
             ${memberCard({ path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
                 options: [{ value: '', label: `Same as bottom track: ${bottom}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${bottom}` })}
             ${memberCard({ path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud'),
-                extra: `<div class="spacing"><label>@ ${spacing}</label>${layoutPick(p)}</div>` })}
+                extra: `<div class="spacing"><label>@ ${spacing}</label></div>` })}
             ${memberCard({ path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
                 options: [{ value: '', label: `Matches the stud: ${matching}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${matching}` })}
         </div>`;
 }
-// The stud layout: optimized around the openings (the first stud placed so they take the fewest stud pieces), or on
-// center from the left end; what it comes to.
-function layoutPick(p) {
-    return `<select data-pick="layout" aria-label="Stud layout" title="Where the studs on center start">
-            <option value="optimized" ${p.layout !== 'standard' ? 'selected' : ''}>Layout: optimized</option>
-            <option value="standard" ${p.layout === 'standard' ? 'selected' : ''}>Layout: from the left end</option></select>
-        <small class="mdesc" id="layout-info"></small>`;
-}
+// The opening optimizer's switch on the sketch (off: studs on center from the left end), and what it comes to.
 function renderLayoutInfo() {
-    const el = main.querySelector('#layout-info'), p = cur();
+    const box = main.querySelector('[data-f="optimizeOpenings"]'), el = main.querySelector('#opt-info'), p = cur();
+    if (box) { box.checked = !!p.optimizeOpenings; box.closest('.opt-toggle').classList.toggle('on', !!p.optimizeOpenings); }
     if (!el) return;
     let info = null;
     try { if (!G.panelErrors(p).length) info = G.layoutInfo(p); } catch { /* inputs to fix */ }
     const saved = info && info.standardPieces - info.pieces;
-    el.textContent = info ? `first stud ${inch(info.start)} from the left${info.optimized ? (saved > 0 ? ` · ${saved} fewer stud piece${saved === 1 ? '' : 's'}` : saved < 0 ? ' · keeps every bay within the spacing' : ' · same as from the end') : ''}` : '';
+    el.textContent = !info ? '' : !info.optimized ? (info.standardPieces > 0 ? 'off: on center from the left end' : '')
+        : `first stud ${inch(info.start)}${saved > 0 ? ` · ${saved} fewer piece${saved === 1 ? '' : 's'}` : saved < 0 ? ' · every bay within the spacing' : ' · nothing to gain here'}`;
 }
 
 // One member of an opening (its own, or the panel's default with o null): the list starts with the default.
@@ -402,9 +400,8 @@ function pickMember(path, value) {
     const p = cur();
     if (path === 'members.stud') followStud(p.members.stud, value);
     else setPath(p, path, path === 'members.spacingIn' ? Number(value) : value);
-    if (path === 'layout') notice(value === 'standard' ? 'Studs on center from the left end.' : 'Studs placed around the openings: fewest stud pieces, every bay within the spacing.');
     const key = path.split('.').pop();
-    if (value && !value.startsWith('=') && path !== 'members.spacingIn' && path !== 'layout') { recent[recentKey(key)] = G.remember(recent[recentKey(key)], value); store(KEYS.recent, recent); }
+    if (value && !value.startsWith('=') && path !== 'members.spacingIn') { recent[recentKey(key)] = G.remember(recent[recentKey(key)], value); store(KEYS.recent, recent); }
     renderMemberCards(); renderDatalists(); changed();
 }
 // A new on-center stud: the bottom track and the members in the old stud's size follow it.
@@ -615,7 +612,7 @@ function renderSketch() {
 // The framing laid out for the sketch (side A), at most every 120 ms while dragging; nothing while inputs need fixing.
 let laid = { key: '', at: 0, lay: null };
 function centerlines(p, H, top) {
-    const key = JSON.stringify([p.shape, p.openings, p.members, p.layout]);
+    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings]);
     if (key !== laid.key && (!drag || Date.now() - laid.at > 120)) {
         let lay = null;
         try { if (!G.panelErrors(p).length) lay = frameWall(G.frameInputs(p)); } catch { /* inputs to fix */ }
@@ -838,6 +835,31 @@ function renderChips() {
             <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : ''} ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
     }).join('') : '<span class="muted small">No openings yet: add one, or draw it.</span>';
 }
+
+// --- Preview: the sketch turned over to the framing elevation for 5 seconds -----------------------------------------
+let flipTimer = 0;
+function flipPreview() {
+    const wrap = $('#sketch-flip');
+    if (wrap.classList.contains('flipped')) { unflip(); return; }
+    const p = cur(), { errors, layout } = framed(p);
+    if (!layout) { notice(`Nothing to preview yet: ${errors[0]?.message || 'fix the inputs'}`, true); return; }
+    $('#sketch-back').innerHTML = `<div class="back-head"><b>${esc(p.mark)} · framing elevation${p.sideB ? ' (side B)' : ''}</b>
+            <span class="muted small">tags and dimensions as on the sheet · back to the sketch in 5 s, or click</span></div>
+        <div class="back-svg">${renderSheetRegion(layout, sheetInfo(p), 'elevation') /* its own proportions, scaled like an image: nothing past the crop shows */
+            .replace(/width="([\d.]+)in" height="([\d.]+)in"/, (m, w, h) => `width="${Math.round(w * 96)}" height="${Math.round(h * 96)}"`)}</div>
+        <div class="back-timer"><i></i></div>`;
+    wrap.classList.add('flipped');
+    $('#preview-btn').classList.add('on');
+    clearTimeout(flipTimer);
+    flipTimer = setTimeout(unflip, 5000);
+}
+function unflip() {
+    clearTimeout(flipTimer);
+    main.querySelector('#sketch-flip')?.classList.remove('flipped');
+    main.querySelector('#preview-btn')?.classList.remove('on');
+}
+document.getElementById('sketch-back').addEventListener('click', unflip);
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && main.querySelector('#sketch-flip.flipped')) unflip(); });
 
 // --- The sheet ---------------------------------------------------------------------------------------------------------
 // No QR code on these sheets: a panel typed in here has no page of its own, and a link holding the whole panel makes a
