@@ -126,6 +126,30 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
     return pdfFile(objects, 7);
 }
 
+// Several shop drawing sheets in one file (the Panel Shop Generator's set): pages [{ ops, widthIn, heightIn }], each page
+// its own size; the logo shared by every page. Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, 6 logo (optional), then
+// each page and its content, then the JPEG data URL images.
+export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}) {
+    const P = 72, images = [], n = pages.length, first = logo ? 7 : 6;
+    const streams = pages.map(({ ops, widthIn, heightIn }) => latin1(drawOps(ops, { P, Hpt: heightIn * P, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(heightIn * P) + ' re f', '1 J 1 j'], images, logo }).join('\n')));
+    const xobjects = [...(logo ? ['/Im1 6 0 R'] : []), ...images.map((im, i) => `/${im.name} ${first + 2 * n + i} 0 R`)].join(' ');
+    const objects = [
+        latin1('<< /Type /Catalog /Pages 2 0 R >>'),
+        latin1(`<< /Type /Pages /Kids [${pages.map((_, k) => `${first + 2 * k} 0 R`).join(' ')}] /Count ${n} >>`),
+        latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
+        latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
+        latin1(`<< /Title ${pdfString(title)} /Producer (CAS BIM Web Viewer) >>`),
+    ];
+    if (logo) objects.push(imageObject({ width: logo.width, height: logo.height, bytes: logo.jpeg }));
+    streams.forEach((content, k) => {
+        const { widthIn, heightIn } = pages[k];
+        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(heightIn * P)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''} >> /Contents ${first + 2 * k + 1} 0 R >>`));
+        objects.push([latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')]);
+    });
+    for (const im of images) objects.push(imageObject(im));
+    return pdfFile(objects, 5);
+}
+
 // Several pages of the same primitives (a report): pages, one ops list each; JPEG data URL images (photos, plans).
 // Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, then each page and its content, then the images.
 export function toPdfPages(pages, { widthIn = 8.5, heightIn = 11, title = 'Report' } = {}) {

@@ -1,47 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
     <meta charset="UTF-8">
     <meta name="robots" content="noindex, nofollow">
     <script type="importmap">{"imports":{"./config.js":"./config.js?v=913c5850e0","./frame-move.mjs":"./frame-move.mjs?v=448d85503e","./helpers.js":"./helpers.js?v=3e6223a837","./hits.js":"./hits.js?v=2b923f1d72","./main.js":"./main.js?v=8c9ce0fccd","./p6-converter.js":"./p6-converter.js?v=e005c232ef","./p6-keywords.mjs":"./p6-keywords.mjs?v=eca11092ea","./panel.js":"./panel.js?v=e7aef2993a","./panels.js":"./panels.js?v=210f4be1e5","./plan-pop.mjs":"./plan-pop.mjs?v=8d90c9df15","./revizto-concept.js":"./revizto-concept.js?v=b5828fe3dd","./revizto.js":"./revizto.js?v=42094f7eec","./schedule-store.mjs":"./schedule-store.mjs?v=5635fdfd0b","./shop-generator.js":"./shop-generator.js?v=39ea14030f","./state-merge.mjs":"./state-merge.mjs?v=e829f31b72","./takeoff.js":"./takeoff.js?v=847e3ad8af","./toolbar.js":"./toolbar.js?v=245cff1477","./tools.js":"./tools.js?v=de86ce0fac","./viewer.js":"./viewer.js?v=da52f99168","./views.js":"./views.js?v=b4af56c2b7","./demos/01-wall-types/extension.js":"./demos/01-wall-types/extension.js?v=1f85e9ce49","./demos/02-takeoff/breakdown.mjs":"./demos/02-takeoff/breakdown.mjs?v=e9595bd4e8","./demos/02-takeoff/calc.mjs":"./demos/02-takeoff/calc.mjs?v=ebe6431524","./demos/02-takeoff/colors.mjs":"./demos/02-takeoff/colors.mjs?v=b66e36afde","./demos/02-takeoff/criteria.mjs":"./demos/02-takeoff/criteria.mjs?v=ab87e4cfbb","./demos/02-takeoff/extension.js":"./demos/02-takeoff/extension.js?v=ae8b62af0e","./demos/03-progress/all-plans.js":"./demos/03-progress/all-plans.js?v=eebb3eaec8","./demos/03-progress/extension.js":"./demos/03-progress/extension.js?v=16eb5bf508","./demos/03-progress/p6.mjs":"./demos/03-progress/p6.mjs?v=5f1b75540c","./demos/03-progress/schedule-views.js":"./demos/03-progress/schedule-views.js?v=9effe7e4b2","./demos/04-punch/extension.js":"./demos/04-punch/extension.js?v=29ad944ad9","./demos/04-punch/punch.mjs":"./demos/04-punch/punch.mjs?v=5442286ba2","./demos/04-punch/report.mjs":"./demos/04-punch/report.mjs?v=753fc38ab5","./demos/04-punch/revizto-map.mjs":"./demos/04-punch/revizto-map.mjs?v=8b46f98105","./demos/05-field-layout/extension.js":"./demos/05-field-layout/extension.js?v=67ae9c29be","./demos/06-shop-drawings/conditions.mjs":"./demos/06-shop-drawings/conditions.mjs?v=16e4a3451e","./demos/06-shop-drawings/context.js":"./demos/06-shop-drawings/context.js?v=9a7f736f42","./demos/06-shop-drawings/extension.js":"./demos/06-shop-drawings/extension.js?v=3adf19387d","./demos/06-shop-drawings/generator.mjs":"./demos/06-shop-drawings/generator.mjs?v=9fcedce85d","./demos/06-shop-drawings/iso.mjs":"./demos/06-shop-drawings/iso.mjs?v=6a8d664809","./demos/06-shop-drawings/keyplan.js":"./demos/06-shop-drawings/keyplan.js?v=92ad4810da","./demos/06-shop-drawings/panels.mjs":"./demos/06-shop-drawings/panels.mjs?v=4e295284d1","./demos/06-shop-drawings/pdf.mjs":"./demos/06-shop-drawings/pdf.mjs?v=7dcbf43164","./demos/06-shop-drawings/prefab.mjs":"./demos/06-shop-drawings/prefab.mjs?v=c1f95a0cc3","./demos/06-shop-drawings/sheet.mjs":"./demos/06-shop-drawings/sheet.mjs?v=96effc5dd5","./demos/07-explorer/capabilities.mjs":"./demos/07-explorer/capabilities.mjs?v=d09e575584","./demos/07-explorer/extension.js":"./demos/07-explorer/extension.js?v=ebd96408ae","./demos/07-explorer/review.js":"./demos/07-explorer/review.js?v=f158f695e3","./demos/07-explorer/two-d.js":"./demos/07-explorer/two-d.js?v=98412a17e8","./demos/08-panel-shipper/extension.js":"./demos/08-panel-shipper/extension.js?v=54090c1b78","./demos/08-panel-shipper/shipping.mjs":"./demos/08-panel-shipper/shipping.mjs?v=9950302d69","./demos/08-panel-shipper/truck.mjs":"./demos/08-panel-shipper/truck.mjs?v=e7fc89b6fc","./demos/09-panel-tracker/extension.js":"./demos/09-panel-tracker/extension.js?v=8fb00d1053","./demos/09-panel-tracker/tracker.mjs":"./demos/09-panel-tracker/tracker.mjs?v=62c23e1c51","./demos/common/framing.mjs":"./demos/common/framing.mjs?v=6106dd581a","./demos/common/p6-pdf.mjs":"./demos/common/p6-pdf.mjs?v=5dece5e2ba","./demos/common/pdf-reader.mjs":"./demos/common/pdf-reader.mjs?v=18658e09d0","./demos/common/qr.mjs":"./demos/common/qr.mjs?v=d999acbdd2","./demos/common/table-export.mjs":"./demos/common/table-export.mjs?v=3b66df20be","./demos/common/wallscan.js":"./demos/common/wallscan.js?v=9285ab7058","./demos/common/xlsx.mjs":"./demos/common/xlsx.mjs?v=57943939a7"}}</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CAS BIM Web Viewer</title>
-    <!-- The site root opens the home page; the viewer is index.html?demo=... (or a model link with #urn). -->
-    <script>if (!new URLSearchParams(location.search).has('demo') && !location.hash) location.replace('home.html');</script>
-    <!-- The Viewer SDK must be loaded from the Autodesk-hosted URL (do not bundle it). -->
-    <link rel="stylesheet" href="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/style.css">
-    <link rel="stylesheet" href="main.css?v=595f7f00a7">
+    <title>Panel Shop Generator · CAS BIM</title>
+    <!-- Standalone tool: no model, no viewer. Panels typed in or drawn, framed and drawn like the model's panel shops
+         (demos/06-shop-drawings: generator.mjs, sheet.mjs). Everything stays in this browser (and the JSON file). -->
+    <link rel="stylesheet" href="panel.css?v=bd61b63ef7">
+    <link rel="stylesheet" href="shop-generator.css?v=435658867a">
 </head>
-
 <body>
-    <header id="header">
-        <span class="title-group"><a class="title" href="home.html" title="Home">CAS BIM Web Viewer</a>
-            <span class="dock-switch" role="group" aria-label="Where the info panel goes">
-                <button class="side" data-dock-mode="side" title="Info panel beside the 3D and 2D views"><i></i>Side by side</button><button class="below" data-dock-mode="bottom" title="Info panel below the 3D and 2D views"><i></i>Info below</button>
-            </span></span>
-        <label>Demo <select id="demos"></select></label>
-        <label>Model <select id="models"></select></label>
-        <label>Level <select id="levels"><option value="">All levels</option></select></label>
-        <a class="shops-link" href="panels.html" title="Every framing shop drawing, one click each">Panel shops</a>
-        <span class="layout" role="group" aria-label="Layout">
-            <button data-layout="3d" title="3D model only">3D</button><button data-layout="split" title="3D and 2D side by side">Split</button><button data-layout="2d" title="2D plan or sheet only">2D</button>
-        </span>
-    </header>
-    <main id="main">
-        <div id="views" class="layout-split">
-            <div id="preview"></div>
-            <section id="pane2d">
-                <div class="pane2d-bar"><label>Plan / sheet <select id="sheets"></select></label> <button id="master" disabled>☆ Set as master</button> <span id="sheet-status" role="status"></span></div>
-                <div id="viewer2d"></div>
+    <header class="bar"><a class="brand" href="home.html">CAS BIM</a><span>Panel Shop Generator</span><span class="standalone">Standalone tool · no model needed</span></header>
+    <main id="gen">
+        <section class="card intro">
+            <div><span class="eyebrow">SHOP DRAWINGS WITHOUT A MODEL</span><h1>Panel Shop Generator</h1>
+                <p>Type a panel's size, or draw its shape. Add its doors and windows and pick its members. You get the framing shop drawing (cut list, member tags and dimensions) as you type, ready to download as a PDF.</p>
+                <p class="muted">Your panels, and the sizes and members you have used, are kept in this browser. Use Export JSON to keep or share a set.</p></div>
+            <div class="intro-actions"><button data-act="new">+ New panel</button><button class="secondary" data-act="copy">Duplicate this panel</button></div>
+        </section>
+        <p id="notice" class="notice" role="status" aria-live="polite" hidden></p>
+        <div class="gen-grid">
+            <div class="gen-form">
+                <section class="card" id="panel-card"></section>
+                <section class="card" id="shape-card"></section>
+                <section class="card" id="openings-card"></section>
+                <section class="card" id="members-card"></section>
+            </div>
+            <section class="card gen-preview" aria-label="Shop drawing">
+                <div class="row pv-head"><h2 id="pv-title">Shop drawing</h2><span class="spacer"></span>
+                    <label class="toggle" title="Draw the panel as seen from its other face"><input type="checkbox" data-f="sideB"> Side B</label>
+                    <button data-act="pdf">Download PDF</button><button class="secondary" data-act="link" title="A link that opens this panel in the generator">Copy link</button></div>
+                <div id="pv-check"></div>
+                <div class="sheet" id="pv-sheet"></div>
             </section>
         </div>
-        <div id="dock-split" role="separator" aria-orientation="horizontal" aria-label="Drag to give the model or the tables more room" tabindex="0" title="Drag to resize (double-click to reset)"></div>
-        <aside id="panel"></aside>
+        <section class="card" id="set-card"></section>
+        <div id="datalists" hidden></div>
+        <input type="file" id="import-file" accept=".json,application/json" hidden>
     </main>
-    <div id="overlay"></div>
-    <script src="https://developer.api.autodesk.com/modelderivative/v2/viewers/7.*/viewer3D.js"></script>
-    <script src="main.js?v=8c9ce0fccd" type="module"></script>
+    <script type="module" src="shop-generator.js?v=39ea14030f"></script>
 </body>
-
 </html>

@@ -75,7 +75,9 @@ export function thumbnailSvg(layout) {
     const parts = layout.openings.map(o => `<rect x="${o.left}" y="${y(o.top)}" width="${o.right - o.left}" height="${o.top - o.bottom}" fill="#f3f4f6" stroke="#9aa0a6" stroke-width="${pad * 0.15}"/>`);
     for (const m of layout.members) {
         const fill = m.orient === 'h' ? (m.role === 'head track' || m.role === 'sill track' ? '#f4a7a0' : '#f2d64b') : '#ffffff';
-        parts.push(`<rect x="${m.x}" y="${y(m.y + m.h)}" width="${m.w}" height="${m.h}" fill="${fill}" stroke="#555" stroke-width="${pad * 0.12}"/>`);
+        parts.push(m.pts // under a sloped top: its outline
+            ? `<polygon points="${m.pts.map(([px, py]) => `${px},${y(py)}`).join(' ')}" fill="${fill}" stroke="#555" stroke-width="${pad * 0.12}"/>`
+            : `<rect x="${m.x}" y="${y(m.y + m.h)}" width="${m.w}" height="${m.h}" fill="${fill}" stroke="#555" stroke-width="${pad * 0.12}"/>`);
     }
     return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${-pad} ${-pad} ${L + 2 * pad} ${H + 2 * pad}" preserveAspectRatio="xMidYMid meet">${parts.join('')}</svg>`;
 }

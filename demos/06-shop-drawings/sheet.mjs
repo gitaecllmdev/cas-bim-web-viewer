@@ -5,8 +5,8 @@
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
 // Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
-import { fmtFtIn, FUNCTIONS, isDoor } from '../common/framing.mjs';
-import { toPdf, textWidth } from './pdf.mjs';
+import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText } from '../common/framing.mjs';
+import { toPdf, toPdfSheets, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
 import { prefabState, PREFAB_COLORS } from './prefab.mjs';
@@ -109,7 +109,8 @@ ${body}
 //   for exports), sheet ('auto' default, or a SHEETS key), prefab ({ [mark]: inches }: the PREFAB LENGTH column,
 //   prefab.mjs prefabFor), prefabEdit (on screen only: -/+ click areas in that column), prefabMembers (on screen only:
 //   members of a mark with a prefab length filled blue / green in the elevation), keyplan ({ href: JPEG data URL, w, h
-//   in pixels, level }: the key plan in the title block, captured by Demo 6) }.
+//   in pixels, level }: the key plan in the title block, captured by Demo 6), keyplanNote (the key plan cell's text when
+//   there is none), qrLabel (the text under the QR code) }.
 //   The framing conditions go on the panel page, not the sheet.
 //   A flipped layout (flipLayout) is drawn as seen from side B.
 export function renderSheet(layout, info) {
@@ -129,6 +130,11 @@ export function renderSheetPdf(layout, info, logo = null) {
     return toPdf(ops, { widthIn: ops.size.W, heightIn: ops.size.H, logo, title: `${info.mark} framing shop drawing` });
 }
 
+// Several sheets in one vector PDF, one page each (each its own size): items [{ layout, info }].
+export function renderSheetsPdf(items, logo = null, title = 'Framing shop drawings') {
+    return toPdfSheets(items.map(({ layout, info }) => { const ops = sheetOps(layout, info); return { ops, widthIn: ops.size.W, heightIn: ops.size.H }; }), { logo, title });
+}
+
 export function sheetOps(layout, info) {
     const { lengthIn: L, heightIn: HT, members, cutList, openings } = layout;
     const size = sheetSize(layout, info.sheet), { W, H } = size;
@@ -136,7 +142,9 @@ export function sheetOps(layout, info) {
     const [s, scaleLabel] = pickScale(L, HT, areaW - 1.65, maxH); // leaves 0.8" each side for the elevation ordinates
     const tbY = H - 1.45, tbH = 1.2; // title block
     const out = [];
-    const hi = (m) => info.highlight != null && m.mark === info.highlight;
+    const hi = (m) => info.highlight != null && (m.mark === info.highlight || !!m.marks?.includes(info.highlight));
+    const tagOf = (m) => (m.marks?.length > 1 ? m.marks.join('+') : m.mark); // a built-up member: every part's label
+    const T = layout.top || null, topY = (x) => topAt(T, x, HT); // a sloped top (framing.mjs wallTop)
 
     // Border
     out.push(rect(0.25, 0.25, W - 0.5, H - 0.5, { width: 0.02 }));
@@ -232,12 +240,13 @@ export function sheetOps(layout, info) {
     const stripHt = Math.max(0.1, Math.min(0.25, (layout.studIn || 6) * s));
     const bandUp = Math.min(12, (0.75 - stripHt - 0.1) / s), bandDown = Math.min(12, 0.3 / s);
     const ctxX = (x) => (layout.flipped ? L - x : x);
-    const hTagY = (m) => (m.role === 'top track' || m.role === 'sill track' ? Y(m.y + m.h) - 0.035 : Y(m.y) + 0.095);
+    const hTagY = (m) => (T && m.role === 'top track' ? Y(topY(m.x + m.w / 2)) - 0.035
+        : m.role === 'top track' || m.role === 'sill track' ? Y(m.y + m.h) - 0.035 : Y(m.y) + 0.095);
     const textBox = (x, y, str, size, anchor) => {
         const w = textWidth(str, size, false), x0 = anchor === 'middle' ? x - w / 2 : anchor === 'end' ? x - w : x;
         return { x0: x0 - 0.02, x1: x0 + w + 0.02, y0: y - size * 0.85, y1: y + size * 0.25 };
     };
-    const taken = members.filter(m => m.orient === 'h').map(m => textBox(X(m.x + m.w / 2), hTagY(m), m.mark, 0.075, 'middle'));
+    const taken = members.filter(m => m.orient === 'h').map(m => textBox(X(m.x + m.w / 2), hTagY(m), tagOf(m), 0.075, 'middle'));
     const isFree = (bx) => !taken.some(t => bx.x0 < t.x1 && t.x0 < bx.x1 && bx.y0 < t.y1 && t.y0 < bx.y1);
     // The first of the candidate spots [x, anchor] where the text misses everything placed so far; null if none.
     const place = (str, size, y, spots) => {
@@ -300,9 +309,11 @@ export function sheetOps(layout, info) {
     const prefabOf = (m) => (info.prefabMembers && rowOf.has(m.mark) ? prefabState(rowOf.get(m.mark), info.prefab?.[m.mark]) : null);
     for (const m of members) {
         const st = prefabOf(m);
-        out.push(rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
+        const look = hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
             : st ? { fill: PREFAB_COLORS[`${st}Member`], stroke: PREFAB_COLORS[st], width: 0.012 }
-                : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 }));
+                : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 };
+        // Under a sloped top: the member's outline (its top cut to the slope).
+        out.push(m.pts ? { t: 'poly', pts: m.pts.map(([x, y]) => [X(x), Y(y)]), ...look } : rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, look));
     }
     // Tags on every member. Verticals: at mid-height, beside the stud (no box over it, so the member reads unbroken):
     // left of it, or right of it when a stud stands right against its left side (a jamb pair); level text when the
@@ -320,18 +331,30 @@ export function sheetOps(layout, info) {
         };
         const right = gap(-1) < 0.08 && gap(1) > gap(-1);
         if (level) {
-            out.push(text(right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025, my + 0.025, m.mark, { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
+            out.push(text(right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025, my + 0.025, tagOf(m), { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
         } else {
             // Rotated a quarter turn, the letters stand to the left of the baseline.
-            out.push(text(right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, my, m.mark, { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
+            out.push(text(right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, my, tagOf(m), { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
         }
     }
     // Horizontals: centered on the member (hTagY: outside the panel for its tracks, inside the opening for heads and sills).
     for (const m of members.filter(m => m.orient === 'h')) {
-        out.push(text(X(m.x + m.w / 2), hTagY(m), m.mark, { size: 0.075, anchor: 'middle', weight: 'bold', fill: hi(m) ? COLORS.hiStroke : COLORS.trackStroke }));
+        out.push(text(X(m.x + m.w / 2), hTagY(m), tagOf(m), { size: 0.075, anchor: 'middle', weight: 'bold', fill: hi(m) ? COLORS.hiStroke : COLORS.trackStroke }));
+    }
+    // A sloped top: the height at each peak or break, and each sloped run's pitch along it (a third of the way along,
+    // clear of the track's tag in the middle).
+    for (const [x, h] of T ? T.slice(1, -1) : []) {
+        out.push(line(X(x), Y(h) - 0.05, X(x), Y(h) - 0.13, { stroke: COLORS.dim, width: 0.006 }));
+        out.push(text(X(x), Y(h) - 0.16, fmtFtIn(h), { size: 0.08, anchor: 'middle', weight: 'bold', fill: COLORS.dim }));
+    }
+    for (let i = 1; T && i < T.length; i++) {
+        const [x0, h0] = T[i - 1], [x1, h1] = T[i], k = (h1 - h0) / (x1 - x0);
+        if (!k) continue;
+        const at = x0 + (x1 - x0) / 3;
+        out.push(text(X(at), Y(topY(at)) - 0.06, `SLOPE ${pitchText(k)}`, { size: 0.065, anchor: 'middle', rotate: (-Math.atan(k) * 180) / Math.PI, fill: COLORS.dim }));
     }
     // Panel mark, above mid-height so it does not cover the stud tags there
-    const pmX = X(L / 2), pmY = Y(HT * 0.72);
+    const pmX = X(L / 2), pmY = Y((T ? topY(L / 2) : HT) * 0.72);
     out.push(rect(pmX - 0.55, pmY - 0.14, 1.1, 0.22, { fill: 'white', stroke: '#000', width: 0.008 }));
     out.push(text(pmX, pmY + 0.03, info.mark, { size: 0.13, anchor: 'middle', weight: 'bold' }));
 
@@ -343,7 +366,7 @@ export function sheetOps(layout, info) {
         if (!same) elevations.push({ y, side, fromX });
     };
     for (const m of members.filter(m => m.orient === 'h')) {
-        if (m.role === 'top track') addElev(m.y + m.h, 'both');
+        if (m.role === 'top track') { if (!T) addElev(m.y + m.h, 'both'); } // a sloped top: its height at each end, below
         else if (m.role === 'bottom track') { addElev(m.y, 'both'); addElev(m.y + m.h, 'both'); }
         else {
             const y = m.role === 'head track' ? m.y : m.y + m.h; // head: underside (rough opening top); sill: top (rough opening bottom)
@@ -351,6 +374,7 @@ export function sheetOps(layout, info) {
             addElev(y, left ? 'left' : 'right', left ? m.x : m.x + m.w);
         }
     }
+    if (T) { addElev(topY(0), 'left'); addElev(topY(L), 'right'); }
     const ordColumn = (side) => {
         const list = elevations.filter(e => e.side === 'both' || e.side === side).sort((a, b) => a.y - b.y);
         const edge = side === 'left' ? X(0) : X(L), dir = side === 'left' ? -1 : 1, reach = 0.8;
@@ -372,7 +396,7 @@ export function sheetOps(layout, info) {
     const stripH = Math.max(0.1, Math.min(0.25, (layout.studIn || 6) * s));
     const topStrip = elevTop - 0.75, botStrip = elevBottom + 0.4;
     const trackLeg = members.find(m => m.role === 'top track')?.h ?? 1.25;
-    const studsAt = (atTop) => members.filter(m => m.orient === 'v' && (atTop ? m.y + m.h >= HT - trackLeg - 0.01 : m.y <= trackLeg + 0.01));
+    const studsAt = (atTop) => members.filter(m => m.orient === 'v' && (atTop ? (T ? m.atTop : m.y + m.h >= HT - trackLeg - 0.01) : m.y <= trackLeg + 0.01));
     // A C stud in plan: web across the track, flanges along its two faces, lips turned in. The web goes on the side of
     // the opening or panel end the stud closes (jamb and end studs), else on its left face.
     const studSymbol = (m, y0) => {
@@ -384,13 +408,14 @@ export function sheetOps(layout, info) {
         return [line(xw, top, xw, bot, st), line(xw, top, xf, top, st), line(xw, bot, xf, bot, st), line(xf, top, xf, top + lip, st), line(xf, bot, xf, bot - lip, st)];
     };
     const plan = (y0, atTop) => {
-        const segs = atTop ? members.filter(m => m.role === 'top track' && m.y + m.h >= HT - 0.01) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
+        const segs = atTop ? members.filter(m => m.role === 'top track' && (T || m.y + m.h >= HT - 0.01)) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
         for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke }));
         for (const m of studsAt(atTop)) out.push(...studSymbol(m, y0));
         out.push(text(X(0) - 0.08, y0 + stripH / 2 + 0.03, atTop ? 'TOP' : 'BTM', { size: 0.075, anchor: 'end', weight: 'bold' }));
         // Ordinates: both wall ends, the studs (left face), and on the bottom plan the opening edges. Where two would
         // overlap, the wall end wins, then the opening edge, then the stud.
         const marks = [{ x: 0, rank: 3 }, { x: L, rank: 3 }, ...studsAt(atTop).map(m => ({ x: m.x, rank: 1 }))];
+        if (atTop && T) for (const [x] of T.slice(1, -1)) marks.push({ x, rank: 2, bold: true }); // where each peak or break is
         if (!atTop) {
             for (const o of openings) {
                 marks.push({ x: o.left, rank: 2, opening: true }, { x: o.right, rank: 2, opening: true });
@@ -409,7 +434,7 @@ export function sheetOps(layout, info) {
             const x = X(mk.x), fill = mk.opening ? COLORS.openingDim : COLORS.dim;
             if (atTop) {
                 out.push(line(x, y0 - 0.06, x, y0, { stroke: fill, width: 0.005 }));
-                out.push(text(x + 0.03, y0 - 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, fill }));
+                out.push(text(x + 0.03, y0 - 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, fill, weight: mk.bold ? 'bold' : 'normal' }));
             } else {
                 out.push(line(x, y0 + stripH, x, y0 + stripH + 0.06, { stroke: fill, width: 0.005 }));
                 out.push(text(x + 0.03, y0 + stripH + 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, anchor: 'end', fill, weight: mk.opening ? 'bold' : 'normal' }));
@@ -453,7 +478,7 @@ export function sheetOps(layout, info) {
         out.push({ t: 'image', id: 'keyplan', href: kp.href, px: [kp.w, kp.h], x: kx + 0.06, y: tbY + 0.18, w: W - 7.1 - kx - 0.12, h: tbH - 0.24 });
         out.push(rect(kx + 0.06, tbY + 0.18, W - 7.1 - kx - 0.12, tbH - 0.24, { width: 0.006, stroke: '#9aa0a6' }));
     } else {
-        out.push(text((kx + W - 7.1) / 2, tbY + 0.68, 'PICK THE WALL IN THE VIEWER TO ADD IT', { size: 0.06, anchor: 'middle', fill: '#8d8d8d' }));
+        out.push(text((kx + W - 7.1) / 2, tbY + 0.68, info.keyplanNote || 'PICK THE WALL IN THE VIEWER TO ADD IT', { size: 0.06, anchor: 'middle', fill: '#8d8d8d' }));
     }
     field(W - 7.0, tbY + 0.2, 'STUDS', `${layout.studType} @ ${layout.spacingIn}" O.C.`);
     field(W - 7.0, tbY + 0.6, 'TRACK', layout.trackType);
@@ -469,7 +494,7 @@ export function sheetOps(layout, info) {
         // QR code to the panel page (drawing, conditions, links, comments): black modules on white.
         const qr = qrEncode(info.qrUrl), qs = 0.92, qx = W - 2.85 + (1.2 - qs) / 2, qy = tbY + 0.07, m = qs / qr.size;
         for (const r of qrRects(qr)) out.push(rect(qx + r.x * m, qy + r.y * m, r.w * m, r.h * m, { fill: '#000000', stroke: 'none', width: 0 }));
-        out.push(text(W - 2.25, tbY + 1.12, 'SCAN: PANEL PAGE', { size: 0.055, anchor: 'middle', weight: 'bold' }));
+        out.push(text(W - 2.25, tbY + 1.12, info.qrLabel || 'SCAN: PANEL PAGE', { size: 0.055, anchor: 'middle', weight: 'bold' }));
     }
     out.push(text(W - 1.55, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
     out.push(text(W - 0.95, tbY + 0.7, info.mark, { size: 0.2, anchor: 'middle', weight: 'bold' }));

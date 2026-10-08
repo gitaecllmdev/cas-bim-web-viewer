@@ -3,7 +3,7 @@
 // side A, from the left and above; one label per cut-list mark; the openings outlined. The view is cropped to the
 // members and fitted in a box on the sheet, so it fills its space whatever the panel's shape.
 // Returns sheet primitives (sheet.mjs): 'poly' (filled faces), 'line' (edges, openings), 'rect' + 'text' (labels).
-import { fmtFtIn, isDoor } from '../common/framing.mjs';
+import { fmtFtIn, isDoor, topAt } from '../common/framing.mjs';
 
 const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0' };
 const STUD = '#e4e4e4';
@@ -35,6 +35,47 @@ function boxFaces([x0, y0, z0], [x1, y1, z1]) {
     ];
 }
 
+// A member with an outline (m.pts: under a sloped top) as a prism D deep, in pieces SEG long along it like the boxes:
+// the outline cut to each piece, its front and back faces and one side face per edge. Cut faces between pieces are
+// inside the member: never drawn.
+function outlineFaces(m, D, project, eye) {
+    const long = m.orient === 'h' ? 0 : 1, lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
+    const pieces = Math.max(1, Math.ceil(len / SEG - 1e-9));
+    const color = FUNC_COLOR[m.func] || STUD;
+    const half = (P, v, keepAbove) => { // the part of polygon P on one side of the line (axis long) = v
+        const out = [], f = (p) => (keepAbove ? p[long] - v : v - p[long]);
+        P.forEach((p, i) => {
+            const q = P[(i + 1) % P.length], fp = f(p), fq = f(q);
+            if (fp >= 0) out.push(p);
+            if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]); }
+        });
+        return out;
+    };
+    const faces = [];
+    for (let i = 0; i < pieces; i++) {
+        const a = lo + (len * i) / pieces, b = lo + (len * (i + 1)) / pieces;
+        const P = half(half(m.pts, a, true), b, false);
+        if (P.length < 3) continue;
+        const cut = (p) => (i > 0 && Math.abs(p[long] - a) < 1e-6) || (i < pieces - 1 && Math.abs(p[long] - b) < 1e-6);
+        const polys = [{ n: [0, 0, 1], k: 1.0, c: P.map(([x, y]) => [x, y, D]) }, { n: [0, 0, -1], k: 0.7, c: [...P].reverse().map(([x, y]) => [x, y, 0]) }];
+        P.forEach((p, j) => {
+            const q = P[(j + 1) % P.length];
+            if (cut(p) && cut(q)) return; // the cut between two pieces
+            const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy);
+            if (l < 1e-9) return;
+            const n = [dy / l, -dx / l, 0], k = n[1] > 0.5 ? 1.06 : n[1] < -0.5 ? 0.65 : n[0] < 0 ? 0.82 : 0.75;
+            polys.push({ n, k, c: [[p[0], p[1], D], [p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], D]] });
+        });
+        for (const f of polys) {
+            const centroid = f.c.reduce((s, p) => s.map((v, k) => v + p[k] / f.c.length), [0, 0, 0]);
+            if (dot(f.n, sub(eye, centroid)) <= 0) continue;
+            const edges = f.c.map((p, k) => [p, f.c[(k + 1) % f.c.length]]).filter(([p, q]) => !(cut(p) && cut(q)));
+            faces.push({ pts: f.c.map(project), edges: edges.map(([p, q]) => [project(p), project(q)]), fill: shade(color, f.k), depth: Math.hypot(...sub(centroid, eye)) });
+        }
+    }
+    return faces;
+}
+
 // layout: frameWall() output; box: { x, y, w, h } on the sheet (inches); opts: { flangeIn, highlight }.
 export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}) {
     const { lengthIn: L, heightIn: H, members, openings = [] } = layout;
@@ -50,6 +91,7 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     // Faces of every member, long members in pieces; an edge is drawn only where it is a real edge of the member.
     const faces = [];
     for (const m of members) {
+        if (m.pts) { faces.push(...outlineFaces(m, D, project, eye)); continue; } // under a sloped top
         const long = m.orient === 'h' ? 0 : 1; // the axis the member runs along
         const lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
         const pieces = Math.max(1, Math.ceil(len / SEG - 1e-9));
@@ -79,7 +121,8 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     const labels = [...byMark].map(([mark, ms]) => {
         const sorted = [...ms].sort((a, b) => (a.x - b.x) || (a.y - b.y)), m = sorted[Math.floor(sorted.length / 2)];
         const low = m.orient === 'h' && m.y < 1;
-        const at = m.orient === 'h' ? [m.x + m.w / 2, low ? m.y : m.y + m.h, D] : [m.x, m.y + m.h * 0.62, D];
+        const top = m.role === 'top track' && layout.top ? topAt(layout.top, m.x + m.w / 2, H) : m.y + m.h; // a sloped top track: at its middle
+        const at = m.orient === 'h' ? [m.x + m.w / 2, low ? m.y : top, D] : [m.x, m.y + m.h * 0.62, D];
         return { mark, at: project(at), kind: m.orient === 'h' ? (low ? 'below' : 'above') : 'left', hi: highlight != null && mark === highlight };
     });
     const opens = openings.map(o => ({ o, pts: [[o.left, o.bottom, D], [o.right, o.bottom, D], [o.right, o.top, D], [o.left, o.top, D]].map(project),
