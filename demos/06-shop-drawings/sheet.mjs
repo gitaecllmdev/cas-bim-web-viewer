@@ -5,7 +5,7 @@
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
 // Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
-import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText } from '../common/framing.mjs';
+import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText, openingKind, OPENING_KINDS } from '../common/framing.mjs';
 import { toPdf, toPdfSheets, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
@@ -36,7 +36,7 @@ const COLORS = { track: '#f2d64b', trackStroke: '#6b5a00', stud: '#ffffff', stud
     hi: '#ff8a3d', hiStroke: '#b34700', hiRow: '#ffe3cc', // hi*: the highlighted mark (on-screen preview only)
     openingDim: '#a01818', context: '#e4e4e4', contextText: '#8d8d8d', level: '#5b5b5b' };
 // Member fill by function, as in the CAS legend: tracks yellow, headers and sills salmon, studs light grey.
-const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', EV: '#ededed', SV: '#ededed', SD: '#ededed', CR: '#ededed' };
+const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', HDM: '#f4a7a0', SBM: '#f4a7a0', SBS: '#f4a7a0', EV: '#ededed', SV: '#ededed', SD: '#ededed', CR: '#ededed' };
 
 // Standard architectural scales, largest first: [paper inches per real inch, label].
 const SCALES = [[1 / 8, '1 1/2" = 1\'-0"'], [1 / 12, '1" = 1\'-0"'], [1 / 16, '3/4" = 1\'-0"'], [1 / 24, '1/2" = 1\'-0"'], [1 / 32, '3/8" = 1\'-0"'],
@@ -302,6 +302,12 @@ export function sheetOps(layout, info) {
         out.push(rect(X(o.left), Y(o.top), (o.right - o.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.opening, width: 0.008 }));
         out.push(line(X(o.left), Y(o.top), X(o.right), Y(o.bottom), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
         out.push(line(X(o.left), Y(o.bottom), X(o.right), Y(o.top), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
+        // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
+        const kind = openingKind(o);
+        if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(OPENING_KINDS[kind], 0.06, true) + 0.08) { // when the name fits across it
+            out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(OPENING_KINDS[kind], 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(OPENING_KINDS[kind], 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
+            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), OPENING_KINDS[kind], { size: 0.06, anchor: 'middle', weight: 'bold', fill: COLORS.openingDim }));
+        }
     }
     // Members, colored by function like the CAS legend (on screen, info.prefabMembers: a mark with a prefab length in
     // blue when longer, green when shorter)
@@ -416,11 +422,18 @@ export function sheetOps(layout, info) {
         // overlap, the wall end wins, then the opening edge, then the stud.
         const marks = [{ x: 0, rank: 3 }, { x: L, rank: 3 }, ...studsAt(atTop).map(m => ({ x: m.x, rank: 1 }))];
         if (atTop && T) for (const [x] of T.slice(1, -1)) marks.push({ x, rank: 2, bold: true }); // where each peak or break is
+        if (atTop) { // a steel penetration cuts the top track: its edges, and what it is
+            for (const o of openings.filter(o => o.through)) {
+                marks.push({ x: o.left, rank: 2, opening: true }, { x: o.right, rank: 2, opening: true });
+                out.push(rect(X(o.left), y0 - 0.02, (o.right - o.left) * s, stripH + 0.04, { stroke: COLORS.opening, width: 0.006 }));
+                out.push(text(X((o.left + o.right) / 2), y0 + stripH / 2 + 0.03, 'STEEL', { size: 0.06, anchor: 'middle', fill: COLORS.opening }));
+            }
+        }
         if (!atTop) {
             for (const o of openings) {
                 marks.push({ x: o.left, rank: 2, opening: true }, { x: o.right, rank: 2, opening: true });
                 out.push(rect(X(o.left), y0 - 0.02, (o.right - o.left) * s, stripH + 0.04, { stroke: COLORS.opening, width: 0.006 }));
-                out.push(text(X((o.left + o.right) / 2), y0 + stripH / 2 + 0.03, isDoor(o) ? 'DOOR' : 'WINDOW', { size: 0.06, anchor: 'middle', fill: COLORS.opening }));
+                out.push(text(X((o.left + o.right) / 2), y0 + stripH / 2 + 0.03, { door: 'DOOR', window: 'WINDOW', mep: 'MEP', steel: 'STEEL' }[openingKind(o)], { size: 0.06, anchor: 'middle', fill: COLORS.opening }));
             }
         }
         marks.sort((a, b) => a.x - b.x || b.rank - a.rank);
@@ -434,7 +447,7 @@ export function sheetOps(layout, info) {
             const x = X(mk.x), fill = mk.opening ? COLORS.openingDim : COLORS.dim;
             if (atTop) {
                 out.push(line(x, y0 - 0.06, x, y0, { stroke: fill, width: 0.005 }));
-                out.push(text(x + 0.03, y0 - 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, fill, weight: mk.bold ? 'bold' : 'normal' }));
+                out.push(text(x + 0.03, y0 - 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, fill, weight: mk.bold || mk.opening ? 'bold' : 'normal' }));
             } else {
                 out.push(line(x, y0 + stripH, x, y0 + stripH + 0.06, { stroke: fill, width: 0.005 }));
                 out.push(text(x + 0.03, y0 + stripH + 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, anchor: 'end', fill, weight: mk.opening ? 'bold' : 'normal' }));

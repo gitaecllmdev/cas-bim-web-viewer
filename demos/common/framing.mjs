@@ -42,8 +42,13 @@ export const isDoor = (o) => o.bottom <= 1;
 // CAS shop-drawing function codes (the FUNCTION column of the cut list and the sheet legend).
 export const FUNCTIONS = {
     TTOP: 'TOP TRACK', TBOT: 'BOTTOM TRACK', HDD: 'DOOR HEADER', HDW: 'WINDOW HEADER', SBW: 'WINDOW SILL',
+    HDM: 'MEP OPENING HEADER', SBM: 'MEP OPENING SILL', SBS: 'STEEL OPENING SILL',
     EV: 'END STUD', SV: 'STUD', SD: 'JAMB STUD', CR: 'CRIPPLE STUD',
 };
+// Opening kinds beyond doors and windows (opening.kind): an MEP opening (framed like a window) and a steel penetration
+// (opening.through: up through the top of the wall, the top track cut there; jambs and a sill, no header).
+export const OPENING_KINDS = { door: 'DOOR', window: 'WINDOW', mep: 'MEP OPENING', steel: 'STEEL OPENING' };
+export const openingKind = (o) => (o.kind && OPENING_KINDS[o.kind] ? o.kind : o.through ? 'steel' : isDoor(o) ? 'door' : 'window');
 const FUNC_OF_ROLE = { 'top track': 'TTOP', 'bottom track': 'TBOT', 'sill track': 'SBW', 'end stud': 'EV', stud: 'SV', 'jamb stud': 'SD', cripple: 'CR' };
 
 // The same panel seen from its other face (side B): mirrored left to right, labels unchanged. Ordinates on the
@@ -176,7 +181,7 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     let first = null;
     for (let i = 0; i < lifts; i++) {
         const y0 = i * liftH;
-        const ops = openings.map(o => ({ ...o, bottom: Math.max(0, o.bottom - y0), top: Math.min(liftH, o.top - y0) })).filter(o => o.top - o.bottom > 0);
+        const ops = openings.map(o => ({ ...o, bottom: Math.max(0, o.bottom - y0), top: o.through ? liftH : Math.min(liftH, o.top - y0) })).filter(o => o.top - o.bottom > 0); // through the top: whatever its top says
         const p = framePanel({ lengthIn: L, heightIn: liftH, openings: ops, ...panel, top: T });
         first ??= p;
         for (const m of p.members) members.push({ ...m, y: m.y + y0, ...(m.pts ? { pts: m.pts.map(([x, y]) => [x, y + y0]) } : {}), lift: i + 1 });
@@ -198,11 +203,14 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
 
 // Openings clipped to the panel: at least 6" each way, and never into the top track (a scanned gap that runs to the
 // top of the wall is an opening up to the underside of the top track; under a sloped top, its lowest point over the
-// opening). Other fields (an opening's framing) are kept.
+// opening). An opening through the top (o.through: a steel penetration) runs to the top of the wall, its highest point
+// over the opening. Other fields (an opening's framing) are kept.
 function clipOpenings(openings, L, H, trackLegIn, top = null) {
     return openings.map(o => {
         const left = round16(Math.max(0, o.left)), right = round16(Math.min(L, o.right));
-        return { ...o, left, right, bottom: round16(Math.max(0, o.bottom)), top: round16(Math.min(top ? Math.floor(underMin(top, left, right, H, trackLegIn) * 16) / 16 : H - trackLegIn, o.top)) };
+        const upTo = o.through ? (top ? Math.max(topAt(top, left, H), topAt(top, right, H), ...top.filter(p => p[0] > left && p[0] < right).map(p => p[1])) : H)
+            : Math.min(top ? Math.floor(underMin(top, left, right, H, trackLegIn) * 16) / 16 : H - trackLegIn, o.top);
+        return { ...o, left, right, bottom: round16(Math.max(0, o.bottom)), top: round16(upTo) };
     }).filter(o => o.right - o.left >= 6 && o.top - o.bottom >= 6)
         .sort((a, b) => a.left - b.left);
 }
@@ -227,15 +235,21 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     const members = [];
     const add = (m) => members.push({ func: FUNC_OF_ROLE[m.role], ...m, lengthIn: floor8(m.lengthIn) });
     const under = (x0, x1) => underMin(T, x0, x1, H, LEG); // the underside of the top track over [x0, x1]
-    const reachesTop = (o) => (T ? o.top >= under(o.left, o.right) - 1 : o.top >= H - LEG - 1);
+    const reachesTop = (o) => o.through || (T ? o.top >= under(o.left, o.right) - 1 : o.top >= H - LEG - 1);
+    // The top track runs everywhere but through the openings that go up through the top.
+    const cuts = ops.filter(o => o.through).map(o => [o.left, o.right]);
+    const uncut = (a, b) => cuts.reduce((parts, [l, r]) => parts.flatMap(([p, q]) => (r <= p || l >= q ? [[p, q]] : [[p, l], [r, q]].filter(([s, e]) => e - s > 1e-6))), [[a, b]]);
 
-    // Tracks: top full length (under a sloped top, one piece per run, its length along the slope); bottom broken at
-    // door openings.
-    if (!T) add({ role: 'top track', orient: 'h', type: topTrackName || trackType, x: 0, y: H - LEG, w: L, h: LEG, lengthIn: L });
+    // Tracks: top full length (under a sloped top, one piece per run, its length along the slope; cut at a steel
+    // penetration); bottom broken at door openings.
+    for (const [a, b] of T ? [] : uncut(0, L)) add({ role: 'top track', orient: 'h', type: topTrackName || trackType, x: a, y: H - LEG, w: b - a, h: LEG, lengthIn: b - a });
     for (let i = 1; T && i < T.length; i++) {
-        const [x0, h0] = T[i - 1], [x1, h1] = T[i], k = (h1 - h0) / (x1 - x0), t = LEG * Math.hypot(1, k);
-        add({ role: 'top track', orient: 'h', type: topTrackName || trackType, x: x0, y: Math.min(h0, h1) - t, w: x1 - x0, h: Math.abs(h1 - h0) + t,
-            lengthIn: Math.hypot(x1 - x0, h1 - h0), ...(k ? { pts: [[x0, h0 - t], [x1, h1 - t], [x1, h1], [x0, h0]], slope: k } : {}) });
+        const [x0, h0] = T[i - 1], [x1, h1] = T[i], k = (h1 - h0) / (x1 - x0), t = LEG * Math.hypot(1, k), at = (x) => h0 + k * (x - x0);
+        for (const [a, b] of uncut(x0, x1)) {
+            const ha = at(a), hb = at(b);
+            add({ role: 'top track', orient: 'h', type: topTrackName || trackType, x: a, y: Math.min(ha, hb) - t, w: b - a, h: Math.abs(hb - ha) + t,
+                lengthIn: Math.hypot(b - a, hb - ha), ...(k ? { pts: [[a, ha - t], [b, hb - t], [b, hb], [a, ha]], slope: k } : {}) });
+        }
     }
     let start = 0;
     for (const door of ops.filter(isDoor)) {
@@ -253,7 +267,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     for (const o of ops) {
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
         if (!reachesTop(o)) {
-            const head = { role: 'head track', func: isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'head') };
+            const head = { role: 'head track', func: o.kind === 'mep' ? 'HDM' : isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'head') };
             heads.push(head);
             add(head);
         }
@@ -261,7 +275,8 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     for (const o of ops.filter(o => !isDoor(o))) {
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), y = o.bottom - LEG;
         const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + LEG > h.y);
-        if (!onHead && y >= LEG) add({ role: 'sill track', orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'sill') });
+        const func = openingKind(o) === 'mep' ? 'SBM' : openingKind(o) === 'steel' ? 'SBS' : 'SBW';
+        if (!onHead && y >= LEG) add({ role: 'sill track', func, orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'sill') });
     }
 
     // Where a vertical at x can run: between the tracks, minus every opening in its bay with its head and sill track.

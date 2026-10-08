@@ -6,11 +6,13 @@
 // A panel: { id, mark, level, wallType, group, sideB,
 //   shape: { kind: 'rect' | 'rake' | 'gable' | 'custom', lengthIn, heightIn (rect), leftIn, rightIn (rake, gable eaves),
 //            peakIn, peakAtIn (gable), points: [[x, height], ...] (custom: the top, left end to right end) },
-//   openings: [{ kind: 'door' | 'window', leftIn (from the panel's left end), widthIn, heightIn, sillIn (window),
-//                head, jamb, sill (this opening's members; '' = the panel's) }],
-//   members: { stud, track, topTrack, spacingIn, header, jamb, sill } } (SSMA names; '' = as the stud and track).
+//   openings: [{ kind: 'door' | 'window' | 'mep' | 'steel', leftIn (from the panel's left end), widthIn, heightIn,
+//                sillIn (not a door), head, jamb, sill (this opening's members: '' = the panel's, '=stud' = as the
+//                on-center stud, '=track' = as the bottom track; a steel penetration has no header, a door no sill) }],
+//   members: { stud (on center), track (bottom track; '' = as the stud), topTrack ('' = as the bottom track), spacingIn,
+//              header, jamb, sill (the openings' members; '' = as the bottom track / the stud) } } (SSMA names).
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, panels: [panel] }.
-import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt } from '../common/framing.mjs';
+import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin } from '../common/framing.mjs';
 import { parseDesignator, parseMemberSpec, parseFeetInches } from '../02-takeoff/criteria.mjs';
 
 export const FORMAT = 'cas-panel-shops';
@@ -120,31 +122,123 @@ export function changeShape(shape, kind) {
     return { kind: 'custom', lengthIn: L, points: top ? top.map(p => [...p]) : [[0, H], [L, H]] };
 }
 
+// --- Opening kinds ---------------------------------------------------------------------------------------------------
+// What each kind of opening is framed with (the members the page asks for), its letter and its size when added.
+// A steel penetration runs from its sill up through the top of the wall: the top track is cut there, no header.
+export const OPENING_TYPES = {
+    door: { name: 'Door', letter: 'D', members: ['jamb', 'head'], size: { widthIn: 36, heightIn: 84, sillIn: 0 } },
+    window: { name: 'Window', letter: 'W', members: ['jamb', 'head', 'sill'], size: { widthIn: 48, heightIn: 48, sillIn: 36 } },
+    mep: { name: 'MEP opening', letter: 'M', members: ['jamb', 'head', 'sill'], size: { widthIn: 24, heightIn: 16, sillIn: 84 } },
+    steel: { name: 'Steel penetration', letter: 'S', members: ['jamb', 'sill'], size: { widthIn: 16, heightIn: 0, sillIn: null } },
+};
+export const MEMBER_LABELS = { jamb: 'Jambs', head: 'Header', sill: 'Sill' };
+// A kind's name inside a sentence: 'door', 'window', 'MEP opening', 'steel penetration'.
+export const kindWord = (kind) => OPENING_TYPES[kind].name.replace(/^[A-Z](?=[a-z])/, c => c.toLowerCase());
+export const kindOf = (o) => (OPENING_TYPES[o?.kind] ? o.kind : 'door');
+const panelKey = (k) => (k === 'head' ? 'header' : k); // an opening's head is the panel's header
+export const SAME_STUD = '=stud', SAME_TRACK = '=track';
+const isSame = (v) => v === SAME_STUD || v === SAME_TRACK;
+// D1, W1, M1 (MEP), S1 (steel), counted by kind in the panel's order.
+export const openingName = (openings, i) => `${OPENING_TYPES[kindOf(openings[i])].letter}${openings.slice(0, i + 1).filter(o => kindOf(o) === kindOf(openings[i])).length}`;
+// "1 door · 2 windows · 1 MEP opening" (or "no openings").
+export function openingsSummary(openings = []) {
+    const n = (k) => openings.filter(o => kindOf(o) === k).length;
+    return Object.entries(OPENING_TYPES).filter(([k]) => n(k)).map(([k, t]) => `${n(k)} ${kindWord(k)}${n(k) > 1 ? 's' : ''}`).join(' · ') || 'no openings';
+}
+// An opening on the panel: { left, right, bottom, top, kind } (the rough opening); a steel penetration from its sill up
+// through the top of the wall (H: the wall's highest point), marked through.
+export const openingBox = (o, H = Infinity) => {
+    const kind = kindOf(o), left = Number(o.leftIn) || 0, right = left + (Number(o.widthIn) || 0);
+    if (kind === 'steel') return { left, right, bottom: Number(o.sillIn) || 0, top: H, through: true, kind };
+    const bottom = kind === 'door' ? 0 : Number(o.sillIn) || 0;
+    return { left, right, bottom, top: bottom + (Number(o.heightIn) || 0), kind };
+};
+
 // A drawn outline (an elevation polygon, flat at the bottom: a future export of wall outlines) as a shape: the length
 // across it and its top edge as points; a rectangle when the top is level.
 export function outlineShape(outline) {
-    const pts = (outline || []).map(p => [Number(p?.[0]), Number(p?.[1])]).filter(p => p.every(Number.isFinite));
-    if (pts.length < 3) return null;
-    const x0 = Math.min(...pts.map(p => p[0])), y0 = Math.min(...pts.map(p => p[1])), L = Math.max(...pts.map(p => p[0])) - x0;
-    const topPts = new Map();
-    for (const [x, y] of pts) if (y - y0 > 1e-6) { const k = round16(x - x0); topPts.set(k, Math.max(topPts.get(k) ?? 0, round16(y - y0))); }
-    const points = [...topPts].sort((a, b) => a[0] - b[0]);
-    if (!(L > 0) || points.length < 2) return null;
-    const top = wallTop(points, L);
-    return top ? { kind: 'custom', lengthIn: round16(L), points: top } : { kind: 'rect', lengthIn: round16(L), heightIn: points[0][1] };
+    const r = perimeterToPanel(outline);
+    return r.errors.length ? null : r.shape;
+}
+
+// A perimeter drawn around the panel (its corners in order, either way round) as the panel's shape and the openings it
+// leaves: a rectangular notch up from the bottom is a door, one down from the top a steel penetration. The ends are
+// plumb, the bottom flat; the top may slope (a step in it is two panels). Returns { shape, openings, errors }.
+export function perimeterToPanel(points) {
+    const fail = (message) => ({ shape: null, openings: [], errors: [message] });
+    let P = (points || []).map(p => [round16(Number(p?.[0])), round16(Number(p?.[1]))]).filter(p => p.every(Number.isFinite));
+    const eq = (u, v) => Math.abs(u - v) < 1e-6;
+    for (let changed = true; changed && P.length > 2;) { // no repeated points, none on a straight line
+        changed = false;
+        for (let i = 0; i < P.length && P.length > 2; i++) {
+            const a = P[(i - 1 + P.length) % P.length], b = P[i], c = P[(i + 1) % P.length];
+            if ((eq(a[0], b[0]) && eq(a[1], b[1])) || Math.abs((b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0])) < 1e-6) { P.splice(i, 1); changed = true; i--; }
+        }
+    }
+    if (P.length < 4) return fail('Draw at least four corners: the two ends of the panel, its bottom and its top.');
+    const x0 = Math.min(...P.map(p => p[0])), y0 = Math.min(...P.map(p => p[1]));
+    P = P.map(([x, y]) => [round16(x - x0), round16(y - y0)]);
+    const L = Math.max(...P.map(p => p[0]));
+    if (P.reduce((sum, p, i) => { const q = P[(i + 1) % P.length]; return sum + p[0] * q[1] - q[0] * p[1]; }, 0) < 0) P.reverse(); // counter-clockwise
+    const s0 = P.findIndex(p => eq(p[0], 0) && eq(p[1], 0)), sR = P.findIndex(p => eq(p[0], L) && eq(p[1], 0));
+    if (s0 < 0 || sR < 0) return fail('The bottom of a panel is flat, from end to end, and its ends are plumb: start at a bottom corner and keep the bottom level.');
+    P = [...P.slice(s0), ...P.slice(0, s0)];
+    const iR = (sR - s0 + P.length) % P.length;
+    const openings = [], blank = { head: '', jamb: '', sill: '' };
+    // The bottom, left to right: level, but for doors (up, across, down).
+    const bottom = P.slice(0, iR + 1);
+    for (let i = 0; i < bottom.length - 1;) {
+        const [p, q, r, t] = [bottom[i], bottom[i + 1], bottom[i + 2], bottom[i + 3]];
+        if (eq(q[1], 0)) { i += 1; continue; }
+        if (r && t && eq(p[1], 0) && eq(q[0], p[0]) && eq(r[1], q[1]) && r[0] > q[0] && eq(t[0], r[0]) && eq(t[1], 0)) {
+            openings.push({ kind: 'door', leftIn: q[0], widthIn: round16(r[0] - q[0]), heightIn: q[1], sillIn: 0, ...blank });
+            i += 3;
+            continue;
+        }
+        return fail('The bottom of a panel is level: only a door (a rectangle up from the bottom) may break it.');
+    }
+    // The top, right to left from the top of the right end to the top of the left end; steel penetrations are dips
+    // down from it (down, across, up).
+    const right = P[iR + 1], left = P[P.length - 1];
+    if (!right || !eq(right[0], L) || !left || !eq(left[0], 0)) return fail('Both ends of a panel are plumb: draw them straight up from the bottom corners.');
+    let chain = P.slice(iR + 1);
+    for (let i = 0; i + 3 < chain.length; i++) {
+        const [p, q, r, t] = chain.slice(i, i + 4);
+        if (eq(q[0], p[0]) && q[1] < p[1] && eq(r[1], q[1]) && r[0] < q[0] && eq(t[0], r[0]) && t[1] > r[1]) {
+            openings.push({ kind: 'steel', leftIn: r[0], widthIn: round16(q[0] - r[0]), heightIn: 0, sillIn: q[1], ...blank });
+            chain = [...chain.slice(0, i + 1), ...chain.slice(i + 3)];
+            i = -1;
+        }
+    }
+    for (let i = 1; i < chain.length; i++) {
+        if (!(chain[i][0] < chain[i - 1][0])) return fail(`The top has a step at ${fmtFtIn(chain[i][0])} from the left (two heights at one point): make it two panels, or slope it.`);
+    }
+    const pts = chain.reverse(), top = wallTop(pts, L);
+    let shape;
+    if (!top) shape = { kind: 'rect', lengthIn: L, heightIn: pts[0][1] };
+    else if (top.length === 2) shape = { kind: 'rake', lengthIn: L, leftIn: top[0][1], rightIn: top[1][1] };
+    else if (top.length === 3 && top[1][1] > Math.max(top[0][1], top[2][1])) shape = { kind: 'gable', lengthIn: L, leftIn: top[0][1], rightIn: top[2][1], peakIn: top[1][1], peakAtIn: top[1][0] };
+    else shape = { kind: 'custom', lengthIn: L, points: top };
+    return { shape, openings: openings.sort((u, v) => u.leftIn - v.leftIn), errors: [] };
 }
 
 // --- A panel to the framing engine -------------------------------------------------------------------------------
 
-const specOf = (text) => { const s = String(text || '').trim(); return s ? parseMemberSpec(s) : null; };
-const doorOf = (o) => o.kind === 'door';
-// D1, D2, … for doors and W1, W2, … for windows, in the panel's order.
-export const openingName = (openings, i) => `${doorOf(openings[i]) ? 'D' : 'W'}${openings.slice(0, i + 1).filter(o => o.kind === openings[i].kind).length}`;
-// An opening on the panel: { left, right, bottom, top } (the rough opening).
-export const openingBox = (o) => {
-    const bottom = doorOf(o) ? 0 : Number(o.sillIn) || 0, left = Number(o.leftIn) || 0;
-    return { left, right: left + (Number(o.widthIn) || 0), bottom, top: bottom + (Number(o.heightIn) || 0) };
-};
+const specOf = (text) => { const s = String(text || '').trim(); return s && !isSame(s) ? parseMemberSpec(s) : null; };
+// What an opening's member (or with o null, the panel's default for openings) comes to: { spec, base } where base says
+// it is just the on-center stud ('stud') or the bottom track ('track').
+export function memberFor(panel, o, what) {
+    const m = { ...DEFAULT_MEMBERS, ...(panel.members || {}) }, own = o ? o[what] : '';
+    const stud = parseMember(m.stud)?.name || m.stud, track = parseMember(m.track)?.name || trackFor(m.stud);
+    const spec = isSame(own) ? '' : own || m[panelKey(what)] || '';
+    if (spec) return { spec, base: null };
+    return what === 'jamb' ? { spec: stud, base: 'stud' } : { spec: track, base: 'track' };
+}
+// A member in words: '(2) 362S162-43 WITH (1) 362T125-43' -> '2 studs 362S162-43 + 1 track 362T125-43'.
+export function specText(spec) {
+    const parts = specOf(spec)?.parts;
+    return parts ? parts.map(p => `${p.qty} ${isStud(parseMember(p.name)) ? 'stud' : 'track'}${p.qty > 1 ? 's' : ''} ${p.name}`).join(' + ') : '';
+}
 
 // What is wrong with a panel's inputs, in plain words: [{ where, message }] (empty: it can be framed).
 export function panelErrors(panel) {
@@ -158,47 +252,50 @@ export function panelErrors(panel) {
     }
     const m = panel.members || {};
     const stud = parseMember(m.stud), track = m.track ? parseMember(m.track) : null;
-    if (!stud || !isStud(stud)) add('members', `Can't read the stud "${m.stud || ''}": type an SSMA stud such as 362S162-33.`);
-    if (m.track && !isTrack(track)) add('members', `Can't read the track "${m.track}": type an SSMA track such as 362T125-33.`);
-    if (m.topTrack && !isTrack(parseMember(m.topTrack))) add('members', `Can't read the top track "${m.topTrack}": type an SSMA track such as 362T200-33, or leave it empty.`);
+    if (!stud || !isStud(stud)) add('members', `Can't read the on-center stud "${m.stud || ''}": type an SSMA stud such as 362S162-33.`);
+    if (m.track && !isTrack(track)) add('members', `Can't read the bottom track "${m.track}": type an SSMA track such as 362T125-33.`);
+    if (m.topTrack && !isTrack(parseMember(m.topTrack))) add('members', `Can't read the top track "${m.topTrack}": type an SSMA track such as 362T200-33, or keep it as the bottom track.`);
     const sp = Number(m.spacingIn);
     if (!(sp >= 4 && sp <= 48)) add('members', 'Stud spacing should be between 4" and 48" (16" o.c. is typical).');
-    for (const [k, label] of [['header', 'Header'], ['jamb', 'Jambs'], ['sill', 'Sill']]) {
-        if (m[k] && !specOf(m[k])) add('members', `${label}: can't read "${m[k]}". Type it like (2) 362S162-43 WITH (1) 362T125-43.`);
+    for (const [k, label] of [['header', 'Headers'], ['jamb', 'Jambs'], ['sill', 'Sills']]) {
+        if (m[k] && !isSame(m[k]) && !specOf(m[k])) add('members', `${label}: can't read "${m[k]}". Type it like (2) 362S162-43 WITH (1) 362T125-43.`);
     }
     // One depth through the wall: every track, header, jamb and sill part as deep as the studs.
     if (stud) {
         const depthOf = (name) => parseMember(name)?.depthIn;
-        const named = [['track', m.track], ['top track', m.topTrack], ['headers', m.header], ['jambs', m.jamb], ['sills', m.sill],
-            ...(panel.openings || []).flatMap((o, i) => [[`${openingName(panel.openings, i)} header`, o.head], [`${openingName(panel.openings, i)} jambs`, o.jamb], [`${openingName(panel.openings, i)} sill`, o.sill]])];
+        const named = [['bottom track', m.track], ['top track', m.topTrack], ['headers', m.header], ['jambs', m.jamb], ['sills', m.sill],
+            ...(panel.openings || []).flatMap((o, i) => OPENING_TYPES[kindOf(o)].members.map(k => [`${openingName(panel.openings, i)} ${MEMBER_LABELS[k].toLowerCase()}`, o[k]]))];
         for (const [label, text] of named) {
-            const parts = text ? (specOf(text)?.parts || []) : [];
+            const parts = specOf(text)?.parts || [];
             const off = parts.find(p => depthOf(p.name) != null && Math.abs(depthOf(p.name) - stud.depthIn) > 1e-6);
             if (off) add('members', `The ${label} (${off.name}) is ${fmtFtIn(depthOf(off.name)).replace(/^0'-/, '')} deep but the studs are ${fmtFtIn(stud.depthIn).replace(/^0'-/, '')}: use one depth through the wall.`);
         }
     }
     if (errors.some(e => e.where === 'shape')) return errors;
-    const leg = track?.flangeIn ?? 1.25;
-    const boxes = (panel.openings || []).map(openingBox);
+    const leg = track?.flangeIn ?? 1.25, flange = stud?.flangeIn ?? 1.625, inch = (v) => fmtFtIn(v).replace(/^0'-/, '');
+    const boxes = (panel.openings || []).map(o => openingBox(o, H));
     (panel.openings || []).forEach((o, i) => {
-        const n = openingName(panel.openings, i), b = boxes[i];
-        for (const [k, label] of [['head', 'header'], ['jamb', 'jambs'], ['sill', 'sill']]) {
-            if (o[k] && !specOf(o[k])) add(`opening-${i}`, `${n} ${label}: can't read "${o[k]}".`);
+        const n = openingName(panel.openings, i), b = boxes[i], kind = kindOf(o), where = `opening-${i}`;
+        for (const k of OPENING_TYPES[kind].members) if (o[k] && !isSame(o[k]) && !specOf(o[k])) add(where, `${n} ${MEMBER_LABELS[k].toLowerCase()}: can't read "${o[k]}".`);
+        if (!(Number(o.widthIn) >= 6) || (kind !== 'steel' && !(Number(o.heightIn) >= 6))) { add(where, `${n}: give it a width${kind === 'steel' ? '' : ' and a height'} (at least 6").`); return; }
+        if (b.left < 0 || b.right > L) add(where, `${n} runs past the ${b.left < 0 ? 'left' : 'right'} end of the panel.`);
+        if (kind === 'steel') {
+            const lowTop = topMin(top, Math.max(0, b.left), Math.min(L, b.right), H);
+            if (lowTop - b.bottom < 6) add(where, `${n}: its sill (${fmtFtIn(b.bottom)}) needs to be at least 6" below the top of the wall (${fmtFtIn(lowTop)} there).`);
+        } else {
+            const under = underMin(top, Math.max(0, b.left), Math.min(L, b.right), H, leg);
+            if (b.top > under + 1 / 32) add(where, `${n}'s top (${fmtFtIn(b.top)}) is above the underside of the top track there (${fmtFtIn(under)}).`);
+            // Its header: a track's leg above the opening, a stud flange past each side, under the top track (or the
+            // opening runs up to the top track: no header).
+            else if (b.top < under - 1) {
+                const room = underMin(top, Math.max(0, b.left - flange), Math.min(L, b.right + flange), H, leg) - b.top;
+                if (room < leg - 1 / 32) add(where, `${n}: no room for its header under the top track (${inch(Math.max(0, room))} above it, ${inch(leg)} needed). Lower it, or raise it to the top track.`);
+            }
         }
-        if (!(Number(o.widthIn) >= 6) || !(Number(o.heightIn) >= 6)) { add(`opening-${i}`, `${n}: give it a width and a height (at least 6").`); return; }
-        if (b.left < 0 || b.right > L) add(`opening-${i}`, `${n} runs past the ${b.left < 0 ? 'left' : 'right'} end of the panel.`);
-        const under = underMin(top, Math.max(0, b.left), Math.min(L, b.right), H, leg);
-        if (b.top > under + 1 / 32) add(`opening-${i}`, `${n}'s top (${fmtFtIn(b.top)}) is above the underside of the top track there (${fmtFtIn(under)}).`);
-        // Its header: a track's leg above the opening, reaching a stud flange past each side, under the top track (or
-        // the opening runs up to the top track: no header).
-        else if (b.top < under - 1) {
-            const flange = stud?.flangeIn ?? 1.625, room = underMin(top, Math.max(0, b.left - flange), Math.min(L, b.right + flange), H, leg) - b.top;
-            if (room < leg - 1 / 32) add(`opening-${i}`, `${n}: no room for its header under the top track (${fmtFtIn(Math.max(0, room)).replace(/^0'-/, '')} above it, ${fmtFtIn(leg).replace(/^0'-/, '')} needed). Lower it, or raise it to the top track.`);
-        }
-        if (!doorOf(o) && b.bottom < 2 * leg) add(`opening-${i}`, `${n}: its sill is too low for a sill track; make it a door, or raise the sill.`);
+        if (kind !== 'door' && b.bottom < 2 * leg) add(where, `${n}: its sill is too low for a sill track${kind === 'steel' ? '' : '; make it a door, or raise the sill'}.`);
         boxes.forEach((c, j) => {
             if (j > i && Math.min(b.right, c.right) - Math.max(b.left, c.left) > 0 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
-                add(`opening-${i}`, `${n} overlaps ${openingName(panel.openings, j)}.`);
+                add(where, `${n} overlaps ${openingName(panel.openings, j)}.`);
             }
         });
     });
@@ -214,11 +311,11 @@ export function frameInputs(panel) {
     const { lengthIn, heightIn, top } = shapeTop(panel.shape);
     const openings = (panel.openings || []).map(o => {
         const framing = {};
-        for (const [k, def] of [['head', m.header], ['jamb', m.jamb], ['sill', m.sill]]) {
-            const parts = specOf(o[k] || def)?.parts;
-            if (parts) framing[k] = parts;
+        for (const k of OPENING_TYPES[kindOf(o)].members) {
+            const parts = specOf(memberFor(panel, o, k).spec)?.parts;
+            if (parts && memberFor(panel, o, k).base == null) framing[k] = parts;
         }
-        return { ...openingBox(o), ...(Object.keys(framing).length ? { framing: { ...framing, source: 'entered' } } : {}) };
+        return { ...openingBox(o, heightIn), ...(Object.keys(framing).length ? { framing: { ...framing, source: 'entered' } } : {}) };
     });
     return { lengthIn, heightIn, top, openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
         trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) || 16 };
@@ -228,12 +325,12 @@ export function frameInputs(panel) {
 export function panelLayout(panel) {
     const inputs = frameInputs(panel);
     const layout = frameWall(inputs);
-    const m = { ...DEFAULT_MEMBERS, ...(panel.members || {}) };
     const builtUp = new Set();
     (panel.openings || []).forEach((o) => {
-        const parts = [['header', o.head || m.header], ['jambs', o.jamb || m.jamb], ['sill', o.kind === 'door' ? '' : o.sill || m.sill]]
+        const type = OPENING_TYPES[kindOf(o)];
+        const parts = type.members.map(k => [MEMBER_LABELS[k].toLowerCase(), memberFor(panel, o, k).spec])
             .filter(([, spec]) => (specOf(spec)?.parts || []).reduce((n, p) => n + p.qty, 0) > 1).map(([k, spec]) => `${k} ${spec}`);
-        if (parts.length) builtUp.add(`${o.kind === 'door' ? 'Door' : 'Window'} framing: ${parts.join('; ')}.`);
+        if (parts.length) builtUp.add(`${type.name} framing: ${parts.join('; ')}.`);
     });
     if (inputs.topTrackName) builtUp.add(`Top track ${inputs.topTrackName}.`);
     layout.notes.push(...builtUp);
@@ -284,9 +381,15 @@ export function importSet(json) {
     if (data?.format && data.format !== FORMAT) warnings.push(`This file says it is "${data.format}", not ${FORMAT}; read what could be read.`);
     const panels = [];
     list.forEach((raw, i) => {
-        const shape = raw?.outline ? outlineShape(raw.outline) : raw?.shape;
-        if (!shape) { warnings.push(`Panel ${i + 1}${raw?.mark ? ` (${raw.mark})` : ''}: no shape or outline; skipped.`); return; }
-        panels.push(cleanPanel({ ...raw, shape }));
+        const name = `Panel ${i + 1}${raw?.mark ? ` (${raw.mark})` : ''}`;
+        if (raw?.outline) { // a wall outline: its notches are its doors and steel penetrations
+            const r = perimeterToPanel(raw.outline);
+            if (r.errors.length) { warnings.push(`${name}: ${r.errors[0]} Skipped.`); return; }
+            panels.push(cleanPanel({ ...raw, shape: r.shape, openings: [...r.openings, ...(raw.openings || [])] }));
+            return;
+        }
+        if (!raw?.shape) { warnings.push(`${name}: no shape or outline; skipped.`); return; }
+        panels.push(cleanPanel(raw));
     });
     return { set: { project: String(data?.project || ''), drawnBy: String(data?.drawnBy || ''), panels }, warnings };
 }
@@ -305,8 +408,12 @@ export function cleanPanel(p = {}) {
     return {
         id: str(p.id, 40) || rid(), mark: str(p.mark, 40) || 'P-101', level: str(p.level), wallType: str(p.wallType, 120), group: str(p.group), sideB: !!p.sideB,
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
-        openings: (p.openings || []).map(o => ({ kind: o?.kind === 'window' ? 'window' : 'door', leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? 36,
-            heightIn: len(o?.heightIn) ?? (o?.kind === 'window' ? 48 : 84), sillIn: o?.kind === 'window' ? len(o?.sillIn) ?? 36 : 0, head: str(o?.head), jamb: str(o?.jamb), sill: str(o?.sill) })),
+        openings: (p.openings || []).map(o => {
+            const kind = kindOf(o), size = OPENING_TYPES[kind].size, H = shapeTop(shape).heightIn;
+            return { kind, leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? size.widthIn, heightIn: kind === 'steel' ? 0 : len(o?.heightIn) ?? size.heightIn,
+                sillIn: kind === 'door' ? 0 : len(o?.sillIn) ?? size.sillIn ?? Math.max(0, H - 24),
+                head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill) };
+        }),
     };
 }
 
@@ -323,11 +430,12 @@ export function remember(list, value, max = 10) {
 //    [[0 door | 1 window, left, width, height, sill, head, jamb, sill], ...]]  (trailing empty values left out)
 const SHAPE_KEYS = { rect: ['lengthIn', 'heightIn'], rake: ['lengthIn', 'leftIn', 'rightIn'], gable: ['lengthIn', 'leftIn', 'rightIn', 'peakIn', 'peakAtIn'], custom: ['lengthIn', 'points'] };
 const MEMBER_KEYS = ['stud', 'track', 'topTrack', 'spacingIn', 'header', 'jamb', 'sill'];
+const KIND_CODES = ['door', 'window', 'mep', 'steel'];
 const trim = (a) => { const out = [...a]; while (out.length && (out[out.length - 1] === '' || out[out.length - 1] == null)) out.pop(); return out; };
 export function encodePanel(panel) {
     const p = cleanPanel(panel);
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
-        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([o.kind === 'window' ? 1 : 0, o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill]))]);
+        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill]))]);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -341,5 +449,5 @@ export function decodePanel(code) {
     return cleanPanel({ mark, level, wallType, group, sideB: !!sideB,
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
-        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill]) => ({ kind: w ? 'window' : 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill })) });
+        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill })) });
 }

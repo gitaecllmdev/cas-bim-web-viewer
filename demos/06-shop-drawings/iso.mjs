@@ -3,9 +3,9 @@
 // side A, from the left and above; one label per cut-list mark; the openings outlined. The view is cropped to the
 // members and fitted in a box on the sheet, so it fills its space whatever the panel's shape.
 // Returns sheet primitives (sheet.mjs): 'poly' (filled faces), 'line' (edges, openings), 'rect' + 'text' (labels).
-import { fmtFtIn, isDoor, topAt } from '../common/framing.mjs';
+import { fmtFtIn, topAt, openingKind, OPENING_KINDS } from '../common/framing.mjs';
 
-const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0' };
+const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', HDM: '#f4a7a0', SBM: '#f4a7a0', SBS: '#f4a7a0' };
 const STUD = '#e4e4e4';
 const SEG = 16; // long members are drawn in pieces this long, so near and far parts sort in front of / behind their neighbours
 
@@ -146,7 +146,7 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
         for (const [p, q] of f.edges) { const [a, b] = [T(p), T(q)]; out.push({ t: 'line', x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#3a3a3a', width: 0.004 }); }
     }
     for (const { o, label } of opens) {
-        const [x, y] = T(label), txt = `${isDoor(o) ? 'DOOR' : 'OPENING'} ${fmtFtIn(o.right - o.left)} x ${fmtFtIn(o.top - o.bottom)}`;
+        const [x, y] = T(label), kind = openingKind(o), txt = `${kind === 'window' ? 'OPENING' : OPENING_KINDS[kind]} ${fmtFtIn(o.right - o.left)} x ${fmtFtIn(o.top - o.bottom)}`;
         out.push({ t: 'text', x, y, s: txt, size: 0.06, anchor: 'middle', weight: 'normal', rotate: 0, fill: '#6b7178' });
     }
     // Labels: plain text (no box), moved up when it would sit on one already placed.
