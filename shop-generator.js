@@ -6,7 +6,7 @@
 // The elevation editor: the core members (top track, on-center studs, bottom track) over it; tools to select and move,
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
-import { fmtFtIn, topAt, topMin, underMin, pitchText } from './demos/common/framing.mjs';
+import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf } from './demos/06-shop-drawings/sheet.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
@@ -49,7 +49,7 @@ function notice(text, warn = false) {
     el.classList.toggle('warn', warn);
     el.hidden = !text;
     clearTimeout(notice.t);
-    if (text) notice.t = setTimeout(() => { el.hidden = true; }, 9000);
+    if (text) notice.t = setTimeout(() => { el.hidden = true; }, warn ? 9000 : 5000);
 }
 
 // --- Inputs: data-f="path" (on the panel, or set.* on the set), data-t: len (feet-inches), num, text ----------------
@@ -144,7 +144,7 @@ const field = (label, path, value, { t = 'text', list = '', r = '', ph = '', cls
     <em class="hint"></em></label>`;
 
 // --- Actions (data-act) -----------------------------------------------------------------------------------------------
-main.addEventListener('click', (e) => {
+document.addEventListener('click', (e) => { // the title bar's buttons too
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act, i = Number(b.dataset.i), p = cur();
@@ -230,20 +230,15 @@ function refresh(now = false) {
     if (!drag && tool !== 'perimeter') fit(); // the view follows the panel's size, but holds still while dragging
     renderSketch();
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => { renderPreview(); renderSet(); renderChips(); }, now ? 0 : drag ? 160 : 90);
+    refreshTimer = setTimeout(() => { renderPreview(); renderSet(); renderChips(); renderLayoutInfo(); }, now ? 0 : drag ? 160 : 90);
 }
 
 function renderPanel() {
     const p = cur();
-    $('#panel-card').innerHTML = `<h2><span class="step">1</span> Panel</h2>
-        <div class="fields">
-            ${field('Panel mark', 'mark', p.mark, { ph: 'P-101' })}
-            ${field('Level', 'level', p.level, { list: 'level', r: 'level', ph: 'L2' })}
-            ${field('Wall type', 'wallType', p.wallType, { list: 'wallType', r: 'wallType', ph: 'CAS_1HR_362_1L_FULL', cls: 'wide' })}
-            ${field('Group', 'group', p.group, { list: 'group', r: 'group', ph: 'e.g. Type A, Unit 3' })}
-            ${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name', cls: 'wide' })}
-            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}
-        </div>`;
+    $('#panel-fields').innerHTML = `${field('Panel mark', 'mark', p.mark, { ph: 'P-101', cls: 'f-mark' })}
+        ${field('Level', 'level', p.level, { list: 'level', r: 'level', ph: 'L2', cls: 'f-level' })}
+        ${field('Wall type', 'wallType', p.wallType, { list: 'wallType', r: 'wallType', ph: 'CAS_1HR_362_1L_FULL', cls: 'f-type' })}
+        ${field('Group', 'group', p.group, { list: 'group', r: 'group', ph: 'Type A', cls: 'f-group' })}`;
     const sideB = main.querySelector('[data-f="sideB"]');
     if (sideB) sideB.checked = !!p.sideB;
 }
@@ -256,10 +251,9 @@ function renderElevHead() {
     const dims = { rect: [f('Length', 'lengthIn'), f('Height', 'heightIn')], rake: [f('Length', 'lengthIn'), f('Height at left', 'leftIn'), f('Height at right', 'rightIn')],
         gable: [f('Length', 'lengthIn'), f('Left eave', 'leftIn'), f('Right eave', 'rightIn'), f('Peak height', 'peakIn'), f('Peak from left', 'peakAtIn')],
         custom: [f('Length', 'lengthIn')] }[s.kind];
-    $('#elev-head').innerHTML = `<div class="row elev-title"><h2><span class="step">2</span> Elevation</h2>
-            <div class="shape-pick" role="radiogroup" aria-label="Start from a shape">${G.SHAPES.map(k => `<button class="${k.kind === s.kind ? 'on' : 'secondary'}" data-act="shape" data-kind="${k.kind}" role="radio" aria-checked="${k.kind === s.kind}" title="${esc(k.hint)}">
-                <svg viewBox="0 0 24 20" aria-hidden="true"><path d="${icon(k.kind)}"/></svg>${esc(k.name)}</button>`).join('')}</div></div>
-        <div class="fields shape-fields">${dims.join('')}</div>`;
+    $('#elev-head').innerHTML = `<div class="shape-pick" role="radiogroup" aria-label="Shape">${G.SHAPES.map(k => `<button class="${k.kind === s.kind ? 'on' : 'secondary'}" data-act="shape" data-kind="${k.kind}" role="radio" aria-checked="${k.kind === s.kind}" title="${esc(`${k.name}: ${k.hint}`)}">
+            <svg viewBox="0 0 24 20" aria-hidden="true"><path d="${icon(k.kind)}"/></svg><span>${esc(k.name)}</span></button>`).join('')}</div>
+        <div class="shape-fields">${dims.join('')}</div>`;
 }
 // After a drag: the shape's typed sizes show the new values (without rebuilding the sketch being dragged).
 function renderShapeFields() {
@@ -309,7 +303,7 @@ function renderCore() {
     const spacing = typing.has('members.spacingIn')
         ? `<input type="text" class="mtype" data-f="members.spacingIn" data-t="num" value="${esc(m.spacingIn)}" aria-label="Stud spacing in inches">`
         : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${[...new Set([...G.SPACINGS, Number(m.spacingIn)])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${v}" o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
-    $('#core-strip').innerHTML = `<div class="row core-head"><b>Core members</b><span class="muted small">top track, studs on center, bottom track</span><span class="spacer"></span>
+    $('#core-strip').innerHTML = `<div class="row core-head"><b>Core members</b><span class="muted small">top track · studs on center · bottom track</span><span class="spacer"></span>
             <select id="combo" aria-label="Member combo"><option value="">Member combo…</option>
                 <optgroup label="Saved in this browser">${combos.map((c, i) => `<option value="s${i}">${esc(c.name)}</option>`).join('') || '<option disabled>None yet: Save as a combo</option>'}</optgroup>
                 <optgroup label="Typical (check against the framing criteria)">${G.COMBOS.map((c, i) => `<option value="b${i}">${esc(c.name)}</option>`).join('')}</optgroup></select>
@@ -318,11 +312,28 @@ function renderCore() {
             ${memberCard({ path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
                 options: [{ value: '', label: `Same as bottom track: ${bottom}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${bottom}` })}
             ${memberCard({ path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud'),
-                extra: `<label class="spacing">Spacing ${spacing}</label>` })}
+                extra: `<div class="spacing"><label>@ ${spacing}</label>${layoutPick(p)}</div>` })}
             ${memberCard({ path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
                 options: [{ value: '', label: `Matches the stud: ${matching}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${matching}` })}
         </div>`;
 }
+// The stud layout: optimized around the openings (the first stud placed so they take the fewest stud pieces), or on
+// center from the left end; what it comes to.
+function layoutPick(p) {
+    return `<select data-pick="layout" aria-label="Stud layout" title="Where the studs on center start">
+            <option value="optimized" ${p.layout !== 'standard' ? 'selected' : ''}>Layout: optimized</option>
+            <option value="standard" ${p.layout === 'standard' ? 'selected' : ''}>Layout: from the left end</option></select>
+        <small class="mdesc" id="layout-info"></small>`;
+}
+function renderLayoutInfo() {
+    const el = main.querySelector('#layout-info'), p = cur();
+    if (!el) return;
+    let info = null;
+    try { if (!G.panelErrors(p).length) info = G.layoutInfo(p); } catch { /* inputs to fix */ }
+    const saved = info && info.standardPieces - info.pieces;
+    el.textContent = info ? `first stud ${inch(info.start)} from the left${info.optimized ? (saved > 0 ? ` · ${saved} fewer stud piece${saved === 1 ? '' : 's'}` : saved < 0 ? ' · keeps every bay within the spacing' : ' · same as from the end') : ''}` : '';
+}
+
 // One member of an opening (its own, or the panel's default with o null): the list starts with the default.
 function openingCard(i, k) {
     const p = cur(), m = p.members, o = i == null ? null : p.openings[i], ch = G.memberChoices(m);
@@ -379,8 +390,9 @@ function pickMember(path, value) {
     const p = cur();
     if (path === 'members.stud') followStud(p.members.stud, value);
     else setPath(p, path, path === 'members.spacingIn' ? Number(value) : value);
+    if (path === 'layout') notice(value === 'standard' ? 'Studs on center from the left end.' : 'Studs placed around the openings: fewest stud pieces, every bay within the spacing.');
     const key = path.split('.').pop();
-    if (value && !value.startsWith('=') && path !== 'members.spacingIn') { recent[recentKey(key)] = G.remember(recent[recentKey(key)], value); store(KEYS.recent, recent); }
+    if (value && !value.startsWith('=') && path !== 'members.spacingIn' && path !== 'layout') { recent[recentKey(key)] = G.remember(recent[recentKey(key)], value); store(KEYS.recent, recent); }
     renderMemberCards(); renderDatalists(); changed();
 }
 // A new on-center stud: the bottom track and the members in the old stud's size follow it.
@@ -475,6 +487,8 @@ function renderSketch() {
         parts.push(dimH(0, L, -fs * 1.4, fmtFtIn(L), 'sk-dim', true), dimV(-fs * 1.6, 0, at(0), fmtFtIn(at(0)), 'sk-dim'), dimV(L + fs * 1.6, 0, at(L), fmtFtIn(at(L)), 'sk-dim', true));
         for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, fmtFtIn(h), { cls: 'sk-dim-t' }));
     }
+    // Where the studs will be: their centerlines (side A), cripples as short ones.
+    if (tool !== 'perimeter' && valid) parts.push(centerlines(p, H, top));
     // Openings.
     const boxes = p.openings.map(o => G.openingBox(o, H));
     if (tool !== 'perimeter') p.openings.forEach((o, i) => {
@@ -580,6 +594,23 @@ function renderSketch() {
         if (peri.typed) ctx.push(t((c?.[0] ?? 0) + fs, Y(c?.[1] ?? 0) - fs * 1.2, `Length: ${peri.typed}${G.parseLength(peri.typed) != null ? ` = ${fmtFtIn(G.parseLength(peri.typed))}` : ''} (Enter)`, { cls: 'sk-typed', a: 'start', size: fs * 1.1 }));
     }
     svgEl.innerHTML = parts.join('') + ctx.join('');
+}
+
+// The framing laid out for the sketch (side A), at most every 120 ms while dragging; nothing while inputs need fixing.
+let laid = { key: '', at: 0, lay: null };
+function centerlines(p, H, top) {
+    const key = JSON.stringify([p.shape, p.openings, p.members, p.layout]);
+    if (key !== laid.key && (!drag || Date.now() - laid.at > 120)) {
+        let lay = null;
+        try { if (!G.panelErrors(p).length) lay = frameWall(G.frameInputs(p)); } catch { /* inputs to fix */ }
+        laid = { key, at: Date.now(), lay };
+    }
+    if (!laid.lay) return '';
+    const leg = G.parseMember(p.members.track)?.flangeIn ?? 1.25;
+    return `<g class="sk-cl">${laid.lay.members.filter(m => m.orient === 'v').map(m => {
+        const cx = m.x + m.w / 2, y2 = m.pts ? underAt(top, cx, H, leg) : m.y + m.h;
+        return `<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="${m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`;
+    }).join('')}</g>`;
 }
 
 function wallPoint(e) {
@@ -802,17 +833,18 @@ function framed(p) {
 function renderPreview() {
     const p = cur(), { errors, layout } = framed(p);
     document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : ''}`;
-    const check = document.getElementById('pv-check'), sheet = document.getElementById('pv-sheet');
+    const check = document.getElementById('pv-check'), sheet = document.getElementById('pv-sheet'), list = document.getElementById('pv-errors');
     if (!layout) {
-        check.innerHTML = `<div class="check-failed">Not drawn yet: fix ${errors.length === 1 ? 'this' : `these ${errors.length}`}</div><ul class="errors">${errors.map(e => `<li>${esc(e.message)}</li>`).join('')}</ul>`;
+        check.innerHTML = `<span class="check-failed">Not drawn yet: fix ${errors.length === 1 ? 'this' : `these ${errors.length}`}</span>`;
+        list.innerHTML = `<ul class="errors">${errors.map(e => `<li>${esc(e.message)}</li>`).join('')}</ul>`;
         sheet.classList.add('stale');
         return;
     }
     sheet.classList.remove('stale');
     const total = layout.cutList.reduce((a, r) => a + r.qty, 0);
-    check.innerHTML = layout.issues.length
-        ? `<div class="check-failed">Framing check failed (${layout.issues.length}): do not release.</div><ul class="errors">${layout.issues.slice(0, 6).map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>`
-        : `<div class="check-passed">✓ Framing check passed · ${total} members · ${G.openingsSummary(p.openings)}</div>`;
+    check.innerHTML = layout.issues.length ? `<span class="check-failed">Framing check failed (${layout.issues.length}): do not release</span>`
+        : `<span class="check-passed">✓ Framing check passed · ${total} members · ${G.openingsSummary(p.openings)}</span>`;
+    list.innerHTML = layout.issues.length ? `<ul class="errors">${layout.issues.slice(0, 6).map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>` : '';
     sheet.innerHTML = renderSheet(layout, sheetInfo(p)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
 }
 
@@ -821,6 +853,8 @@ function renderSet() {
     const box = $('#set-card'), groups = [...new Set(set.panels.map(p => p.group || ''))].sort();
     box.innerHTML = `<div class="row"><h2 style="margin:0">Panel set <span class="muted">· ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'}${set.project ? ` · ${esc(set.project)}` : ''} · kept in this browser</span></h2>
             <span class="spacer"></span><button class="secondary" data-act="set-import">Import JSON</button><button class="secondary" data-act="set-export">Export JSON</button></div>
+        <div class="fields set-fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name', cls: 'wide' })}
+            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div>
         <div class="row set-tools"><button class="link" data-act="set-check-all">Check all</button><button class="link" data-act="set-check-none">Check none</button>
             ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}
             <span id="set-actions"></span></div>
@@ -950,7 +984,9 @@ async function importJson(file) {
             marks.push(mark);
             return { ...p, id: `p-${Math.random().toString(36).slice(2, 10)}`, mark };
         });
-        set = { project: set.project || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, panels: replace ? added : [...set.panels, ...added], current: added[0].id };
+        // A model's export: its source, grids and levels kept with the set (written back on Export JSON).
+        const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? (replace ? undefined : set[k])]).filter(([, v]) => v != null));
+        set = { project: set.project || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, panels: replace ? added : [...set.panels, ...added], current: added[0].id };
         checked.clear(); sel = null; ask = null;
         save(); renderAll();
         notice(`${replace ? 'Replaced with' : 'Added'} ${added.length} panel${added.length === 1 ? '' : 's'} from ${file.name}.${warnings.length ? ` ${warnings.join(' ')}` : ''}`, warnings.length > 0);

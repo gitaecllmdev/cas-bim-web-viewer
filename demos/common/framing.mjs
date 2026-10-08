@@ -195,8 +195,11 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     if (rows > 1) notes.push(`${rows} stud rows: elevation shows one row; quantities are for all rows.`);
     if (lifts > 1) notes.push(`${lifts} lifts of ${fmtFtIn(liftH)}: each lift has its own top and bottom track.`);
     if (T) notes.push('Sloped top: stud lengths are at the long point; cut the stud tops to the slope.');
+    const sp = panel.spacingIn ?? 16;
+    if (panel.layoutStartIn > 0 && Math.abs(panel.layoutStartIn - sp) > 1e-6) notes.push(`Stud layout: first stud ${fmtFtIn(panel.layoutStartIn)} from the left end (center), then ${sp}" o.c.`);
     const layout = { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
-        studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn, ...(T ? { top: T, trackLegIn: leg } : {}) };
+        studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn, ...(T ? { top: T, trackLegIn: leg } : {}),
+        ...(panel.layoutStartIn > 0 ? { layoutStartIn: panel.layoutStartIn } : {}) };
     layout.issues = checkLayout(layout, { flangeIn: panel.flangeIn ?? 1.625 }); // fail-safe: see checkLayout
     return layout;
 }
@@ -228,7 +231,7 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 // counter-clockwise) beside their bounding box (x, y, w, h): the top track's sloped runs, and the verticals that reach
 // the track (atTop), their tops cut to the slope.
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
-    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null }) {
+    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn, T = top;
     const ops = clipOpenings(openings, L, H, LEG, T);
     const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
@@ -335,9 +338,11 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
         place(o.right, 'jamb stud', framed(o, 'jamb'));
     }
 
-    // Studs on layout (centers at k × spacing from the left end); in an opening's bay they become cripples.
-    for (let k = 1; k * spacingIn < L; k++) {
-        const x = k * spacingIn - flangeIn / 2;
+    // Studs on layout (centers at k × spacing from the left end, or from the first stud at layoutStartIn); in an
+    // opening's bay they become cripples.
+    const first = layoutStartIn > 0 ? layoutStartIn : spacingIn;
+    for (let k = 0; first + k * spacingIn < L; k++) {
+        const x = first + k * spacingIn - flangeIn / 2;
         if (x + flangeIn > L - flangeIn - 3) break;
         // Skip a layout stud that would land within 3" (clear) of an end or jamb stud.
         if (placed.some(p => x < p.x1 + 3 && x + flangeIn > p.x0 - 3)) continue;
