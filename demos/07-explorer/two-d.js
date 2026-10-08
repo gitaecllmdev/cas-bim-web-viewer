@@ -1,4 +1,4 @@
-// Demo 7, "2D + 3D" tab: the plan beside the model, picks shown in both, floor by floor, measuring and drawing areas
+// Demo 0, "2D + 3D" tab: the plan beside the model, picks shown in both, floor by floor, measuring and drawing areas
 // on the plan. The plan is the shared 2D viewer of core/client/views.js.
 // Viewer3D (select, fitToView, getExtension, loadExtension, toolController, GEOMETRY_LOADED_EVENT): https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
 // MeasureExtension (activate 'distance' | 'area' | 'arc' | 'calibrate', deactivate): https://aps.autodesk.com/en/docs/viewer/v7/reference/Extensions/MeasureExtension/

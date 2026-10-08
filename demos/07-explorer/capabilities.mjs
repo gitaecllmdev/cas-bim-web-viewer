@@ -1,4 +1,4 @@
-// Demo 7's capability catalog: what the APS Viewer can do, where to try it here, and the APS docs for each. Plain data
+// Demo 0's capability catalog: what the APS Viewer can do, where to try it here, and the APS docs for each. Plain data
 // (no viewer), so the list can be tested and copied into Teams or Excel.
 // how: 'try' (in this demo; `at` is the section to jump to), 'demo' (another demo, `demo` = its id), 'on' (always
 // there: the toolbar or the page itself), 'possible' (APS can, not built in these demos), 'not' (APS can't, or only

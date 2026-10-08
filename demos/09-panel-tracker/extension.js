@@ -1,4 +1,4 @@
-// Demo 09: Panel Tracker. Each prefab panel from BIM review to framing complete (BIM review, prefab review, shipped to
+// Demo 7: Panel Tracker. Each prefab panel from BIM review to framing complete (BIM review, prefab review, shipped to
 // site, delivered to site, framing complete): the field records a step by scanning the panel's QR code (a phone or
 // tablet camera where the browser reads QR codes, a handheld scanner typing into the box, or the shop drawing's QR code
 // opening its panel page), by typing its mark, or by clicking its wall in 3D or on the plan. The walls in 3D and on the

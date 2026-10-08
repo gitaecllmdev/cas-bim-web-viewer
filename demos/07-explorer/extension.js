@@ -1,4 +1,4 @@
-// Demo 07: APS Viewer Capabilities: a tour of what the APS Viewer does with a BIM model, in 3D and 2D, with the
+// Demo 0: APS Viewer Capabilities: a tour of what the APS Viewer does with a BIM model, in 3D and 2D, with the
 // detailed capability list (capabilities.mjs). Spec and acceptance criteria: demos/07-explorer/README.md
 // Tabs: 3D model (this file), 2D + 3D (two-d.js), Review (review.js), All capabilities (capabilities.mjs).
 // Viewer3D (search, isolate, hide, showAll, setGhosting, explode, setDisplayEdges, setQualityLevel, setGroundShadow,

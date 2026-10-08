@@ -101,7 +101,7 @@ select { font: inherit; border: 1px solid var(--line); border-radius: 6px; paddi
 .prefab-table tr[data-mark] { cursor: pointer; }
 .prefab-table tr[data-mark]:hover td { background: #fff4ea; }
 .prefab-table tr.hi td { background: #ffe3cc; }
-/* Panel tracker card (Demo 9's steps on the panel page). */
+/* Panel tracker card (Demo 7's steps on the panel page). */
 .tracker { border-top: 4px solid var(--c, #b8bec6); }
 .tr-head h2 { margin: 0; }
 .tr-chip { padding: 1px 10px; border-radius: 999px; background: var(--c, #b8bec6); color: #fff; font-size: 0.85em; font-weight: 600; }

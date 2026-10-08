@@ -7,7 +7,7 @@
 // column); the sheet and its PDF show them, blue when longer than the drawn length, green when shorter (prefab.mjs).
 // The prefab card puts the schedule beside the elevation: hover a row for its members, click to keep them highlighted;
 // the members of a mark with a prefab length are blue / green there.
-// Panel tracker (Demo 9): the panel's steps from BIM review to framing complete, recorded here too (the QR code on the
+// Panel tracker (Demo 7): the panel's steps from BIM review to framing complete, recorded here too (the QR code on the
 // sheet or a label opens this page on a phone): state 'panel-tracker' of the panel's model (tracker.mjs); framing
 // complete also from Install Progress (Demo 3).
 import { loadState, saveState, escapeHtml, sharedStateOn, stateFor } from './helpers.js';

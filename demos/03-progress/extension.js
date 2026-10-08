@@ -433,7 +433,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>` : ''}
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
-                    <button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 9): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>
+                    <button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 7): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>
                 </div>
                 ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
                 ${s ? `<div class="pg-row pg-search" data-search ${this.tab === 'stages' ? 'hidden' : ''}>

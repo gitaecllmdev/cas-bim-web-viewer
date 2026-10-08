@@ -590,7 +590,7 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .pg-g-row.other .pg-bar s { background: rgba(0, 0, 0, 0.12); }
 .pg-cal-ev.other { background: #eef1f4 !important; color: #8a96a3 !important; box-shadow: inset 0 0 0 1px #dde2e8; }
 
-/* Demo 7: 3D Model Explorer */
+/* Demo 0: APS Viewer Capabilities */
 .demo-panel.ex { font-size: 13px; }
 .demo-panel.ex [hidden] { display: none !important; } /* rows and cards are flex: keep the hidden attribute working */
 .ex .ex-sec { margin: 10px 0 0; padding: 10px 12px; border: 1px solid #e1e6eb; border-radius: 8px; background: #fbfcfd; }
@@ -744,7 +744,7 @@ body.dock-bottom.dragging-split #views { pointer-events: none; }
 .plan-pop { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; transition: opacity 0.12s; }
 .plan-pop.moving { opacity: 0; }
 
-/* Demo 9 Panel Tracker: the five steps, the scan box, the panel's card, the list; the legend over the 3D view. */
+/* Demo 7 Panel Tracker: the five steps, the scan box, the panel's card, the list; the legend over the 3D view. */
 .dw-icon-pt-click::before { content: "\271A"; color: #3d6fd6; }
 .dw-icon-pt-only::before { content: "\25D0"; }
 .dw-icon-pt-none::before { content: "\25CB"; color: #b8bec6; }
