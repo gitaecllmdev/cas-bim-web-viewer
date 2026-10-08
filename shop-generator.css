@@ -146,7 +146,8 @@ button.link.danger { color: var(--warn); }
 .sk-cl line { stroke: #7f97ad; stroke-width: 1px; stroke-dasharray: 5 3; pointer-events: none; }
 .sk-cl line.j { stroke: #3d5a74; stroke-dasharray: none; } .sk-cl line.c { stroke: #9fb3c4; }
 .sk-hit { stroke: transparent; stroke-width: 14px; cursor: help; }
-.sk-edge-on { stroke: #ff8a3d; stroke-width: 4px; }
+.sk-edge-on { stroke: #ff8a3d; stroke-width: 4px; pointer-events: none; }
+.sk-ctx, .sk-dim, .sk-ctx-t, .sk-dim-t, .sk-label { pointer-events: none; } /* dimensions and highlights: the pointer goes through to what is under them */
 .sk-dim line { stroke: #1b6aa5; stroke-width: 1px; } .sk-dim-t { fill: #1b6aa5; font-weight: 600; }
 .sk-ctx line { stroke: #d2691e; stroke-width: 1.4px; } .sk-ctx-t { fill: #b4530f; font-weight: 700; }
 .sk-ctx.live line { stroke: #e65100; stroke-width: 1.8px; } .sk-ctx.live .sk-ctx-t, .sk-ctx.live text { fill: #e65100; }
@@ -214,3 +215,36 @@ ul.errors { margin: 6px 0 0; padding-left: 20px; color: var(--warn); }
 .set-open { all: unset; box-sizing: border-box; display: grid; gap: 3px; width: 100%; padding: 10px 12px; cursor: pointer; font-size: 14px; }
 .set-open:focus-visible { outline: 2px solid var(--accent); }
 .set-open .thumb { height: 110px; }
+
+/* Jambs on the stud layout (a switch like the optimizer's), and which opening the members are for. */
+.lay-toggle { display: flex; flex-wrap: wrap; box-shadow: none; border-radius: 8px; margin: 2px 0 6px; padding: 6px 10px 6px 6px; }
+.lay-toggle small { flex-basis: 100%; padding-left: 40px; }
+.op-context { display: flex; gap: 10px; align-items: center; margin: 4px 0 6px; padding: 6px 8px; border-radius: 6px; background: #f4f6f9; border-left: 4px solid #a01818; font-size: 14px; line-height: 1.35; }
+.op-context.window { border-left-color: #1b6aa5; } .op-context.mep { border-left-color: #2e7d32; } .op-context.steel { border-left-color: #5d4037; }
+.op-glyph { width: 56px; height: 40px; flex: none; }
+.op-glyph .g-op { fill: #fff; stroke: #a01818; stroke-width: 1.2; } .op-glyph .g-op.window { fill: #eef6ff; stroke: #1b6aa5; } .op-glyph .g-op.mep { fill: #edf7ee; stroke: #2e7d32; } .op-glyph .g-op.steel { fill: #f3ece9; stroke: #5d4037; }
+.op-glyph .g-j { fill: #3d5a74; } .op-glyph .g-h { fill: #1b6aa5; } .op-glyph .g-s { fill: #2e7d32; } .op-glyph .g-floor { stroke: #9aa5b1; stroke-width: 1; }
+/* The sketch: an opening framed out to the layout; studs to point at; each stud's C in plan under it. */
+.sk-framed { fill: rgba(255,138,61,.08); stroke: #ff8a3d; stroke-width: 1.4px; stroke-dasharray: 4 3; pointer-events: none; }
+.sk-mem-hit { stroke: transparent; stroke-width: 9px; cursor: context-menu; }
+.sk-mem-on { stroke: #ff8a3d; stroke-width: 2.6px; pointer-events: none; }
+.sk-c { fill: none; stroke: #3d5a74; stroke-width: 1.3px; vector-effect: non-scaling-stroke; pointer-events: none; }
+/* The sketch's right-click menu. */
+.sk-menu { position: fixed; z-index: 60; min-width: 240px; max-width: 330px; background: #fff; border: 1px solid var(--line); border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.2); padding: 4px; font-size: 13.5px; color: #222; }
+.sk-menu[hidden] { display: none; }
+.sk-menu .mi-head { padding: 6px 8px 4px; } .sk-menu .mi-head b { display: block; font-size: 14px; } .sk-menu .mi-head small { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; }
+.sk-menu .mi { display: block; width: 100%; text-align: left; background: none; border: 0; color: inherit; padding: 6px 8px; border-radius: 5px; font: inherit; cursor: pointer; box-shadow: none; }
+.sk-menu .mi:hover, .sk-menu .mi:focus-visible { background: #eef3f8; }
+.sk-menu .mi:disabled { color: #9aa5b1; cursor: default; background: none; }
+.sk-menu .mi.danger { color: #a01818; }
+.sk-menu .mi-pick { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 6px; padding: 3px 8px; }
+.sk-menu .mi-pick span { color: var(--muted); font-size: 12.5px; }
+.sk-menu .mi-pick select { font-size: 13px; padding: 3px; min-width: 0; width: 100%; }
+.sk-menu .mi-check { display: flex; flex-wrap: wrap; gap: 0 8px; align-items: center; padding: 5px 8px; cursor: pointer; border-radius: 5px; }
+.sk-menu .mi-check:hover { background: #eef3f8; }
+.sk-menu .mi-check input { width: 16px; height: 16px; margin: 0; }
+.sk-menu .mi-check small { flex-basis: 100%; color: var(--muted); font-size: 11.5px; padding-left: 24px; line-height: 1.3; }
+.sk-menu hr { border: 0; border-top: 1px solid var(--line); margin: 4px 2px; }
+.sk-menu .mi-row { display: flex; flex-wrap: wrap; gap: 4px; padding: 2px 6px 6px; }
+.sk-menu .mi-row .mi { width: auto; border: 1px solid var(--line); padding: 4px 8px; }
+.sk-menu .mi-add.door { color: #a01818; } .sk-menu .mi-add.window { color: #1b6aa5; } .sk-menu .mi-add.mep { color: #2e7d32; } .sk-menu .mi-add.steel { color: #5d4037; }

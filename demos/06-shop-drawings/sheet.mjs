@@ -5,7 +5,7 @@
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
 // Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
-import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText, openingKind, OPENING_KINDS } from '../common/framing.mjs';
+import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText, openingKind, OPENING_KINDS, webOnRight } from '../common/framing.mjs';
 import { toPdf, toPdfSheets, textWidth } from './pdf.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
@@ -316,6 +316,10 @@ export function sheetOps(layout, info) {
         out.push(rect(X(o.left), Y(o.top), (o.right - o.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.opening, width: 0.008 }));
         out.push(line(X(o.left), Y(o.top), X(o.right), Y(o.bottom), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
         out.push(line(X(o.left), Y(o.bottom), X(o.right), Y(o.top), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
+        if (o.requested) { // framed out to the stud layout: the rough opening as asked for, inside
+            out.push(rect(X(o.requested.left), Y(o.top), (o.requested.right - o.requested.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.openingDim, width: 0.007 }));
+            out.push(text(X(o.requested.left) + 0.04, Y(o.top) + 0.1, `RO ${fmtFtIn(o.requested.right - o.requested.left)}`, { size: 0.06, weight: 'bold', fill: COLORS.openingDim })); // in its corner: clear of the tags on the header and sill
+        }
         // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
         const kind = openingKind(o);
         if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(OPENING_KINDS[kind], 0.06, true) + 0.08) { // when the name fits across it
@@ -422,11 +426,13 @@ export function sheetOps(layout, info) {
     const studSymbol = (m, y0) => {
         const fw = Math.max(m.w * s, 0.035), inset = stripH * 0.12, top = y0 + inset, bot = y0 + stripH - inset;
         const lip = Math.min(0.03, (bot - top) * 0.22);
-        const webRight = m.x + m.w >= L - 0.5 || openings.some(o => Math.abs(o.left - (m.x + m.w)) < 0.5);
+        const webRight = webOnRight(m, layout);
         const xw = webRight ? X(m.x + m.w) : X(m.x), xf = webRight ? xw - fw : xw + fw;
         const st = { stroke: COLORS.studStroke, width: 0.006 };
         return [line(xw, top, xw, bot, st), line(xw, top, xf, top, st), line(xw, bot, xf, bot, st), line(xf, top, xf, top + lip, st), line(xf, bot, xf, bot - lip, st)];
     };
+    // Plan ordinates from the end the stud layout starts at (Flip panel: the right end; on side B the drawing is mirrored).
+    const ordinate = (x) => fmtFtIn(layout.layoutFromRight && !layout.flipped ? L - x : x);
     const plan = (y0, atTop) => {
         const segs = atTop ? members.filter(m => m.role === 'top track' && (T || m.y + m.h >= HT - 0.01)) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
         for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke }));
@@ -461,10 +467,10 @@ export function sheetOps(layout, info) {
             const x = X(mk.x), fill = mk.opening ? COLORS.openingDim : COLORS.dim;
             if (atTop) {
                 out.push(line(x, y0 - 0.06, x, y0, { stroke: fill, width: 0.005 }));
-                out.push(text(x + 0.03, y0 - 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, fill, weight: mk.bold || mk.opening ? 'bold' : 'normal' }));
+                out.push(text(x + 0.03, y0 - 0.08, ordinate(mk.x), { size: 0.065, rotate: -90, fill, weight: mk.bold || mk.opening ? 'bold' : 'normal' }));
             } else {
                 out.push(line(x, y0 + stripH, x, y0 + stripH + 0.06, { stroke: fill, width: 0.005 }));
-                out.push(text(x + 0.03, y0 + stripH + 0.08, fmtFtIn(mk.x), { size: 0.065, rotate: -90, anchor: 'end', fill, weight: mk.opening ? 'bold' : 'normal' }));
+                out.push(text(x + 0.03, y0 + stripH + 0.08, ordinate(mk.x), { size: 0.065, rotate: -90, anchor: 'end', fill, weight: mk.opening ? 'bold' : 'normal' }));
             }
         }
     };

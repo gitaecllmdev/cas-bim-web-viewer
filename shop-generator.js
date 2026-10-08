@@ -6,7 +6,7 @@
 // The elevation editor: the core members (top track, on-center studs, bottom track) over it; tools to select and move,
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
-import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall } from './demos/common/framing.mjs';
+import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
@@ -87,7 +87,17 @@ main.addEventListener('input', (e) => {
         if (peak) peak.value = lenText(v / 2);
     } else setPath(onSet ? set : p, onSet ? path.slice(4) : path, v);
     if (kind) { setKind(p, Number(kind[1]), v); renderCatalogue(); renderChips(); }
-    if (path === 'optimizeOpenings') notice(v ? 'Opening optimizer on: the studs on center start where the openings take the fewest stud pieces, every bay within the spacing.' : 'Opening optimizer off: studs on center from the left end.');
+    if (path === 'optimizeOpenings') notice(v ? 'Opening optimizer on: the studs on center start where the openings take the fewest stud pieces, every bay within the spacing.' : `Opening optimizer off: studs on center from the ${p.layoutFromRight ? 'right' : 'left'} end.`);
+    if (path === 'flipStuds') notice(v ? 'Flip studs on: the studs on center face the other way (end studs and jambs still close their side).' : 'Flip studs off: the studs on center face the left end, as usual.');
+    if (path === 'layoutFromRight') notice(v ? 'Flip panel on: the stud layout starts from the right end, and the plan ordinates run from it.' : 'Flip panel off: the stud layout starts from the left end.');
+    if (/^(optimizeOpenings|flipStuds|layoutFromRight)$/.test(path)) syncToggles();
+    const toLayout = /^openings\.(\d+)\.toLayout$/.exec(path);
+    if (toLayout) {
+        const n = G.openingName(p.openings, Number(toLayout[1]));
+        notice(v ? `${n}: its jambs moved out to the nearest studs on center, which are its jambs now (the rough opening stays as typed).` : `${n}: its jambs at the opening again.`);
+        renderCatalogue();
+    }
+    if (el.closest('#sk-menu')) closeMenu();
     if (/^openings\.\d+\.(widthIn|leftIn)$/.test(path)) syncCatalogueFields(path);
     changed();
 });
@@ -96,7 +106,7 @@ let studBefore = null;
 main.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-f="members.stud"]')) studBefore = cur().members.stud; });
 main.addEventListener('change', (e) => {
     const pick = e.target.closest('[data-pick]');
-    if (pick) { pickMember(pick.dataset.pick, pick.value); return; }
+    if (pick) { pickMember(pick.dataset.pick, pick.value); if (pick.closest('#sk-menu')) closeMenu(); return; }
     if (e.target.id === 'combo') { applyCombo(e.target.value); return; }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSetActions(); return; }
     if (e.target.id === 'check-group') { for (const x of set.panels) if ((x.group || '') === e.target.value) checked.add(x.id); e.target.value = '__'; renderSet(); return; }
@@ -165,6 +175,12 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'del-op': () => { if (!G.canEdit(p, `openings.${i}`)) return lockedNotice('the model\'s openings'); p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
         center: () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
         preview: () => flipPreview(),
+        'layout-here': () => setLayoutStart(p, Number(b.dataset.x)),
+        'layout-reset': () => { delete p.layoutStartIn; syncToggles(); changed(); notice(`${p.mark}: the first stud is ${p.optimizeOpenings ? 'the optimizer\'s' : 'on the standard layout'} again.`); },
+        'layout-from': () => { p.layoutFromRight = b.dataset.side === 'right'; syncToggles(); changed(); notice(`The stud layout now starts from the ${b.dataset.side} end.`); },
+        'add-ctrl': () => addControlPoint(p, Number(b.dataset.x)),
+        'add-op-at': () => addOpeningAt(p, b.dataset.kind, Number(b.dataset.x), Number(b.dataset.y)),
+        'copy-op': () => copyOpening(p, i),
         'peri-finish': () => finishPerimeter(),
         'peri-undo': () => { peri?.pts.pop(); renderSketch(); renderHint(); },
         'peri-cancel': () => setTool('select'),
@@ -183,6 +199,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'set-clear': () => clearSet(),
     };
     acts[act]?.();
+    if (b.closest('#sk-menu')) closeMenu();
 });
 
 function addPanel(panel) {
@@ -246,8 +263,13 @@ function renderPanel() {
         ${field('Wall type', 'wallType', p.wallType, { list: 'wallType', r: 'wallType', ph: 'CAS_1HR_362_1L_FULL', cls: 'f-type' })}
         ${field('Group', 'group', p.group, { list: 'group', r: 'group', ph: 'Type A', cls: 'f-group' })}
         ${G.isFromModel(p) ? `<span class="model-badge" title="${esc(`Revit wall ${p.revit.uniqueId || ''}${p.revit.wallTypeName ? ` · ${p.revit.wallTypeName}` : ''}${p.revit.levelName ? ` · ${p.revit.levelName}` : ''}`)}">🔒 Revit wall · perimeter and its openings locked</span>` : ''}`;
-    const sideB = main.querySelector('[data-f="sideB"]');
-    if (sideB) sideB.checked = !!p.sideB;
+    syncToggles();
+}
+// The sheet's switches (Side B, Flip studs, Flip panel) and the optimizer's, as the panel has them.
+function syncToggles() {
+    const p = cur();
+    for (const k of ['sideB', 'flipStuds', 'layoutFromRight']) for (const el of main.querySelectorAll(`#sheet-card [data-f="${k}"]`)) el.checked = !!p[k];
+    renderLayoutInfo();
 }
 
 // The elevation's title, the shape to start from and its sizes.
@@ -301,18 +323,32 @@ function memberIcon(spec) {
 }
 const recentKey = (k) => (k === 'head' ? 'header' : k);
 const optsOf = (list, key, skip = []) => [...new Set([...(recent[key] || []), ...list])].filter(v => v && !skip.includes(v)).map(v => ({ value: v, label: v }));
-function memberCard({ path, label, value = '', options, resolved, r, note = '', extra = '', ask: asking = false }) {
-    const typed = typing.has(path), known = options.some(o => o.value === value);
+// A member's choices as <option>s: the list, a size typed before, and Type another size….
+function optionTags(path, value, options) {
+    const known = options.some(o => o.value === value);
     const all = [...options, ...(known || !value ? [] : [{ value, label: `Typed: ${value}` }]), { value: '__type', label: 'Type another size…' }];
+    return all.map(o => `<option value="${esc(o.value)}" ${o.value === (typing.has(path) ? '__type' : value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
+}
+function memberCard({ path, label, value = '', options, resolved, r, note = '', extra = '', ask: asking = false }) {
+    const typed = typing.has(path);
     return `<div class="mcard ${asking ? 'ask' : ''}" data-card="${esc(path)}">
         <div class="micon" aria-hidden="true">${memberIcon(resolved)}</div>
         <div class="mbody"><span class="mlabel">${esc(label)}</span>
-            <select data-pick="${esc(path)}" aria-label="${esc(label)}">${all.map(o => `<option value="${esc(o.value)}" ${o.value === (typed ? '__type' : value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('')}</select>
+            <select data-pick="${esc(path)}" aria-label="${esc(label)}">${optionTags(path, value, options)}</select>
             ${typed ? `<input type="text" class="mtype" data-f="${esc(path)}" data-r="${r}" list="dl-${r}" value="${esc(value)}" placeholder="362S162-43, or (2) 362S162-43 WITH (1) 362T125-43" autocomplete="off">` : ''}
             <small class="mdesc">${esc(note || G.specText(resolved) || resolved)}</small>${extra}</div></div>`;
 }
+// A core member's choices: the top track, the studs on center or the bottom track.
+function coreChoice(key) {
+    const m = cur().members, ch = G.memberChoices(m), bottom = bottomTrack(m), matching = G.trackFor(m.stud);
+    if (key === 'topTrack') return { path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
+        options: [{ value: '', label: `Same as bottom track: ${bottom}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${bottom}` };
+    if (key === 'stud') return { path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud') };
+    return { path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
+        options: [{ value: '', label: `Matches the stud: ${matching}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${matching}` };
+}
 function renderCore() {
-    const p = cur(), m = p.members, ch = G.memberChoices(m), stud = studName(m), bottom = bottomTrack(m), matching = G.trackFor(m.stud);
+    const m = cur().members;
     const spacing = typing.has('members.spacingIn')
         ? `<input type="text" class="mtype" data-f="members.spacingIn" data-t="num" value="${esc(m.spacingIn)}" aria-label="Stud spacing in inches">`
         : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${[...new Set([...G.SPACINGS, Number(m.spacingIn)])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${v}" o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
@@ -322,12 +358,9 @@ function renderCore() {
                 <optgroup label="Typical (check against the framing criteria)">${G.COMBOS.map((c, i) => `<option value="b${i}">${esc(c.name)}</option>`).join('')}</optgroup></select>
             <button class="secondary" data-act="save-combo">Save as a combo</button>${combos.length ? '<button class="link" data-act="del-combo">Delete a combo</button>' : ''}</div>
         <div class="core-cards">
-            ${memberCard({ path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
-                options: [{ value: '', label: `Same as bottom track: ${bottom}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${bottom}` })}
-            ${memberCard({ path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud'),
-                extra: `<div class="spacing"><label>@ ${spacing}</label></div>` })}
-            ${memberCard({ path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
-                options: [{ value: '', label: `Matches the stud: ${matching}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${matching}` })}
+            ${memberCard(coreChoice('topTrack'))}
+            ${memberCard({ ...coreChoice('stud'), extra: `<div class="spacing"><label>@ ${spacing}</label></div>` })}
+            ${memberCard(coreChoice('track'))}
         </div>`;
 }
 // The opening optimizer's switch on the sketch (off: studs on center from the left end), and what it comes to.
@@ -338,12 +371,13 @@ function renderLayoutInfo() {
     let info = null;
     try { if (!G.panelErrors(p).length) info = G.layoutInfo(p); } catch { /* inputs to fix */ }
     const saved = info && info.standardPieces - info.pieces;
-    el.textContent = !info ? '' : !info.optimized ? (info.standardPieces > 0 ? 'off: on center from the left end' : '')
+    const end = p.layoutFromRight ? 'right' : 'left';
+    el.textContent = !info ? '' : info.manual ? `first stud ${inch(info.start)} from the ${end} end, set by hand` : !info.optimized ? (info.standardPieces > 0 ? `off: on center from the ${end} end` : '')
         : `first stud ${inch(info.start)}${saved > 0 ? ` · ${saved} fewer piece${saved === 1 ? '' : 's'}` : saved < 0 ? ' · every bay within the spacing' : ' · nothing to gain here'}`;
 }
 
 // One member of an opening (its own, or the panel's default with o null): the list starts with the default.
-function openingCard(i, k) {
+function openingChoice(i, k) {
     const p = cur(), m = p.members, o = i == null ? null : p.openings[i], ch = G.memberChoices(m);
     const stud = studName(m), bottom = bottomTrack(m), base = k === 'jamb' ? stud : bottom, def = m[recentKey(k)];
     const baseLabel = k === 'jamb' ? `Same as stud: ${stud}` : `Same as bottom track: ${bottom}`;
@@ -351,8 +385,36 @@ function openingCard(i, k) {
         : [{ value: '', label: baseLabel }];
     options.push(...optsOf([base, ...ch[recentKey(k)]], recentKey(k), [def]));
     const r = G.memberFor(p, o, k);
-    return memberCard({ path: o ? `openings.${i}.${k}` : `members.${recentKey(k)}`, label: o ? G.MEMBER_LABELS[k] : `${G.MEMBER_LABELS[k]} (every opening)`, value: o ? o[k] : def,
-        options, r: recentKey(k), resolved: r.spec, ask: o && ask === i, note: r.base ? `${r.base === 'stud' ? 'as the on-center stud' : 'as the bottom track'}, ${r.spec}${k === 'jamb' ? ', one each side' : ''}` : '' });
+    return { path: o ? `openings.${i}.${k}` : `members.${recentKey(k)}`, label: o ? `${G.openingName(p.openings, i)} ${G.MEMBER_LABELS[k].toLowerCase()}` : `${G.MEMBER_LABELS[k]} (every opening)`, value: o ? o[k] : def,
+        options, r: recentKey(k), resolved: r.spec, ask: o && ask === i, note: r.base ? `${r.base === 'stud' ? 'as the on-center stud' : 'as the bottom track'}, ${r.spec}${k === 'jamb' ? ', one each side' : ''}` : '' };
+}
+const openingCard = (i, k) => memberCard(openingChoice(i, k));
+// "Jambs on the stud layout" for one opening: what it comes to (framed width; stud pieces and steel saved or taken).
+function toLayoutNote(p, i) {
+    const o = p.openings[i], { pieces, lengthIn } = G.toLayoutEffect(p, i), n = Math.abs(pieces);
+    let framedText = '';
+    if (o.toLayout) { try { const b = G.frameInputs(p).openings[i]; if (b?.requested) framedText = `framed ${fmtFtIn(b.right - b.left)} between jambs · `; } catch { /* inputs to fix */ } }
+    const parts = [pieces ? `${n} ${pieces > 0 ? 'fewer' : 'more'} stud piece${n === 1 ? '' : 's'}` : '', Math.abs(lengthIn) >= 1 ? `${fmtFtIn(Math.abs(lengthIn))} ${lengthIn > 0 ? 'less' : 'more'} steel` : ''].filter(Boolean);
+    return framedText + (parts.length ? `${o.toLayout ? '' : 'on: '}${parts.join(', ')}` : 'no saving here');
+}
+function layoutToggle(p, i) {
+    const o = p.openings[i];
+    return `<label class="opt-toggle lay-toggle${o.toLayout ? ' on' : ''}" title="Move this opening's jambs out to the nearest studs on center: those studs are its jambs, so no extra studs stand beside it. The rough opening stays as typed, drawn inside the framed one.">
+        <input type="checkbox" data-f="openings.${i}.toLayout" ${o.toLayout ? 'checked' : ''}><span>Jambs on the stud layout</span><small>${esc(toLayoutNote(p, i))}</small></label>`;
+}
+// Above an opening's members: which opening they are for (a small picture of its framing, its kind, size and place).
+function openingContext(p, i) {
+    const o = p.openings[i], name = G.openingName(p.openings, i), type = G.OPENING_TYPES[o.kind];
+    const size = o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, up through the top from ${fmtFtIn(o.sillIn)}` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}${o.kind === 'door' ? '' : `, sill ${fmtFtIn(o.sillIn)}`}`;
+    return `<div class="op-context ${o.kind}">${openingGlyph(o.kind)}<div><span class="muted small">Members for</span> <b>${name}</b> · ${esc(type.name)}<br>
+        <span class="small">${esc(size)} · ${fmtFtIn(o.leftIn)} from the left end</span></div></div>`;
+}
+function openingGlyph(kind) { // the opening, a jamb each side, the header over it and the sill under it, as the kind has them
+    const head = kind !== 'steel', sill = kind !== 'door', y0 = head ? 9 : 0, y1 = kind === 'door' ? 38 : 30;
+    return `<svg class="op-glyph" viewBox="0 0 56 40" aria-hidden="true"><rect class="g-op ${kind}" x="15" y="${y0}" width="26" height="${y1 - y0}"/>
+        <rect class="g-j" x="11" y="${y0}" width="4" height="${y1 - y0}"/><rect class="g-j" x="41" y="${y0}" width="4" height="${y1 - y0}"/>
+        ${head ? `<rect class="g-h" x="11" y="${y0 - 5}" width="34" height="4"/>` : ''}${sill ? `<rect class="g-s" x="11" y="${y1 + 1}" width="34" height="3"/>` : ''}
+        <line class="g-floor" x1="2" y1="39.5" x2="54" y2="39.5"/></svg>`;
 }
 function renderCatalogue() {
     const box = $('#catalogue'), p = cur();
@@ -375,6 +437,8 @@ function renderCatalogue() {
         <div class="fields cat-fields">${f('Width', 'widthIn', o.widthIn)}${o.kind === 'steel' ? '' : f('Height', 'heightIn', o.heightIn)}
             ${o.kind === 'door' ? '' : f(o.kind === 'steel' ? 'Sill height (up through the top)' : 'Sill height', 'sillIn', o.sillIn)}
             ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}</div>
+        ${layoutToggle(p, sel)}
+        ${openingContext(p, sel)}
         ${type.members.map(k => openingCard(sel, k)).join('')}
         <div class="row"><button data-act="done">Done</button>${locked ? '' : `<button class="link" data-act="center" data-i="${sel}">Center it</button><span class="muted small">Arrow keys move it (Shift: 6").</span>`}</div>`;
 }
@@ -441,7 +505,7 @@ function renderHint() {
     } else if (tool === 'opening') {
         el.innerHTML = '<b>Drawing an opening:</b> drag a rectangle on the panel. Touching the floor it is a door; up through the top a steel penetration; else a window (make it an MEP opening on the right). Esc to stop.';
     } else {
-        el.textContent = `${cur().shape.kind === 'custom' ? 'Click above the top line to add a point there; double-click a point to remove it. ' : ''}Point at an opening, an edge or a corner to see its dimensions; drag an opening or a round handle to change it.`;
+        el.textContent = `${cur().shape.kind === 'custom' ? 'Click above the top line to add a point there; double-click a point to remove it. ' : ''}Point at an opening, a stud, an edge or a corner to see its dimensions; drag an opening or a round handle to change it. Right-click for options.`;
     }
 }
 function setTool(next, render = true) {
@@ -506,6 +570,8 @@ function renderSketch() {
         if (!(w > 0 && h > 0)) return;
         const name = G.openingName(p.openings, i), dims = b.through ? `${fmtFtIn(w)} wide` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`;
         const size = Math.min(fs * 1.1, (w * 0.9) / (name.length * 0.62), h * 0.36), small = Math.min(fs * 0.8, (w * 0.92) / (dims.length * 0.56), h * 0.22);
+        const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - b.left) < 1e-6 && Math.abs(x.bottom - b.bottom) < 1e-6);
+        if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${fmtFtIn(fb.right - fb.left)} between jambs`)}</title></rect>`);
         parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
@@ -574,6 +640,11 @@ function renderSketch() {
             const label = dx < 1e-6 ? `${fmtFtIn(dy)} high` : dy < 1e-6 ? fmtFtIn(dx) : `${fmtFtIn(Math.hypot(dx, dy))} along · ${fmtFtIn(dx)} run · ${fmtFtIn(dy)} rise · ${pitchText(dy / dx)}`;
             ctx.push(`<line x1="${x1}" y1="${Y(y1)}" x2="${x2}" y2="${Y(y2)}" class="sk-edge-on"/>`, t((x1 + x2) / 2 + (dx < 1e-6 ? (x1 < L / 2 ? -fs : fs) : 0), Y((y1 + y2) / 2) + (dx < 1e-6 ? 0 : y1 + y2 < 1e-6 ? fs * 2.6 : -fs * 0.8), label, { cls: 'sk-ctx-t', size: cs * 1.1, a: dx < 1e-6 ? (x1 < L / 2 ? 'end' : 'start') : 'middle' }));
         }
+        const mem = /^mem:(\d+)$/.exec(hover || ''), mm = mem && laid.lay?.members[Number(mem[1])];
+        if (mm && valid) {
+            const cx = mm.x + mm.w / 2, my = mm.y + mm.h / 2;
+            ctx.push(`<line x1="${cx}" y1="${Y(mm.y)}" x2="${cx}" y2="${Y(mm.y + mm.h)}" class="sk-mem-on"/>`, dimH(0, cx, my, fmtFtIn(cx), 'sk-ctx hov'), dimH(cx, L, my, fmtFtIn(L - cx), 'sk-ctx hov'));
+        }
         const corner = /^(pt:\d+|peak|pg:tl|pg:tr|pg:bl|pg:br|pg:l|pg:r)$/;
         const point = (drag?.moved && corner.test(drag.what) ? drag.what : null) || (corner.test(hover || '') ? hover : null);
         if (point && valid) {
@@ -611,19 +682,28 @@ function renderSketch() {
 
 // The framing laid out for the sketch (side A), at most every 120 ms while dragging; nothing while inputs need fixing.
 let laid = { key: '', at: 0, lay: null };
+const ROLE_NAMES = { stud: 'Stud on center', 'end stud': 'End stud', 'jamb stud': 'Jamb', cripple: 'Cripple' };
 function centerlines(p, H, top) {
-    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings]);
+    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings, p.layoutStartIn, p.layoutFromRight, p.flipStuds]);
     if (key !== laid.key && (!drag || Date.now() - laid.at > 120)) {
         let lay = null;
         try { if (!G.panelErrors(p).length) lay = frameWall(G.frameInputs(p)); } catch { /* inputs to fix */ }
         laid = { key, at: Date.now(), lay };
     }
     if (!laid.lay) return '';
-    const leg = G.parseMember(p.members.track)?.flangeIn ?? 1.25;
-    return `<g class="sk-cl">${laid.lay.members.filter(m => m.orient === 'v').map(m => {
+    const leg = G.parseMember(p.members.track)?.flangeIn ?? 1.25, lay = laid.lay, u = Math.max(view.w, view.h) / 100;
+    const lines = [], hits = [], cs = [];
+    lay.members.forEach((m, k) => {
+        if (m.orient !== 'v') return;
         const cx = m.x + m.w / 2, y2 = m.pts ? underAt(top, cx, H, leg) : m.y + m.h;
-        return `<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="${m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`;
-    }).join('')}</g>`;
+        lines.push(`<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="${m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`);
+        hits.push(`<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="sk-mem-hit" data-hover="mem:${k}"><title>${esc(`${ROLE_NAMES[m.role] || m.role}: ${m.type}, ${fmtFtIn(m.lengthIn)} · right-click for its options`)}</title></line>`);
+        if (m.y <= leg + 0.5) { // on the bottom track: its C in plan under it, the web on the side it is (Flip studs turns the studs on center)
+            const ya = u * 0.6, yb = ya + Math.max(u * 1.3, 2.5), lip = (yb - ya) * 0.3, [open, web] = webOnRight(m, lay) ? [m.x, m.x + m.w] : [m.x + m.w, m.x];
+            cs.push(`<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="sk-c"/>`);
+        }
+    });
+    return `<g class="sk-cl">${lines.join('')}${cs.join('')}</g><g class="sk-mem-hits">${hits.join('')}</g>`;
 }
 
 function wallPoint(e) {
@@ -645,6 +725,7 @@ function rectBox({ a, b }) {
 }
 function bindSketch(svg) {
     svg.addEventListener('pointerdown', (e) => {
+        if (e.button !== 0) return; // a right-click opens the sketch's menu instead
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
         svg.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -687,6 +768,7 @@ function bindSketch(svg) {
     svg.addEventListener('pointerup', end);
     svg.addEventListener('pointercancel', () => { drag = null; rectDraw = null; renderSketch(); });
     svg.addEventListener('pointerleave', () => { if (!drag && hover) { hover = null; renderSketch(); } });
+    svg.addEventListener('contextmenu', openMenu);
     svg.addEventListener('dblclick', (e) => {
         if (tool === 'perimeter') { finishPerimeter(); return; }
         const h = e.target.closest('[data-drag^="pt:"]'), p = cur();
@@ -750,6 +832,7 @@ function finishRect() {
 const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
     if (tool === 'perimeter' && peri) { perimeterKey(e); return; }
     if (e.key === 'Escape') { if (tool !== 'select') setTool('select'); else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); } return; }
@@ -824,6 +907,133 @@ function finishPerimeter() {
     renderAll(); save();
     const { lengthIn, heightIn } = G.shapeTop(p.shape);
     notice(`Perimeter in: ${fmtFtIn(lengthIn)} x ${fmtFtIn(heightIn)} ${G.SHAPES.find(k => k.kind === p.shape.kind).name.toLowerCase()}${res.openings.length ? `, with ${G.openingsSummary(res.openings)} from its notches` : ''}. Click an opening to pick its members.`);
+}
+
+// --- Right-click on the sketch: what can be done with what is under the pointer --------------------------------------
+// An opening: its members, kind, jambs on the layout, center, copy, remove. A stud: its type, start the layout there. The
+// top: the top track, a control point to drag. The bottom: the bottom track. An end: start the layout from it. A point:
+// remove it. Empty panel: add an opening there. Always: Preview, the optimizer, Flip studs, Flip panel.
+let menuAt = null;
+function closeMenu() {
+    const box = document.getElementById('sk-menu');
+    menuAt = null;
+    if (box && !box.hidden) { box.hidden = true; box.innerHTML = ''; }
+}
+document.addEventListener('pointerdown', (e) => { if (menuAt && !e.target.closest('#sk-menu')) closeMenu(); }, true);
+window.addEventListener('resize', closeMenu);
+window.addEventListener('scroll', closeMenu, { passive: true });
+function openMenu(e) {
+    e.preventDefault();
+    if (tool !== 'select' || drag) return;
+    const p = cur(), [x, y] = wallPoint(e), el = e.target.closest('[data-drag],[data-hover]'), key = el ? el.dataset.drag || el.dataset.hover : '';
+    const { lengthIn: L, heightIn: H, top } = G.shapeTop(p.shape), at = (v) => topAt(top, v, H), shapeFree = G.canEdit(p, 'shape');
+    const head = (title, sub = '') => `<div class="mi-head"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</div>`;
+    const btn = (label, act, data = {}, { off = false, title = '', cls = '' } = {}) => `<button class="mi ${cls}" role="menuitem" data-act="${act}" ${Object.entries(data).map(([k, v]) => `data-${k}="${esc(v)}"`).join(' ')}${off ? ' disabled' : ''}${title ? ` title="${esc(title)}"` : ''}>${esc(label)}</button>`;
+    const pick = (c, label = c.label) => `<label class="mi-pick"><span>${esc(label)}</span><select data-pick="${esc(c.path)}" aria-label="${esc(label)}">${optionTags(c.path, c.value, c.options)}</select></label>`;
+    const check = (label, path, on, note = '') => `<label class="mi-check"><input type="checkbox" data-f="${esc(path)}" ${on ? 'checked' : ''}><span>${esc(label)}</span>${note ? `<small>${esc(note)}</small>` : ''}</label>`;
+    const choose = (i) => { if (sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); } };
+    const endMenu = (side) => out.push(head(`The ${side} end`, `${fmtFtIn(at(side === 'left' ? 0 : L))} high · end stud ${studName(p.members)}`),
+        btn(`Start the stud layout from the ${side} end`, 'layout-from', { side }, { off: !!p.layoutFromRight === (side === 'right'), title: side === 'right' ? 'Flip panel: the layout and its offsets from this end' : 'The layout from the left end, as usual' }));
+    const out = [];
+    const opening = /^op:(\d+)$/.exec(key), mem = /^mem:(\d+)$/.exec(key), edge = /^edge:(\d+)$/.exec(key), pt = /^pt:(\d+)$/.exec(key), end = /^pg:(l|r|tl|tr|bl|br)$/.exec(key);
+    if (opening && p.openings[Number(opening[1])]) {
+        const i = Number(opening[1]), o = p.openings[i], locked = G.isLockedOpening(p, o), type = G.OPENING_TYPES[o.kind];
+        choose(i);
+        out.push(head(`${G.openingName(p.openings, i)} · ${type.name}`, `${o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, through the top` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}`} · ${fmtFtIn(o.leftIn)} from the left end${locked ? ' · 🔒 the model\'s' : ''}`));
+        out.push(...type.members.map(k => pick(openingChoice(i, k), G.MEMBER_LABELS[k])));
+        out.push(`<label class="mi-pick"><span>Kind</span><select data-f="openings.${i}.kind" aria-label="Kind of opening"${locked ? ' disabled' : ''}>${Object.entries(G.OPENING_TYPES).map(([k, t]) => `<option value="${k}" ${k === o.kind ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>`);
+        out.push(check('Jambs on the stud layout', `openings.${i}.toLayout`, o.toLayout, toLayoutNote(p, i)));
+        out.push('<hr>', btn('Center it', 'center', { i }, { off: locked }), btn('Copy it', 'copy-op', { i }), btn('Remove it', 'del-op', { i }, { off: locked, cls: 'danger' }));
+    } else if (mem && laid.lay?.members[Number(mem[1])]) {
+        const m = laid.lay.members[Number(mem[1])], cx = m.x + m.w / 2, j = jambOf(p, m);
+        out.push(head(`${ROLE_NAMES[m.role] || m.role}${j != null ? ` of ${G.openingName(p.openings, j)}` : ''}`, `${m.type} · ${fmtFtIn(m.lengthIn)} long · center ${fmtFtIn(cx)} from the left end, ${fmtFtIn(L - cx)} from the right`));
+        if (j != null) choose(j);
+        out.push(j != null ? pick(openingChoice(j, 'jamb'), 'Jambs') : pick(coreChoice('stud'), m.role === 'stud' ? 'Studs' : 'Stud type'));
+        if (m.role !== 'end stud') out.push(btn('Start the stud layout here', 'layout-here', { x: cx }, { title: 'This stud\'s line becomes a layout line: the first stud is set by hand from it (the optimizer gives way)' }));
+    } else if (edge) {
+        const outline = [[0, 0], [L, 0], ...(top ? [...top].reverse() : [[L, H], [0, H]])], n = Number(edge[1]), [x1, y1] = outline[n], [x2, y2] = outline[(n + 1) % outline.length];
+        if (y1 === 0 && y2 === 0) out.push(head('Bottom track', `${fmtFtIn(L)} long`), pick(coreChoice('track'), 'Type'));
+        else if (Math.abs(x1 - x2) < 1e-6) endMenu(x1 < L / 2 ? 'left' : 'right');
+        else {
+            const cx = round16(snap(Math.min(L - 3, Math.max(3, x))));
+            out.push(head('Top track', `${fmtFtIn(Math.hypot(x2 - x1, y2 - y1))} along here`), pick(coreChoice('topTrack'), 'Type'),
+                btn(`Add a control point here (${fmtFtIn(cx)})`, 'add-ctrl', { x: cx }, { off: !shapeFree, title: shapeFree ? 'A point on the top here, to drag up or down (the top becomes a drawn one)' : 'Locked: the Revit model\'s perimeter' }));
+        }
+    } else if (end) endMenu(/^(l|tl|bl)$/.test(end[1]) ? 'left' : 'right');
+    else if (pt && p.shape.points?.[Number(pt[1])]) {
+        const k = Number(pt[1]), q = p.shape.points[k];
+        out.push(head(`Point ${k + 1} on the top`, `${fmtFtIn(q[0])} from the left end · ${fmtFtIn(q[1])} high`), btn('Remove this point', 'del-point', { i: k }, { off: !shapeFree }));
+    } else if (key === 'peak') {
+        out.push(head('The peak', `${fmtFtIn(p.shape.peakIn)} high, ${fmtFtIn(p.shape.peakAtIn ?? L / 2)} from the left end`), btn('Make the top a drawn one (points to drag)', 'shape', { kind: 'custom' }, { off: !shapeFree }));
+    } else if (x > 0 && x < L && y >= 0 && y < at(x)) {
+        out.push(head('Add an opening here', `${fmtFtIn(x)} from the left end${y > 1 ? ` · ${fmtFtIn(y)} up` : ''}`),
+            `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`);
+    }
+    out.push(out.length ? '<hr>' : '', btn('⟲ Preview 5 s', 'preview', {}, { title: 'The framing elevation with its tags and dimensions, for 5 seconds' }),
+        check('Opening optimizer', 'optimizeOpenings', p.optimizeOpenings, p.layoutStartIn > 0 ? 'first stud set by hand' : ''),
+        check('Flip studs', 'flipStuds', p.flipStuds, 'studs face the other way'),
+        check('Flip panel', 'layoutFromRight', p.layoutFromRight, 'layout from the right end'),
+        p.layoutStartIn > 0 ? btn(`Clear the first stud set by hand (${inch(p.layoutStartIn)})`, 'layout-reset') : '');
+    const box = document.getElementById('sk-menu');
+    box.innerHTML = out.join('');
+    box.hidden = false;
+    menuAt = { x, y, key };
+    const r = box.getBoundingClientRect();
+    box.style.left = `${Math.max(8, Math.min(e.clientX, innerWidth - r.width - 8))}px`;
+    box.style.top = `${Math.max(8, Math.min(e.clientY, innerHeight - r.height - 8))}px`;
+}
+// The opening a jamb stud frames (its index), from the openings as framed (out to the stud layout, too).
+function jambOf(p, m) {
+    if (m.role !== 'jamb stud') return null;
+    let boxes = [];
+    try { boxes = G.frameInputs(p).openings; } catch { return null; }
+    const j = boxes.findIndex(b => (Math.abs(m.x + m.w - b.left) < 2 || Math.abs(m.x - b.right) < 2) && m.y < b.top + 2 && m.y + m.h > b.bottom - 2);
+    return j < 0 ? null : j;
+}
+// "Start the stud layout here": this stud's line a layout line; the first stud set by hand from it (the optimizer gives way).
+function setLayoutStart(p, x) {
+    const L = G.shapeTop(p.shape).lengthIn, sp = Number(p.members.spacingIn) || 16, d = p.layoutFromRight ? L - x : x;
+    let st = round16(((d % sp) + sp) % sp);
+    if (st < 1 / 16) st = sp;
+    p.layoutStartIn = st;
+    syncToggles(); changed();
+    notice(`First stud set by hand: ${inch(st)} from the ${p.layoutFromRight ? 'right' : 'left'} end, then ${sp}" o.c. through this stud${p.optimizeOpenings ? ' (the optimizer gives way)' : ''}. Right-click the sketch to clear it.`);
+}
+// "Add a control point here" on the top: the top becomes a drawn one (the same line), with a point here to drag.
+function addControlPoint(p, x) {
+    if (!G.canEdit(p, 'shape')) { lockedNotice('its top'); return; }
+    const { lengthIn: L, heightIn: H, top } = G.shapeTop(p.shape);
+    const pts = p.shape.kind === 'custom' ? p.shape.points : G.changeShape(p.shape, 'custom').points;
+    if (!(x >= 3 && x <= L - 3) || pts.some(q => Math.abs(q[0] - x) < 3)) { notice('A point needs to be at least 3" from the ends and the other points.', true); return; }
+    if (p.shape.kind !== 'custom') p.shape = { kind: 'custom', lengthIn: L, points: pts };
+    pts.push([x, round16(topAt(top, x, H))]);
+    pts.sort((a, b) => a[0] - b[0]);
+    renderElevHead(); renderShapeTable(); renderHint(); changed();
+    notice(`Point added on the top at ${fmtFtIn(x)}: drag it up or down (double-click or right-click it to remove it).`);
+}
+// "+ Door" (and the rest) from the menu: the new opening centered where the menu was opened (a window or MEP opening
+// at that height too).
+function addOpeningAt(p, kind, x, y) {
+    const { lengthIn: L, heightIn: H } = G.shapeTop(p.shape);
+    addOpening(p, kind);
+    const o = p.openings[p.openings.length - 1];
+    o.leftIn = Math.min(Math.max(0, L - o.widthIn), Math.max(0, snap(x - o.widthIn / 2)));
+    if (kind === 'window' || kind === 'mep') o.sillIn = Math.min(Math.max(3, H - o.heightIn - 12), Math.max(3, snap(y - o.heightIn / 2)));
+    renderCatalogue(); renderChips(); changed();
+}
+// A copy of an opening beside it (never locked: an opening added here), its members as the original's.
+function copyOpening(p, i) {
+    const { locked, ...o } = structuredClone(p.openings[i]), L = G.shapeTop(p.shape).lengthIn, from = G.openingName(p.openings, i);
+    const free = (left) => p.openings.every(q => left + o.widthIn + 6 <= q.leftIn || left >= q.leftIn + q.widthIn + 6);
+    const spots = [];
+    for (let s = o.leftIn + o.widthIn + 12; s <= L - o.widthIn - 6; s += 6) spots.push(s);
+    for (let s = o.leftIn - o.widthIn - 12; s >= 6; s -= 6) spots.push(s);
+    const spot = spots.find(free);
+    o.leftIn = round16(spot ?? Math.max(0, Math.min(L - o.widthIn, o.leftIn + 12)));
+    p.openings.push(o);
+    sel = p.openings.length - 1; ask = null;
+    renderCatalogue(); renderChips(); changed();
+    notice(spot == null ? `${G.openingName(p.openings, sel)} is a copy of ${from}, but there is no free room beside it on this panel: move it, or remove it.` : `${G.openingName(p.openings, sel)} is a copy of ${from}, with its members: drag it into place.`, spot == null);
 }
 
 // --- Openings list under the sketch --------------------------------------------------------------------------------------

@@ -12,10 +12,13 @@
 //   members: { stud (on center), track (bottom track; '' = as the stud), topTrack ('' = as the bottom track), spacingIn,
 //              header, jamb, sill (the openings' members; '' = as the bottom track / the stud) } } (SSMA names).
 //   optimizeOpenings: false (default: studs on center from the left end) | true (the opening optimizer: the first stud
-//   placed so the openings take the fewest stud pieces, every bay within the spacing), revit (kept as it came: the model's wall this panel is, its place by the grids;
+//   placed so the openings take the fewest stud pieces, every bay within the spacing), layoutStartIn (set by hand: the
+//   first layout stud's center; wins over the optimizer), layoutFromRight (Flip panel: the layout, and the plan
+//   ordinates, from the right end), flipStuds (Flip studs: layout studs face the other way), each opening's toLayout
+//   (its jambs moved out to the nearest layout studs, which then serve as its jambs), revit (kept as it came: the model's wall this panel is, its place by the grids;
 //   see docs/panel-exchange.md) }.
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, source, grids, levels, panels: [panel] }.
-import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin } from '../common/framing.mjs';
+import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight } from '../common/framing.mjs';
 import { parseDesignator, parseMemberSpec, parseFeetInches } from '../02-takeoff/criteria.mjs';
 
 export const FORMAT = 'cas-panel-shops';
@@ -368,6 +371,18 @@ export function panelErrors(panel) {
             }
         });
     });
+    // Openings framed out to the stud layout: the framed opening must not run into another one.
+    if (!errors.length && (panel.openings || []).some(o => o.toLayout)) {
+        const framed = frameInputs(panel).openings;
+        framed.forEach((b, i) => {
+            if (!b.requested) return;
+            framed.forEach((c, j) => {
+                if (j !== i && Math.min(b.right, c.right) - Math.max(b.left, c.left) > 1 / 16 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
+                    add(`opening-${i}`, `${openingName(panel.openings, i)} framed out to the stud layout runs into ${openingName(panel.openings, j)}: turn off "Jambs on the layout" for one of them, or move it.`);
+                }
+            });
+        });
+    }
     return errors;
 }
 
@@ -384,14 +399,16 @@ export function frameInputs(panel) {
             const parts = specOf(memberFor(panel, o, k).spec)?.parts;
             if (parts && memberFor(panel, o, k).base == null) framing[k] = parts;
         }
-        return { ...openingBox(o, heightIn), ...(Object.keys(framing).length ? { framing: { ...framing, source: 'entered' } } : {}) };
+        return { ...openingBox(o, heightIn), ...(o.toLayout ? { toLayout: true } : {}), ...(Object.keys(framing).length ? { framing: { ...framing, source: 'entered' } } : {}) };
     });
     const inputs = { lengthIn, heightIn, top, openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
         trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) || 16 };
-    if (panel.optimizeOpenings) {
-        const start = bestLayoutStart(inputs);
-        if (start !== inputs.spacingIn) inputs.layoutStartIn = start;
-    }
+    if (panel.layoutFromRight) inputs.layoutFromRight = true;
+    if (panel.flipStuds) inputs.flipStuds = true;
+    const sp = inputs.spacingIn, framedOut = (start) => openingsToLayout(inputs.openings, { L: lengthIn, start, spacing: sp, fromRight: !!panel.layoutFromRight, flange: inputs.flangeIn });
+    const start = panel.layoutStartIn > 0 ? panel.layoutStartIn : panel.optimizeOpenings ? bestLayoutStart(inputs, framedOut) : sp;
+    inputs.openings = framedOut(start);
+    if (start !== sp) inputs.layoutStartIn = start;
     return inputs;
 }
 
@@ -418,12 +435,14 @@ export function wideBays(lay, spacing, flange = 1.625) {
 }
 const layoutCost = (lay, sp) => (lay.issues.length ? 1e9 : 0) + wideBays(lay, sp) * 1e6 + pieces(lay) * 1000 + lay.members.filter(m => m.orient === 'v').reduce((n, m) => n + m.lengthIn, 0) / 12;
 const bestCache = new Map();
-export function bestLayoutStart(inputs) {
+// openingsFor(start): the openings for a layout starting there (those framed out to the layout move with it).
+export function bestLayoutStart(inputs, openingsFor = null) {
     const sp = inputs.spacingIn || 16, key = JSON.stringify({ ...inputs, layoutStartIn: undefined });
     if (bestCache.has(key)) return bestCache.get(key);
-    let best = { start: sp, cost: layoutCost(frameWall({ ...inputs, layoutStartIn: undefined }), sp) - 0.5 };
+    const at = (st) => ({ ...inputs, layoutStartIn: st === sp ? undefined : st, openings: openingsFor ? openingsFor(st) : inputs.openings });
+    let best = { start: sp, cost: layoutCost(frameWall(at(sp)), sp) - 0.5 };
     for (let st = 1; st < sp - 1e-9; st += 1) {
-        const cost = layoutCost(frameWall({ ...inputs, layoutStartIn: st }), sp);
+        const cost = layoutCost(frameWall(at(st)), sp);
         if (cost < best.cost) best = { start: st, cost };
     }
     if (bestCache.size > 80) bestCache.delete(bestCache.keys().next().value);
@@ -432,11 +451,37 @@ export function bestLayoutStart(inputs) {
 }
 // What the layout is for the page: { optimized, start (the first stud's center from the left end), spacing, pieces,
 // standardPieces }.
+// manual: the first stud set by hand; fromRight: the layout from the right end.
 export function layoutInfo(panel) {
     const inputs = frameInputs(panel), sp = inputs.spacingIn;
-    const standard = pieces(frameWall({ ...inputs, layoutStartIn: undefined }));
-    return { optimized: !!panel.optimizeOpenings, start: inputs.layoutStartIn || sp, spacing: sp, pieces: inputs.layoutStartIn ? pieces(frameWall(inputs)) : standard, standardPieces: standard };
+    const standard = pieces(frameWall(frameInputs({ ...panel, optimizeOpenings: false, layoutStartIn: null })));
+    return { optimized: !!panel.optimizeOpenings, manual: panel.layoutStartIn > 0 ? panel.layoutStartIn : null, fromRight: !!panel.layoutFromRight,
+        start: inputs.layoutStartIn || sp, spacing: sp, pieces: pieces(frameWall(inputs)), standardPieces: standard };
 }
+
+// --- Jambs on the stud layout -------------------------------------------------------------------------------------------
+// An opening framed out to the layout (toLayout): its jambs moved out to the nearest layout studs, which are then its
+// jambs (no extra studs beside them). The framed opening runs from the right face of the last layout stud at or left of
+// it to the left face of the first at or right of it; at a panel end, to the end stud. The opening as asked for is kept
+// as requested (the sheet draws it inside).
+export function openingsToLayout(openings, { L, start, spacing, fromRight = false, flange = 1.625 }) {
+    const centers = [];
+    for (let k = 0; start + k * spacing < L; k++) centers.push(fromRight ? L - (start + k * spacing) : start + k * spacing);
+    return openings.map(o => {
+        if (!o.toLayout) return o;
+        const lefts = centers.filter(c => c + flange / 2 <= o.left + 1e-6 && c - flange / 2 >= flange + 3), rights = centers.filter(c => c - flange / 2 >= o.right - 1e-6 && c + flange / 2 <= L - flange - 3);
+        const left = lefts.length ? Math.max(...lefts) + flange / 2 : flange, right = rights.length ? Math.min(...rights) - flange / 2 : L - flange;
+        return { ...o, left: round16(Math.min(o.left, left)), right: round16(Math.max(o.right, right)), requested: { left: o.left, right: o.right } };
+    });
+}
+// What framing one opening out to the layout saves (negative: costs), for the toggle's label: stud pieces, and steel
+// (inches of every member, the wider header and sill counted against the studs left out).
+export function toLayoutEffect(panel, i) {
+    const lay = (on) => frameWall(frameInputs({ ...panel, openings: panel.openings.map((o, j) => (j === i ? { ...o, toLayout: on } : o)) }));
+    const steel = (l) => l.members.reduce((n, m) => n + m.lengthIn, 0);
+    try { const off = lay(false), on = lay(true); return { pieces: pieces(off) - pieces(on), lengthIn: round16(steel(off) - steel(on)) }; } catch { return { pieces: 0, lengthIn: 0 }; }
+}
+export const toLayoutSaving = (panel, i) => toLayoutEffect(panel, i).pieces;
 
 // The panel framed: the layout as drawn (side B: mirrored), with a note for each built-up opening member.
 export function panelLayout(panel) {
@@ -450,6 +495,9 @@ export function panelLayout(panel) {
         if (parts.length) builtUp.add(`${type.name} framing: ${parts.join('; ')}.`);
     });
     if (inputs.topTrackName) builtUp.add(`Top track ${inputs.topTrackName}.`);
+    inputs.openings.forEach((o, i) => { // framed out to the layout: between the jambs, against the opening asked for
+        if (o.requested) builtUp.add(`${openingName(panel.openings, i)} framed to the stud layout: ${fmtFtIn(o.right - o.left)} between jambs (rough opening ${fmtFtIn(o.requested.right - o.requested.left)}).`);
+    });
     layout.notes.push(...builtUp);
     return panel.sideB ? flipLayout(layout) : layout;
 }
@@ -492,7 +540,8 @@ export function newPanel(prev = null, marks = []) {
     let mark = prev ? nextMark(prev.mark) : 'P-101';
     while (marks.includes(mark)) mark = nextMark(mark);
     if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
-    return { ...unlinked(prev), id: rid(), mark, openings: [] };
+    const { layoutStartIn, ...rest } = unlinked(prev);
+    return { ...rest, id: rid(), mark, openings: [] };
 }
 // A copy (a free panel even when the original is the model's: one wall, one panel).
 export const copyPanel = (panel, marks = []) => {
@@ -519,9 +568,11 @@ export function exportSet(set, { framing = true } = {}) {
 export function framingOf(panel) {
     if (panelErrors(panel).length) return null;
     const inputs = frameInputs(panel), lay = frameWall(inputs);
-    return { layoutStartIn: inputs.layoutStartIn || inputs.spacingIn, spacingIn: inputs.spacingIn, studType: lay.studType, trackType: lay.trackType,
+    return { layoutStartIn: inputs.layoutStartIn || inputs.spacingIn, spacingIn: inputs.spacingIn, ...(inputs.layoutFromRight ? { layoutFromRight: true } : {}), ...(inputs.flipStuds ? { flipStuds: true } : {}),
+        studType: lay.studType, trackType: lay.trackType,
+        openings: inputs.openings.map(({ framing, ...o }) => o), // as framed: one with jambs on the stud layout wider, its rough opening as requested
         members: lay.members.map(m => ({ mark: m.mark, ...(m.marks ? { marks: m.marks } : {}), role: m.role, func: m.func, type: m.type, ...(m.parts ? { parts: m.parts } : {}),
-            x: m.x, y: m.y, w: m.w, h: m.h, lengthIn: m.lengthIn, ...(m.pts ? { pts: m.pts } : {}) })),
+            x: m.x, y: m.y, w: m.w, h: m.h, lengthIn: m.lengthIn, ...(m.pts ? { pts: m.pts } : {}), ...(m.orient === 'v' ? { webRight: webOnRight(m, lay) } : {}) })),
         cutList: lay.cutList.map(({ mark, qty, type, lengthIn, func }) => ({ mark, qty, type, lengthIn, func })), issues: lay.issues.map(i => i.message) };
 }
 export function importSet(json) {
@@ -561,13 +612,14 @@ export function cleanPanel(p = {}) {
     return {
         id: str(p.id, 40) || rid(), mark: str(p.mark, 40) || 'P-101', level: str(p.level), wallType: str(p.wallType, 120), group: str(p.group), sideB: !!p.sideB,
         optimizeOpenings: !!p.optimizeOpenings, // the opening optimizer: off unless asked for
+        ...(Number(p.layoutStartIn) > 0 ? { layoutStartIn: round16(Number(p.layoutStartIn)) } : {}), ...(p.layoutFromRight ? { layoutFromRight: true } : {}), ...(p.flipStuds ? { flipStuds: true } : {}),
         ...(p.revit && typeof p.revit === 'object' ? { revit: structuredClone(p.revit) } : {}), // the model's wall: kept as it came, for the trip back
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
         openings: (p.openings || []).map(o => {
             const kind = kindOf(o), size = OPENING_TYPES[kind].size, H = shapeTop(shape).heightIn;
             return { kind, leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? size.widthIn, heightIn: kind === 'steel' ? 0 : len(o?.heightIn) ?? size.heightIn,
                 sillIn: kind === 'door' ? 0 : len(o?.sillIn) ?? size.sillIn ?? Math.max(0, H - 24),
-                head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill), ...(o?.locked && p.revit ? { locked: true } : {}) };
+                head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill), ...(o?.locked && p.revit ? { locked: true } : {}), ...(o?.toLayout ? { toLayout: true } : {}) };
         }),
     };
 }
@@ -590,7 +642,8 @@ const trim = (a) => { const out = [...a]; while (out.length && (out[out.length -
 export function encodePanel(panel) {
     const p = cleanPanel(panel);
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
-        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill])), '', p.optimizeOpenings ? 1 : '']);
+        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : ''])), '', p.optimizeOpenings ? 1 : '',
+        p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '']);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -600,9 +653,9 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize] = data;
-    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1,
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn] = data;
+    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn,
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
-        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill })) });
+        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill, toLayout]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill, toLayout: toLayout === 1 })) });
 }

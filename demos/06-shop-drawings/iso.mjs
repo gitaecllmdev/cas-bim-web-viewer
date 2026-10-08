@@ -3,7 +3,7 @@
 // side A, from the left and above; one label per cut-list mark; the openings outlined. The view is cropped to the
 // members and fitted in a box on the sheet, so it fills its space whatever the panel's shape.
 // Returns sheet primitives (sheet.mjs): 'poly' (filled faces), 'line' (edges, openings), 'rect' + 'text' (labels).
-import { fmtFtIn, topAt, openingKind, OPENING_KINDS } from '../common/framing.mjs';
+import { fmtFtIn, topAt, openingKind, OPENING_KINDS, webOnRight } from '../common/framing.mjs';
 
 const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', HDM: '#f4a7a0', SBM: '#f4a7a0', SBS: '#f4a7a0' };
 const STUD = '#e4e4e4';
@@ -21,6 +21,23 @@ function shade(hex, f) {
     const c = [1, 3, 5].map(i => parseInt(hex.slice(i, i + 2), 16));
     const out = c.map(v => Math.max(0, Math.min(255, Math.round(f >= 1 ? v + (255 - v) * (f - 1) * 2 : v * f))));
     return `#${out.map(v => v.toString(16).padStart(2, '0')).join('')}`;
+}
+
+// A member as cold-formed steel, as thin plates (thicker than the steel, so they read at drawing scale): a stud a C
+// (web on the side webOnRight says, two flanges, two lips turned in at the open side), a track a U (its web on the
+// side away from what it takes: a bottom track's down, a top track's up, a head track's down under the cripples above,
+// a sill track's up over the cripples below). [min, max] boxes over the member's full length.
+function plates(m, layout, D) {
+    const t = Math.max(0.12, D * 0.03), lip = Math.min(0.6, D * 0.18);
+    const x0 = m.x, x1 = m.x + m.w, y0 = m.y, y1 = m.y + m.h;
+    if (m.orient === 'v') {
+        const right = webOnRight(m, layout), xo = right ? x0 : x1 - t;
+        return [right ? [[x1 - t, y0, 0], [x1, y1, D]] : [[x0, y0, 0], [x0 + t, y1, D]],
+            [[x0, y0, 0], [x1, y1, t]], [[x0, y0, D - t], [x1, y1, D]],
+            [[xo, y0, t], [xo + t, y1, lip]], [[xo, y0, D - lip], [xo + t, y1, D - t]]];
+    }
+    const webUp = m.role === 'top track' || m.role === 'sill track';
+    return [webUp ? [[x0, y1 - t, 0], [x1, y1, D]] : [[x0, y0, 0], [x1, y0 + t, D]], [[x0, y0, 0], [x1, y1, t]], [[x0, y0, D - t], [x1, y1, D]]];
 }
 
 // The six faces of a box: corners (counter-clockwise seen from outside), outward normal, light factor.
@@ -88,18 +105,20 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     const fwd = unit(sub(center, eye)), right = unit(cross(fwd, [0, 1, 0])), up = cross(right, fwd);
     const project = (p) => { const v = sub(p, eye), z = dot(v, fwd); return [dot(v, right) / z, -dot(v, up) / z]; };
 
-    // Faces of every member, long members in pieces; an edge is drawn only where it is a real edge of the member.
+    // Faces of every member, long members in pieces (16", or longer on a big panel: about 24 along its longest side); an
+    // edge is drawn only where it is a real edge of the member.
+    const seg = Math.max(SEG, Math.max(L, H) / 24);
     const faces = [];
     for (const m of members) {
         if (m.pts) { faces.push(...outlineFaces(m, D, project, eye)); continue; } // under a sloped top
         const long = m.orient === 'h' ? 0 : 1; // the axis the member runs along
         const lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
-        const pieces = Math.max(1, Math.ceil(len / SEG - 1e-9));
+        const pieces = Math.max(1, Math.ceil(len / seg - 1e-9));
         const color = (highlight != null && m.mark === highlight) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
+        const shape = plates(m, layout, D);
         for (let i = 0; i < pieces; i++) {
             const a = lo + (len * i) / pieces, b = lo + (len * (i + 1)) / pieces;
-            const min = long === 0 ? [a, m.y, 0] : [m.x, a, 0], max = long === 0 ? [b, m.y + m.h, D] : [m.x + m.w, b, D];
-            for (const f of boxFaces(min, max)) {
+            for (const [pmin, pmax] of shape) for (const f of boxFaces(long === 0 ? [a, pmin[1], pmin[2]] : [pmin[0], a, pmin[2]], long === 0 ? [b, pmax[1], pmax[2]] : [pmax[0], b, pmax[2]])) {
                 // A cut face between two pieces is inside the member: never drawn.
                 if (f.n[long] !== 0 && ((f.n[long] < 0 && i > 0) || (f.n[long] > 0 && i < pieces - 1))) continue;
                 const centroid = f.c.reduce((s, p) => s.map((v, k) => v + p[k] / 4), [0, 0, 0]);
@@ -129,9 +148,8 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
         label: project([(o.left + o.right) / 2, Math.min(o.top - 6, o.bottom + (o.top - o.bottom) * 0.55), D]) }));
 
     // Crop to what is drawn and fit the box (a little margin for the labels).
-    const all = faces.flatMap(f => f.pts);
-    const xs = all.map(p => p[0]), ys = all.map(p => p[1]);
-    const [minX, maxX, minY, maxY] = [Math.min(...xs), Math.max(...xs), Math.min(...ys), Math.max(...ys)];
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity; // a loop: a big panel has too many points to spread
+    for (const f of faces) for (const [x, y] of f.pts) { if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y; }
     const pad = 0.12, s = Math.min((box.w - 2 * pad) / (maxX - minX || 1), (box.h - 2 * pad) / (maxY - minY || 1));
     const ox = box.x + (box.w - (maxX - minX) * s) / 2 - minX * s, oy = box.y + (box.h - (maxY - minY) * s) / 2 - minY * s;
     const T = (p) => [ox + p[0] * s, oy + p[1] * s];
@@ -146,7 +164,8 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
         for (const [p, q] of f.edges) { const [a, b] = [T(p), T(q)]; out.push({ t: 'line', x1: a[0], y1: a[1], x2: b[0], y2: b[1], stroke: '#3a3a3a', width: 0.004 }); }
     }
     for (const { o, label } of opens) {
-        const [x, y] = T(label), kind = openingKind(o), txt = `${kind === 'window' ? 'OPENING' : OPENING_KINDS[kind]} ${fmtFtIn(o.right - o.left)} x ${fmtFtIn(o.top - o.bottom)}`;
+        const [x, y] = T(label), kind = openingKind(o), w = o.requested ? o.requested.right - o.requested.left : o.right - o.left, // framed out to the stud layout: the rough opening
+            txt = `${kind === 'window' ? 'OPENING' : OPENING_KINDS[kind]} ${fmtFtIn(w)} x ${fmtFtIn(o.top - o.bottom)}`;
         out.push({ t: 'text', x, y, s: txt, size: 0.06, anchor: 'middle', weight: 'normal', rotate: 0, fill: '#6b7178' });
     }
     // Labels: plain text (no box), moved up when it would sit on one already placed.
