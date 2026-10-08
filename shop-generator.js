@@ -9,6 +9,8 @@ import { thumbnailSvg, openingsText } from './demos/06-shop-drawings/panels.mjs'
 import * as G from './demos/06-shop-drawings/generator.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
+// The QR code on the sheet only when its link is short enough to scan off paper: up to 73 modules in its 0.92" box (0.3 mm each).
+const QR_MAX = 340;
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos' };
 const main = document.getElementById('gen');
 const $ = (sel) => main.querySelector(sel);
@@ -419,7 +421,7 @@ function sheetInfo(p) {
     const url = `${location.origin}${location.pathname}#p=${G.encodePanel(p)}`;
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', ...(url.length <= 600 ? { qrUrl: url, qrLabel: 'SCAN: OPEN IN THE GENERATOR' } : {}) };
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', ...(url.length <= QR_MAX ? { qrUrl: url, qrLabel: 'SCAN: OPEN IN THE GENERATOR' } : {}) };
 }
 function framed(p) {
     const errors = G.panelErrors(p);

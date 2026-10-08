@@ -317,16 +317,29 @@ export function remember(list, value, max = 10) {
     return [v, ...(list || []).filter(x => x.toUpperCase() !== v.toUpperCase())].slice(0, max);
 }
 
-// A panel in a link (the QR code on its sheet opens it in the generator): compact JSON, base64url.
+// A panel in a link (the QR code on its sheet opens it in the generator): its values in a fixed order (no field names),
+// JSON, base64url; short, so a QR code of it stays coarse enough to scan off the sheet.
+//   [1, mark, level, wallType, group, sideB, [shape kind, ...its sizes], [stud, track, topTrack, spacing, header, jamb, sill],
+//    [[0 door | 1 window, left, width, height, sill, head, jamb, sill], ...]]  (trailing empty values left out)
+const SHAPE_KEYS = { rect: ['lengthIn', 'heightIn'], rake: ['lengthIn', 'leftIn', 'rightIn'], gable: ['lengthIn', 'leftIn', 'rightIn', 'peakIn', 'peakAtIn'], custom: ['lengthIn', 'points'] };
+const MEMBER_KEYS = ['stud', 'track', 'topTrack', 'spacingIn', 'header', 'jamb', 'sill'];
+const trim = (a) => { const out = [...a]; while (out.length && (out[out.length - 1] === '' || out[out.length - 1] == null)) out.pop(); return out; };
 export function encodePanel(panel) {
     const p = cleanPanel(panel);
-    const json = JSON.stringify({ ...p, id: undefined });
-    const bytes = new TextEncoder().encode(json);
+    const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
+        trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([o.kind === 'window' ? 1 : 0, o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill]))]);
+    const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
     return btoa(bin).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
-    return cleanPanel(JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0)))));
+    const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
+    if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = []] = data;
+    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB,
+        shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
+        members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
+        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill]) => ({ kind: w ? 'window' : 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill })) });
 }
