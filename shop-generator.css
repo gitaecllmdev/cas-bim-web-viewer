@@ -135,6 +135,13 @@ button.link.danger { color: var(--warn); }
 .sk-op.mep rect { fill: #edf7ee; stroke: #2e7d32; }
 .sk-op.steel rect { fill: #f3ece9; stroke: #5d4037; stroke-dasharray: 5 3; }
 .sk-op.on rect { stroke: #ff8a3d; stroke-width: 3px; }
+.sk-op.locked { cursor: default; } .sk-op.locked rect { stroke-dasharray: none; stroke-width: 2.4px; }
+/* A panel from the Revit model: its geometry locked */
+.model-badge { align-self: center; padding: 4px 10px; border-radius: 999px; background: #e8eef5; color: var(--accent); font-size: 13px; font-weight: 600; white-space: nowrap; }
+.field.locked input { background: #f1f3f5; color: #5f6368; cursor: not-allowed; border-style: dashed; }
+.lock-note, .new-note { margin: 2px 0 6px; padding: 4px 8px; border-radius: 6px; font-size: 13px; }
+.lock-note { background: #e8eef5; color: var(--accent); } .new-note { background: #edf7ee; color: #1e5a2c; }
+.shape-pick button:disabled { opacity: .35; }
 .sk-op-text { fill: #222; font-weight: 700; pointer-events: none; }
 .sk-op-sub { fill: #444; pointer-events: none; }
 .sk-handle { fill: var(--accent); stroke: #fff; stroke-width: 2px; cursor: grab; }

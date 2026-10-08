@@ -464,18 +464,41 @@ export function nextMark(mark) {
     return `${m[1]}${String(Number(m[2]) + 1).padStart(m[2].length, '0')}${m[3]}`;
 }
 
+// --- Panels from the model: their perimeter and openings locked ---------------------------------------------------
+// A panel exported from Revit (it has a revit block) keeps the model's geometry: its shape, and every opening that came
+// with it (locked), stay exactly as they came, so the trip back finds each wall, door, window and penetration where the
+// model has it. Its members, stud layout, side B and names can change; an opening added here is new (not locked: the
+// importer reports it, it does not move anything of the model's).
+export const isFromModel = (p) => !!(p && p.revit && typeof p.revit === 'object');
+export const isLockedOpening = (p, o) => isFromModel(p) && !!o?.locked;
+// Whether a field may change, by its path on the panel ('shape.lengthIn', 'openings.2.leftIn', 'openings.2' to remove
+// it): never the shape of a panel from the model, nor where, how big or what kind a locked opening is.
+export function canEdit(panel, path) {
+    if (!isFromModel(panel)) return true;
+    if (/^shape(\.|$)/.test(path)) return false;
+    const m = /^openings\.(\d+)(?:\.(\w+))?$/.exec(path);
+    if (m && isLockedOpening(panel, panel.openings?.[Number(m[1])])) return !(m[2] == null || /^(kind|leftIn|widthIn|heightIn|sillIn|__right)$/.test(m[2]));
+    return true;
+}
+// A copy that is not the model's wall: no revit block, nothing locked.
+function unlinked(panel) {
+    const { revit, ...rest } = structuredClone(panel);
+    return { ...rest, openings: (rest.openings || []).map(({ locked, ...o }) => o) };
+}
+
 // A new panel: the previous one's level, wall type, group, shape and members (the next mark), so a run of similar
-// panels is quick to enter; the first one a plain 10 ft x 10 ft wall.
+// panels is quick to enter; the first one a plain 10 ft x 10 ft wall. Never linked to a model's wall.
 export function newPanel(prev = null, marks = []) {
     let mark = prev ? nextMark(prev.mark) : 'P-101';
     while (marks.includes(mark)) mark = nextMark(mark);
     if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
-    return { ...structuredClone(prev), id: rid(), mark, openings: [] };
+    return { ...unlinked(prev), id: rid(), mark, openings: [] };
 }
+// A copy (a free panel even when the original is the model's: one wall, one panel).
 export const copyPanel = (panel, marks = []) => {
     let mark = nextMark(panel.mark);
     while (marks.includes(mark)) mark = nextMark(mark);
-    return { ...structuredClone(panel), id: rid(), mark };
+    return { ...unlinked(panel), id: rid(), mark };
 };
 
 // The members of one panel given to others (the checked panels, or a group).
@@ -513,7 +536,8 @@ export function importSet(json) {
         if (raw?.outline) { // a wall outline: its notches are its doors and steel penetrations
             const r = perimeterToPanel(raw.outline);
             if (r.errors.length) { warnings.push(`${name}: ${r.errors[0]} Skipped.`); return; }
-            panels.push(cleanPanel({ ...raw, shape: r.shape, openings: [...r.openings, ...(raw.openings || [])] }));
+            const fromModel = raw.revit && typeof raw.revit === 'object';
+            panels.push(cleanPanel({ ...raw, shape: r.shape, openings: [...r.openings, ...(raw.openings || [])].map(o => (fromModel ? { ...o, locked: true } : o)) }));
             return;
         }
         if (!raw?.shape) { warnings.push(`${name}: no shape or outline; skipped.`); return; }
@@ -543,7 +567,7 @@ export function cleanPanel(p = {}) {
             const kind = kindOf(o), size = OPENING_TYPES[kind].size, H = shapeTop(shape).heightIn;
             return { kind, leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? size.widthIn, heightIn: kind === 'steel' ? 0 : len(o?.heightIn) ?? size.heightIn,
                 sillIn: kind === 'door' ? 0 : len(o?.sillIn) ?? size.sillIn ?? Math.max(0, H - 24),
-                head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill) };
+                head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill), ...(o?.locked && p.revit ? { locked: true } : {}) };
         }),
     };
 }

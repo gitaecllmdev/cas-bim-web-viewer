@@ -61,10 +61,13 @@ function setPath(obj, path, value) {
 }
 const getPath = (obj, path) => path.split('.').reduce((o, k) => o?.[k], obj);
 
+// Locked to the Revit model: say so instead of changing it.
+const lockedNotice = (what = 'its perimeter and the model\'s openings') => notice(`${cur().mark} is a Revit wall: ${what} stay as the model has them (Duplicate makes a free copy to change).`, true);
 main.addEventListener('input', (e) => {
     const el = e.target.closest('[data-f]');
     if (!el) return;
     const p = cur(), path = el.dataset.f, onSet = path.startsWith('set.');
+    if (!onSet && !G.canEdit(p, path)) { lockedNotice(); return; }
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.t === 'len') {
         const n = G.parseLength(v);
@@ -138,9 +141,9 @@ function setKind(p, i, kind) {
     else { if (!(o.sillIn >= 3)) o.sillIn = Math.min(size.sillIn, Math.max(3, H - size.heightIn - 12)); if (!(o.heightIn >= 6)) o.heightIn = size.heightIn; }
 }
 
-const field = (label, path, value, { t = 'text', list = '', r = '', ph = '', cls = '', i = '' } = {}) => `<label class="field ${cls}"><span>${esc(label)}</span>
+const field = (label, path, value, { t = 'text', list = '', r = '', ph = '', cls = '', i = '', locked = false } = {}) => `<label class="field ${cls}${locked ? ' locked' : ''}"><span>${esc(label)}${locked ? ' 🔒' : ''}</span>
     <input type="text" data-f="${esc(path)}" data-t="${t}" ${r ? `data-r="${r}"` : ''} ${i !== '' ? `data-i="${i}"` : ''} ${list ? `list="dl-${list}"` : ''}
-        value="${esc(t === 'len' ? lenText(value) : value ?? '')}" placeholder="${esc(ph)}" autocomplete="off">
+        value="${esc(t === 'len' ? lenText(value) : value ?? '')}" placeholder="${esc(ph)}" autocomplete="off"${locked ? ' disabled title="Locked: the Revit model\'s"' : ''}>
     <em class="hint"></em></label>`;
 
 // --- Actions (data-act) -----------------------------------------------------------------------------------------------
@@ -150,16 +153,16 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
     const act = b.dataset.act, i = Number(b.dataset.i), p = cur();
     const acts = {
         new: () => addPanel(G.newPanel(p, set.panels.map(x => x.mark))),
-        copy: () => addPanel(G.copyPanel(p, set.panels.map(x => x.mark))),
-        shape: () => { p.shape = G.changeShape(p.shape, b.dataset.kind); renderElevHead(); renderShapeTable(); fit(); changed(); },
-        tool: () => setTool(b.dataset.tool),
+        copy: () => { addPanel(G.copyPanel(p, set.panels.map(x => x.mark))); if (G.isFromModel(p)) notice(`${cur().mark} is a free copy of ${p.mark}, not linked to the Revit wall: change anything on it.`); },
+        shape: () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its shape'); p.shape = G.changeShape(p.shape, b.dataset.kind); renderElevHead(); renderShapeTable(); fit(); changed(); },
+        tool: () => (b.dataset.tool === 'perimeter' && !G.canEdit(p, 'shape') ? lockedNotice('its perimeter') : setTool(b.dataset.tool)),
         'add-op': () => addOpening(p, b.dataset.kind),
         'select-op': () => { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); },
         done: () => { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); },
-        'add-point': () => { addPoint(p); renderShapeTable(); changed(); },
-        'del-point': () => { if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
-        'del-op': () => { p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
-        center: () => { const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
+        'add-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); addPoint(p); renderShapeTable(); changed(); },
+        'del-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
+        'del-op': () => { if (!G.canEdit(p, `openings.${i}`)) return lockedNotice('the model\'s openings'); p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
+        center: () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
         'peri-finish': () => finishPerimeter(),
         'peri-undo': () => { peri?.pts.pop(); renderSketch(); renderHint(); },
         'peri-cancel': () => setTool('select'),
@@ -238,7 +241,8 @@ function renderPanel() {
     $('#panel-fields').innerHTML = `${field('Panel mark', 'mark', p.mark, { ph: 'P-101', cls: 'f-mark' })}
         ${field('Level', 'level', p.level, { list: 'level', r: 'level', ph: 'L2', cls: 'f-level' })}
         ${field('Wall type', 'wallType', p.wallType, { list: 'wallType', r: 'wallType', ph: 'CAS_1HR_362_1L_FULL', cls: 'f-type' })}
-        ${field('Group', 'group', p.group, { list: 'group', r: 'group', ph: 'Type A', cls: 'f-group' })}`;
+        ${field('Group', 'group', p.group, { list: 'group', r: 'group', ph: 'Type A', cls: 'f-group' })}
+        ${G.isFromModel(p) ? `<span class="model-badge" title="${esc(`Revit wall ${p.revit.uniqueId || ''}${p.revit.wallTypeName ? ` · ${p.revit.wallTypeName}` : ''}${p.revit.levelName ? ` · ${p.revit.levelName}` : ''}`)}">🔒 Revit wall · perimeter and its openings locked</span>` : ''}`;
     const sideB = main.querySelector('[data-f="sideB"]');
     if (sideB) sideB.checked = !!p.sideB;
 }
@@ -247,11 +251,12 @@ function renderPanel() {
 function renderElevHead() {
     const p = cur(), s = p.shape;
     const icon = (kind) => ({ rect: 'M2 18H22V6H2Z', rake: 'M2 18H22V4L2 10Z', gable: 'M2 18H22V10L12 3L2 10Z', custom: 'M2 18H22V8L16 11L10 4L2 9Z' })[kind];
-    const f = (label, key) => field(label, `shape.${key}`, s[key], { t: 'len', list: 'len' });
+    const locked = !G.canEdit(p, 'shape');
+    const f = (label, key) => field(label, `shape.${key}`, s[key], { t: 'len', list: 'len', locked });
     const dims = { rect: [f('Length', 'lengthIn'), f('Height', 'heightIn')], rake: [f('Length', 'lengthIn'), f('Height at left', 'leftIn'), f('Height at right', 'rightIn')],
         gable: [f('Length', 'lengthIn'), f('Left eave', 'leftIn'), f('Right eave', 'rightIn'), f('Peak height', 'peakIn'), f('Peak from left', 'peakAtIn')],
         custom: [f('Length', 'lengthIn')] }[s.kind];
-    $('#elev-head').innerHTML = `<div class="shape-pick" role="radiogroup" aria-label="Shape">${G.SHAPES.map(k => `<button class="${k.kind === s.kind ? 'on' : 'secondary'}" data-act="shape" data-kind="${k.kind}" role="radio" aria-checked="${k.kind === s.kind}" title="${esc(`${k.name}: ${k.hint}`)}">
+    $('#elev-head').innerHTML = `<div class="shape-pick" role="radiogroup" aria-label="Shape">${G.SHAPES.map(k => `<button class="${k.kind === s.kind ? 'on' : 'secondary'}" data-act="shape" data-kind="${k.kind}" role="radio" aria-checked="${k.kind === s.kind}" ${locked && k.kind !== s.kind ? 'disabled' : ''} title="${esc(locked ? 'Locked: the Revit model\'s shape' : `${k.name}: ${k.hint}`)}">
             <svg viewBox="0 0 24 20" aria-hidden="true"><path d="${icon(k.kind)}"/></svg><span>${esc(k.name)}</span></button>`).join('')}</div>
         <div class="shape-fields">${dims.join('')}</div>`;
 }
@@ -264,6 +269,11 @@ function renderShapeFields() {
 }
 function renderShapeTable() {
     const box = $('#shape-points'), s = cur().shape;
+    if (s.kind === 'custom' && !G.canEdit(cur(), 'shape')) { // the model's top: its points to read
+        box.innerHTML = `<details><summary>The top's points (${s.points.length}) 🔒</summary><table class="points"><thead><tr><th>Point</th><th>From left</th><th>Height</th></tr></thead><tbody>
+            ${s.points.map((pt, i) => `<tr><td>${i + 1}</td><td>${lenText(pt[0])}</td><td>${lenText(pt[1])}</td></tr>`).join('')}</tbody></table></details>`;
+        return;
+    }
     box.innerHTML = s.kind !== 'custom' ? '' : `<details ${s.points.length > 2 ? '' : 'open'}><summary>The top's points (${s.points.length})</summary><table class="points"><thead><tr><th>Point</th><th>From left</th><th>Height</th><th></th></tr></thead><tbody>
         ${s.points.map((pt, i) => `<tr><td>${i + 1}</td>
             <td>${i === 0 || i === s.points.length - 1 ? `<span class="muted" data-end="${i ? 'right' : 'left'}">${lenText(pt[0])} (${i ? 'right' : 'left'} end)</span>` : field('', `shape.points.${i}.0`, pt[0], { t: 'len', cls: 'bare' })}</td>
@@ -357,16 +367,18 @@ function renderCatalogue() {
         return;
     }
     const o = p.openings[sel], type = G.OPENING_TYPES[o.kind], name = G.openingName(p.openings, sel), L = G.shapeTop(p.shape).lengthIn;
-    const f = (label, key, value) => field(label, `openings.${sel}.${key}`, value, { t: 'len', list: 'len' });
+    const locked = G.isLockedOpening(p, o);
+    const f = (label, key, value) => field(label, `openings.${sel}.${key}`, value, { t: 'len', list: 'len', locked });
     box.innerHTML = `<div class="row cat-head"><b class="op-name ${o.kind}">${name}</b>
-            <select data-f="openings.${sel}.kind" aria-label="Kind of opening">${Object.entries(G.OPENING_TYPES).map(([k, t]) => `<option value="${k}" ${k === o.kind ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
-            <span class="spacer"></span><button class="link danger" data-act="del-op" data-i="${sel}">Remove</button></div>
+            <select data-f="openings.${sel}.kind" aria-label="Kind of opening" ${locked ? 'disabled' : ''}>${Object.entries(G.OPENING_TYPES).map(([k, t]) => `<option value="${k}" ${k === o.kind ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>
+            <span class="spacer"></span>${locked ? '' : `<button class="link danger" data-act="del-op" data-i="${sel}">Remove</button>`}</div>
+        ${locked ? '<p class="lock-note">🔒 The Revit model\'s: where it is, its size and its kind stay as the model has them. Its members can change.</p>' : G.isFromModel(p) ? '<p class="new-note">Added here: not in the Revit model (the import reports it).</p>' : ''}
         ${ask === sel ? `<p class="ask-note">${name} is in: pick its ${type.members.map(k => G.MEMBER_LABELS[k].toLowerCase()).join(' and ').replace(' and ', type.members.length > 2 ? ', ' : ' and ')}, or keep the defaults.</p>` : ''}
         <div class="fields cat-fields">${f('Width', 'widthIn', o.widthIn)}${o.kind === 'steel' ? '' : f('Height', 'heightIn', o.heightIn)}
             ${o.kind === 'door' ? '' : f(o.kind === 'steel' ? 'Sill height (up through the top)' : 'Sill height', 'sillIn', o.sillIn)}
             ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}</div>
         ${type.members.map(k => openingCard(sel, k)).join('')}
-        <div class="row"><button data-act="done">Done</button><button class="link" data-act="center" data-i="${sel}">Center it</button><span class="muted small">Arrow keys move it (Shift: 6").</span></div>`;
+        <div class="row"><button data-act="done">Done</button>${locked ? '' : `<button class="link" data-act="center" data-i="${sel}">Center it</button><span class="muted small">Arrow keys move it (Shift: 6").</span>`}</div>`;
 }
 // The selected opening's typed sizes, kept up to date while it is dragged or nudged.
 function syncCatalogueFields(except = '') {
@@ -417,7 +429,8 @@ function renderDatalists() {
 function renderTools() {
     const t = (key, label, title) => `<button class="${tool === key ? 'on' : 'secondary'}" data-act="tool" data-tool="${key}" title="${esc(title)}">${label}</button>`;
     $('#tools').innerHTML = `<div class="seg" role="group" aria-label="Tool">${t('select', '↖ Select &amp; move', 'Pick an opening to see its dimensions and members; drag it or the round handles')}
-            ${t('perimeter', '✎ Draw perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')}
+            ${G.canEdit(cur(), 'shape') ? t('perimeter', '✎ Draw perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')
+                : '<button class="secondary" disabled title="Locked: the Revit model\'s perimeter">🔒 Perimeter</button>'}
             ${t('opening', '▭ Draw an opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}</div>
         <span class="add-label">Add</span>${Object.entries(G.OPENING_TYPES).map(([k, ty]) => `<button class="add-op ${k}" data-act="add-op" data-kind="${k}">+ ${esc(ty.name)}</button>`).join('')}`;
     renderHint();
@@ -496,7 +509,7 @@ function renderSketch() {
         if (!(w > 0 && h > 0)) return;
         const name = G.openingName(p.openings, i), dims = b.through ? `${fmtFtIn(w)} wide` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`;
         const size = Math.min(fs * 1.1, (w * 0.9) / (name.length * 0.62), h * 0.36), small = Math.min(fs * 0.8, (w * 0.92) / (dims.length * 0.56), h * 0.22);
-        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
+        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
     // Grips (shape handles, as in Revit): round at the panel's corners, arrows at the middle of its edges (an end moves
@@ -512,7 +525,8 @@ function renderSketch() {
         ? `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" transform="rotate(45 ${x} ${Y(y)})" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`
         : `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`; };
     const s = p.shape;
-    if (tool === 'select' && valid) {
+    const shapeLocked = !G.canEdit(p, 'shape');
+    if (tool === 'select' && valid && !shapeLocked) {
         const pts = G.shapePoints(s);
         pts.slice(1).forEach(([x1, h1], k) => { const [x0, h0] = pts[k]; parts.push(arrow((x0 + x1) / 2, (h0 + h1) / 2, 'v', `pg:run:${k + 1}`, 'Drag the top up or down here')); });
         parts.push(arrow(0, at(0) / 2, 'h', 'pg:l', 'Drag the left end out or in (the openings stay where they are)'), arrow(L, at(L) / 2, 'h', 'pg:r', 'Drag the right end out or in'));
@@ -520,7 +534,9 @@ function renderSketch() {
             handle(0, at(0), 'pg:tl', s.kind === 'rect' ? 'The left end and the height' : 'The left end and its height'), handle(L, at(L), 'pg:tr', s.kind === 'rect' ? 'The right end and the height' : 'The right end and its height'));
         if (s.kind === 'gable') parts.push(handle(Math.min(L, Math.max(0, s.peakAtIn ?? L / 2)), Number(s.peakIn) || H, 'peak', 'The peak: drag up, down or sideways'));
         if (s.kind === 'custom') s.points.slice(1, -1).forEach((pt, k) => parts.push(handle(pt[0], pt[1], `pt:${k + 1}`, `Point ${k + 2}: drag it; double-click to remove`)));
-        if (sel != null && boxes[sel]) {
+    }
+    if (tool === 'select' && valid) {
+        if (sel != null && boxes[sel] && !G.isLockedOpening(p, p.openings[sel])) {
             const o = p.openings[sel], b = boxes[sel], topY = b.through ? Math.max(at(b.left), at(b.right)) : b.top, mx = (b.left + b.right) / 2, my = (b.bottom + topY) / 2;
             const sides = [['l', b.left, my, 'Its left side'], ['r', b.right, my, 'Its right side'], ['t', mx, topY, 'Its head'], ['b', mx, b.bottom, 'Its sill']]
                 .filter(([g]) => !(g === 't' && o.kind === 'steel') && !(g === 'b' && o.kind === 'door'));
@@ -685,6 +701,10 @@ function bindSketch(svg) {
 function applyDrag(d, [x, y]) {
     const p = cur(), s = p.shape, L = G.shapeTop(s).lengthIn, minH = 12;
     const [what, n, g] = d.what.split(':'), i = Number(n);
+    if ((/^(pg|peak|pt)$/.test(what) && !G.canEdit(p, 'shape')) || (/^o[pg]$/.test(what) && !G.canEdit(p, `openings.${i}.leftIn`))) { // the model's: held
+        if (!d.warned) { d.warned = true; lockedNotice(); }
+        return;
+    }
     if (what === 'pg') { // the panel's ends and top, from how it was when the drag started
         const x0 = x + (d.shift || 0), base = { ...p, shape: structuredClone(d.orig.shape), openings: structuredClone(d.orig.openings) };
         let next = base;
@@ -739,6 +759,7 @@ document.addEventListener('keydown', (e) => {
     if (sel == null || !/^Arrow/.test(e.key)) return;
     const p = cur(), o = p.openings[sel], L = G.shapeTop(p.shape).lengthIn, step = e.shiftKey ? 6 : 0.5;
     if (!o) return;
+    if (!G.canEdit(p, `openings.${sel}.leftIn`)) { e.preventDefault(); lockedNotice('the model\'s openings'); return; }
     e.preventDefault();
     if (e.key === 'ArrowLeft') o.leftIn = Math.max(0, o.leftIn - step);
     if (e.key === 'ArrowRight') o.leftIn = Math.min(L - o.widthIn, o.leftIn + step);
@@ -794,6 +815,7 @@ function perimeterKey(e) {
 // The perimeter as the panel: its shape, its notches as doors and steel penetrations; windows and MEP openings that still
 // fit are kept.
 function finishPerimeter() {
+    if (!G.canEdit(cur(), 'shape')) { setTool('select'); lockedNotice('its perimeter'); return; }
     const res = G.perimeterToPanel(peri?.pts || []);
     if (res.errors.length) { notice(`${res.errors[0]} (Undo a corner, or Esc to start over.)`, true); return; }
     const p = cur(), L = res.shape.lengthIn;
@@ -813,7 +835,7 @@ function renderChips() {
     $('#op-chips').innerHTML = p.openings.length ? p.openings.map((o, i) => {
         const b = G.openingBox(o), bad = errors.some(e => e.where === `opening-${i}`);
         return `<button class="op-chip ${o.kind} ${i === sel ? 'on' : ''} ${bad ? 'bad' : ''}" data-act="select-op" data-i="${i}" title="${esc(G.OPENING_TYPES[o.kind].name)}">
-            <b>${G.openingName(p.openings, i)}</b> ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
+            <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : ''} ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
     }).join('') : '<span class="muted small">No openings yet: add one, or draw it.</span>';
 }
 
