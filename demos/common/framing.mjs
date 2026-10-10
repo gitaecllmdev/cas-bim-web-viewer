@@ -63,18 +63,25 @@ export function flipLayout(layout) {
             ...(o.requested ? { requested: { left: round16(L - o.requested.right), right: round16(L - o.requested.left) } } : {}) })).sort((a, b) => a.left - b.left),
         ticks: [...new Set(layout.members.filter(m => m.orient === 'v').map(m => round16(L - m.x - m.w)))].sort((a, b) => a - b),
         ...(layout.top ? { top: mirror(layout.top) } : {}),
+        ...(layout.clips ? { clips: layout.clips.map(c => ({ ...c, x: round16(L - c.x), side: c.side === 'R' ? 'L' : 'R' })) } : {}),
     };
 }
 
-// Which face of a vertical its web is on (the C opens the other way): the side it closes, at a panel end or an opening;
-// a layout stud its left face, its right with layout.flipStuds (Flip studs: the studs face the other way where they are);
-// seen from side B (a flipped layout) the other way round.
+// Which face of a vertical its web is on (the C opens the other way): the one the engine set (m.web 'R' / 'L', side A:
+// an opening's jamb studs, by their arrangement), else the side it closes, at a panel end or an opening; a layout stud
+// its left face, its right with layout.flipStuds (Flip studs: the studs face the other way where they are); seen from
+// side B (a flipped layout) the other way round. A stud flipped by hand (m.flipWeb) faces the other way again.
 export function webOnRight(m, layout) {
     const L = layout.lengthIn, ops = layout.openings || [];
-    if (m.x + m.w >= L - 0.5 || ops.some(o => Math.abs(o.left - (m.x + m.w)) < 0.5)) return true;
-    if (m.x <= 0.5 || ops.some(o => Math.abs(o.right - m.x) < 0.5)) return false;
-    return !!layout.flipStuds !== !!layout.flipped;
+    let right;
+    if (m.web === 'R' || m.web === 'L') right = (m.web === 'R') !== !!layout.flipped;
+    else if (m.x + m.w >= L - 0.5 || ops.some(o => Math.abs(o.left - (m.x + m.w)) < 0.5)) right = true;
+    else if (m.x <= 0.5 || ops.some(o => Math.abs(o.right - m.x) < 0.5)) right = false;
+    else right = !!layout.flipStuds !== !!layout.flipped;
+    return m.flipWeb ? !right : right;
 }
+// An SSMA track (or deflection track) name: 362T125-33, 600SLT250-54, 362DT200-43.
+const TRACK_NAME = /^\d{3,4}(?:T|SLT|DT)\d/i;
 
 // --- Sloped tops (a rake or a gable) ------------------------------------------------------------------------------
 // The top of the wall as points [x, height] from the left end to the right end (inches, x increasing). Returns them
@@ -239,12 +246,21 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 // 600SLT250-54 slip track at the top); else named from depth and gauge. An opening can carry its own framing,
 // o.framing = { head, jamb, sill: [{ qty, name }], source } (the takeoff's criteria): its header, jamb and sill
 // members then take the first part's name, and all parts (e.g. a box header of (2) studs WITH (2) tracks) go in
-// member.parts for the counts; the geometry stays one member each.
+// member.parts for the counts; the geometry stays one member each, unless the framing says more (the Panel Shop
+// Generator does):
+//   jambPlies: the studs each side as separate members side by side (ply 1 at the opening), their webs by jambStyle:
+//     'box' (toe to toe: ply 1 web to the opening, ply 2 away, ...), 'back' (back to back: ply 1 away, ply 2 to it),
+//     'same' (all to the opening); a jamb's tracks (a boxed jamb) go in ply 1's parts;
+//   headDepthIn / sillDepthIn: a header or sill built of studs (a box header) is that deep (the studs' web depth); the
+//     studs above and below stop at it;
+//   headBearing 'jacks' (with 2 or more plies): the header runs over ply 1 (a jack stud under it; ply 2 the king);
+//   crippleEnds: a cripple at each end of the header and sill, inside the opening, besides those on the layout.
+// studFlips: the centers of verticals flipped by hand (m.flipWeb).
 // top: a sloped top (wallTop), H its highest point. Members under it carry their outline as pts ([x, y] corners,
 // counter-clockwise) beside their bounding box (x, y, w, h): the top track's sloped runs, and the verticals that reach
 // the track (atTop), their tops cut to the slope.
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
-    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false }) {
+    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false, studFlips = [] }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn, T = top;
     const ops = clipOpenings(openings, L, H, LEG, T);
     const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
@@ -252,6 +268,10 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     const add = (m) => members.push({ func: FUNC_OF_ROLE[m.role], ...m, lengthIn: floor8(m.lengthIn) });
     const under = (x0, x1) => underMin(T, x0, x1, H, LEG); // the underside of the top track over [x0, x1]
     const reachesTop = (o) => o.through || (T ? o.top >= under(o.left, o.right) - 1 : o.top >= H - LEG - 1);
+    // An opening's own framing beyond its members (see above).
+    const headH = (o) => (o.framing?.headDepthIn > LEG ? o.framing.headDepthIn : LEG), sillH = (o) => (o.framing?.sillDepthIn > LEG ? o.framing.sillDepthIn : LEG);
+    const plies = (o) => Math.max(1, Math.min(4, Math.round(Number(o.framing?.jambPlies) || 1)));
+    const onJacks = (o) => o.framing?.headBearing === 'jacks' && plies(o) >= 2 && !reachesTop(o);
     // The top track runs everywhere but through the openings that go up through the top.
     const cuts = ops.filter(o => o.through).map(o => [o.left, o.right]);
     const uncut = (a, b) => cuts.reduce((parts, [l, r]) => parts.flatMap(([p, q]) => (r <= p || l >= q ? [[p, q]] : [[p, l], [r, q]].filter(([s, e]) => e - s > 1e-6))), [[a, b]]);
@@ -283,23 +303,25 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     for (const o of ops) {
         const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
         if (!reachesTop(o)) {
-            const head = { role: 'head track', func: o.kind === 'mep' ? 'HDM' : isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'head') };
+            const head = { role: 'head track', func: o.kind === 'mep' ? 'HDM' : isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: headH(o), lengthIn: x1 - x0, ...framed(o, 'head') };
             heads.push(head);
             add(head);
         }
     }
     for (const o of ops.filter(o => !isDoor(o))) {
-        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), y = o.bottom - LEG;
-        const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + LEG > h.y);
+        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), sh = sillH(o), y = o.bottom - sh;
+        const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + sh > h.y);
         const func = openingKind(o) === 'mep' ? 'SBM' : openingKind(o) === 'steel' ? 'SBS' : 'SBW';
-        if (!onHead && y >= LEG) add({ role: 'sill track', func, orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: LEG, lengthIn: x1 - x0, ...framed(o, 'sill') });
+        if (!onHead && y >= LEG) add({ role: 'sill track', func, orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: sh, lengthIn: x1 - x0, ...framed(o, 'sill') });
     }
 
     // Where a vertical at x can run: between the tracks, minus every opening in its bay with its head and sill track.
     const topOf = (x) => (T ? under(x, x + flangeIn) : H - LEG); // where a vertical at x meets the top track
     const solidAt = (x) => {
-        const blocked = ops.filter(o => x + flangeIn > o.left + 0.01 && x < o.right - 0.01)
-            .map(o => [isDoor(o) ? 0 : o.bottom - LEG, reachesTop(o) ? H : o.top + LEG])
+        const inside = (o) => x + flangeIn > o.left + 0.01 && x < o.right - 0.01;
+        const blocked = ops.filter(inside).map(o => [isDoor(o) ? 0 : o.bottom - sillH(o), reachesTop(o) ? H : o.top + headH(o)])
+            // a header on jack studs runs over them: the jacks stop under it
+            .concat(ops.filter(o => onJacks(o) && !inside(o) && x + flangeIn > o.left - flangeIn + 0.01 && x < o.right + flangeIn - 0.01).map(o => [o.top, o.top + headH(o)]))
             .sort((a, b) => a[0] - b[0]);
         const free = [], hi = topOf(x);
         let cur = LEG;
@@ -317,9 +339,11 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     // A vertical in pieces where it has to be: a full-height piece keeps its role; a piece of a layout stud, or any
     // piece that doesn't stand on the bottom track, is a cripple. Returns true for a full-height vertical, false for
     // pieces, null when there was no room for any.
-    const vertical = (x, role, own = {}) => {
+    // near: how close another vertical counts as on the same line (1/2"); -1/32 for one placed against it on purpose (a
+    // jamb's next stud, a cripple at a header's end): only an actual overlap cuts it.
+    const vertical = (x, role, own = {}, near = 0.5) => {
         let pieces = solidAt(x);
-        for (const p of placed.filter(p => x < p.x1 + 0.5 && x + flangeIn > p.x0 - 0.5)) pieces = pieces.flatMap(r => cut(r, [p.y0, p.y1]));
+        for (const p of placed.filter(p => x < p.x1 + near && x + flangeIn > p.x0 - near)) pieces = pieces.flatMap(r => cut(r, [p.y0, p.y1]));
         pieces = pieces.filter(([a, b]) => b - a > 3);
         if (!pieces.length) return null;
         const hi = topOf(x);
@@ -337,18 +361,36 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
                 geo = { y: a, h: uHi - a, atTop: true, ...(uHi - Math.min(...ys) > 1e-6 ? { pts: [[x, a], [x + flangeIn, a], ...tops] } : {}) };
                 len = (full ? Math.max(topAt(T, x, H), topAt(T, x + flangeIn, H)) : uHi - a) - cutbackIn;
             }
-            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}) });
+            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}) });
         }
         return full;
     };
 
     // End studs and a jamb stud each side of every opening (only where no vertical within 1/2" already runs).
-    const place = (x, role, own) => vertical(Math.min(Math.max(0, x), L - flangeIn), role, own);
+    const place = (x, role, own, near) => vertical(Math.min(Math.max(0, x), L - flangeIn), role, own, near);
     place(0, 'end stud');
     place(L - flangeIn, 'end stud');
+    // Jamb studs: one each side, or the framing's plies side by side (ply 1 at the opening), their webs set (see above).
+    const plyOf = (o, k) => {
+        const own = framed(o, 'jamb');
+        if (plies(o) === 1) return own;
+        const parts = o.framing?.jamb || [], studs = parts.filter(p => !TRACK_NAME.test(p.name)), tracks = parts.filter(p => TRACK_NAME.test(p.name));
+        const type = studs[0]?.name || studType;
+        return { type, ...(k === 0 && tracks.length ? { parts: [{ qty: 1, name: type }, ...tracks] } : {}), ...(own.src ? { src: own.src } : {}), ply: k + 1 };
+    };
     for (const o of ops) {
-        place(o.left - flangeIn, 'jamb stud', framed(o, 'jamb'));
-        place(o.right, 'jamb stud', framed(o, 'jamb'));
+        const n = plies(o), style = o.framing?.jambStyle || 'box', set = o.framing?.jambPlies != null;
+        for (let k = 0; k < n; k++) {
+            const toward = style === 'same' ? true : style === 'back' ? k % 2 === 1 : k % 2 === 0; // the web toward the opening
+            const own = plyOf(o, k);
+            place(o.left - flangeIn * (k + 1), 'jamb stud', { ...own, ...(set ? { web: toward ? 'R' : 'L' } : {}) }, k ? -1 / 32 : 0.5);
+            place(o.right + flangeIn * k, 'jamb stud', { ...own, ...(set ? { web: toward ? 'L' : 'R' } : {}) }, k ? -1 / 32 : 0.5);
+        }
+    }
+    // A cripple at each end of the header and sill (inside the opening, against the jamb), besides those on the layout.
+    for (const o of ops.filter(o => o.framing?.crippleEnds && o.right - o.left >= 2 * flangeIn + 3)) {
+        vertical(o.left, 'stud', {}, -1 / 32);
+        vertical(o.right - flangeIn, 'stud', {}, -1 / 32);
     }
 
     // Studs on layout (centers at k × spacing from the left end, or from the first stud at layoutStartIn; from the right
@@ -361,6 +403,8 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
         if (placed.some(p => x < p.x1 + 3 && x + flangeIn > p.x0 - 3)) continue;
         vertical(x, 'stud');
     }
+    // Studs flipped by hand: by their centers.
+    if (studFlips?.length) for (const m of members) if (m.orient === 'v' && studFlips.some(c => Math.abs(m.x + m.w / 2 - c) < 0.5)) m.flipWeb = true;
 
     return { members, studType, trackType, spacingIn };
 }

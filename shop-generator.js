@@ -20,7 +20,7 @@ const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(k
 const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked: this visit only */ } };
 const today = () => new Date().toLocaleDateString('en-CA');
 const lenText = (v) => (Number.isFinite(v) ? fmtFtIn(v) : '');
-const inch = (v) => fmtFtIn(v).replace(/^0'-/, '');
+const inch = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 
 let set = load(KEYS.set, null);
 set = set?.panels ? { ...set, panels: set.panels.map(G.cleanPanel) } : { project: '', drawnBy: '', panels: [], current: null };
@@ -122,6 +122,7 @@ main.addEventListener('change', (e) => {
     renderDatalists();
     if (typing.has(el.dataset.f)) { typing.delete(el.dataset.f); renderMemberCards(); }
     if (el.dataset.f === 'mark' || el.dataset.f === 'group') renderSet();
+    if (/^openings\.\d+\.offsetIn$/.test(el.dataset.f)) renderCatalogue(); // its rough opening in the strip
 });
 document.getElementById('import-file').addEventListener('change', (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importJson(f); });
 function hint(el, n, quiet = false) {
@@ -181,6 +182,15 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'add-ctrl': () => addControlPoint(p, Number(b.dataset.x)),
         'add-op-at': () => addOpeningAt(p, b.dataset.kind, Number(b.dataset.x), Number(b.dataset.y)),
         'copy-op': () => copyOpening(p, i),
+        framing: () => openFraming(i),
+        'mirror-op': () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = round16(G.shapeTop(p.shape).lengthIn - o.leftIn - o.widthIn); syncCatalogueFields(); changed(); notice(`${G.openingName(p.openings, i)} mirrored: ${fmtFtIn(o.leftIn)} from the left end now.`); },
+        'stud-flip': () => { const x = Number(b.dataset.x), had = (p.studFlips || []).some(c => Math.abs(c - x) < 0.5); p.studFlips = had ? p.studFlips.filter(c => Math.abs(c - x) >= 0.5) : [...(p.studFlips || []), x]; changed(); notice(had ? 'That stud faces its usual way again.' : 'That stud faces the other way now (right-click it again to flip it back).'); },
+        'clip-here': () => addClips(p, [{ type: clipType, x: Number(b.dataset.x), y: Number(b.dataset.y) }]),
+        'clip-del': () => removeClip(p, i),
+        'clip-top': () => laid.lay && addClips(p, G.clipsAtTop(laid.lay, clipType)),
+        'clip-mid': () => laid.lay && addClips(p, G.clipsOnEveryStud(laid.lay, round16(G.shapeTop(p.shape).heightIn / 2), clipType)),
+        'clip-all': () => { const y = G.parseLength(document.getElementById('clip-at')?.value); if (y == null || !laid.lay) return notice('Type a height for the clips, like 4\'-0".', true); clipAt = y; addClips(p, G.clipsOnEveryStud(laid.lay, y, clipType)); },
+        'clip-clear': () => { const n = (p.clips || []).length; p.clips = []; renderHint(); changed(); notice(`${n} clip${n === 1 ? '' : 's'} removed.`); },
         'peri-finish': () => finishPerimeter(),
         'peri-undo': () => { peri?.pts.pop(); renderSketch(); renderHint(); },
         'peri-cancel': () => setTool('select'),
@@ -268,7 +278,7 @@ function renderPanel() {
 // The sheet's switches (Side B, Flip studs, Flip panel) and the optimizer's, as the panel has them.
 function syncToggles() {
     const p = cur();
-    for (const k of ['sideB', 'flipStuds', 'layoutFromRight']) for (const el of main.querySelectorAll(`#sheet-card [data-f="${k}"]`)) el.checked = !!p[k];
+    for (const k of ['sideB', 'flipStuds', 'layoutFromRight']) for (const el of main.querySelectorAll(`#flip-bar [data-f="${k}"]`)) { el.checked = !!p[k]; el.closest('.pill')?.classList.toggle('on', !!p[k]); }
     renderLayoutInfo();
 }
 
@@ -395,7 +405,7 @@ function toLayoutNote(p, i) {
     let framedText = '';
     if (o.toLayout) { try { const b = G.frameInputs(p).openings[i]; if (b?.requested) framedText = `framed ${fmtFtIn(b.right - b.left)} between jambs · `; } catch { /* inputs to fix */ } }
     const parts = [pieces ? `${n} ${pieces > 0 ? 'fewer' : 'more'} stud piece${n === 1 ? '' : 's'}` : '', Math.abs(lengthIn) >= 1 ? `${fmtFtIn(Math.abs(lengthIn))} ${lengthIn > 0 ? 'less' : 'more'} steel` : ''].filter(Boolean);
-    return framedText + (parts.length ? `${o.toLayout ? '' : 'on: '}${parts.join(', ')}` : 'no saving here');
+    return framedText + (parts.length ? `${o.toLayout ? '' : 'turned on: '}${parts.join(', ')}` : 'no saving here');
 }
 function layoutToggle(p, i) {
     const o = p.openings[i];
@@ -407,7 +417,7 @@ function openingContext(p, i) {
     const o = p.openings[i], name = G.openingName(p.openings, i), type = G.OPENING_TYPES[o.kind];
     const size = o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, up through the top from ${fmtFtIn(o.sillIn)}` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}${o.kind === 'door' ? '' : `, sill ${fmtFtIn(o.sillIn)}`}`;
     return `<div class="op-context ${o.kind}">${openingGlyph(o.kind)}<div><span class="muted small">Members for</span> <b>${name}</b> · ${esc(type.name)}<br>
-        <span class="small">${esc(size)} · ${fmtFtIn(o.leftIn)} from the left end</span></div></div>`;
+        <span class="small">${esc(size)} · ${fmtFtIn(o.leftIn)} from the left end</span>${G.offsetOf(o) > 0 ? `<br><span class="small ro-text">rough opening ${esc(roText(p, i))}</span>` : ''}</div></div>`;
 }
 function openingGlyph(kind) { // the opening, a jamb each side, the header over it and the sill under it, as the kind has them
     const head = kind !== 'steel', sill = kind !== 'door', y0 = head ? 9 : 0, y1 = kind === 'door' ? 38 : 30;
@@ -436,7 +446,10 @@ function renderCatalogue() {
         ${ask === sel ? `<p class="ask-note">${name} is in: pick its ${type.members.map(k => G.MEMBER_LABELS[k].toLowerCase()).join(' and ').replace(' and ', type.members.length > 2 ? ', ' : ' and ')}, or keep the defaults.</p>` : ''}
         <div class="fields cat-fields">${f('Width', 'widthIn', o.widthIn)}${o.kind === 'steel' ? '' : f('Height', 'heightIn', o.heightIn)}
             ${o.kind === 'door' ? '' : f(o.kind === 'steel' ? 'Sill height (up through the top)' : 'Sill height', 'sillIn', o.sillIn)}
-            ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}</div>
+            ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}
+            ${field('Framing offset', `openings.${sel}.offsetIn`, G.offsetOf(o), { t: 'len', list: 'len', cls: 'f-offset', ph: `${inch(G.FRAMING_OFFSETS[o.kind])} (${o.kind}s)` })}</div>
+        <div class="row fr-row"><button class="secondary" data-act="framing" data-i="${sel}" title="Double jambs, box headers, jack studs, the rough opening: with a preview">⚙ Framing details…</button>
+            <span class="muted small">${esc(framingSummary(p, sel))}</span></div>
         ${layoutToggle(p, sel)}
         ${openingContext(p, sel)}
         ${type.members.map(k => openingCard(sel, k)).join('')}
@@ -449,7 +462,7 @@ function syncCatalogueFields(except = '') {
     for (const el of main.querySelectorAll('#catalogue [data-f][data-t="len"]')) {
         if (el.dataset.f === except || document.activeElement === el) continue;
         const key = el.dataset.f.split('.').pop();
-        el.value = lenText(key === '__right' ? Math.max(0, L - o.leftIn - o.widthIn) : o[key]);
+        el.value = lenText(key === '__right' ? Math.max(0, L - o.leftIn - o.widthIn) : key === 'offsetIn' ? G.offsetOf(o) : o[key]);
     }
 }
 const renderMemberCards = () => { renderCore(); renderCatalogue(); };
@@ -482,7 +495,7 @@ function followStud(oldStud, newStud) {
 function renderDatalists() {
     const ch = G.memberChoices(cur().members);
     const groups = [...new Set(set.panels.map(p => p.group).filter(Boolean))];
-    const lists = { ...ch, level: [], wallType: [], group: groups, project: [], drawnBy: [], len: [] };
+    const lists = { ...ch, level: [], wallType: [], group: groups, project: [], drawnBy: [], len: [], clip: G.CLIP_TYPES };
     document.getElementById('datalists').innerHTML = Object.entries(lists).map(([k, v]) => `<datalist id="dl-${k}">${[...new Set([...(recent[k] || []), ...v])].map(x => `<option value="${esc(x)}"></option>`).join('')}</datalist>`).join('');
 }
 
@@ -492,7 +505,8 @@ function renderTools() {
     $('#tools').innerHTML = `<div class="seg" role="group" aria-label="Tool">${t('select', '↖ Select &amp; move', 'Pick an opening to see its dimensions and members; drag it or the round handles')}
             ${G.canEdit(cur(), 'shape') ? t('perimeter', '✎ Draw perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')
                 : '<button class="secondary" disabled title="Locked: the Revit model\'s perimeter">🔒 Perimeter</button>'}
-            ${t('opening', '▭ Draw an opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}</div>
+            ${t('opening', '▭ Draw an opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}
+            ${t('clip', '◫ Clips', 'Click near a stud to put a clip on it (on its web); click a clip to remove it; or clip every stud at a height')}</div>
         <span class="add-label">Add</span>${Object.entries(G.OPENING_TYPES).map(([k, ty]) => `<button class="add-op ${k}" data-act="add-op" data-kind="${k}">+ ${esc(ty.name)}</button>`).join('')}`;
     renderHint();
 }
@@ -502,6 +516,12 @@ function renderHint() {
         el.innerHTML = `<b>Drawing the perimeter:</b> click each corner (it snaps level and plumb, and to the corners already placed). Type a length and press Enter to place the next corner exactly
             that far toward the pointer. Click the first corner, or press Enter, to close it. A rectangle up from the bottom becomes a door; one down from the top a steel penetration.
             <span class="row peri-actions"><button data-act="peri-finish" ${peri?.pts.length >= 4 ? '' : 'disabled'}>Close the perimeter</button><button class="secondary" data-act="peri-undo" ${peri?.pts.length ? '' : 'disabled'}>Undo a corner</button><button class="link" data-act="peri-cancel">Cancel (Esc)</button></span>`;
+    } else if (tool === 'clip') {
+        const n = (cur().clips || []).length;
+        el.innerHTML = `<b>Clips:</b> click near a stud to put a <input id="clip-type" class="mini wide" list="dl-clip" value="${esc(clipType)}" aria-label="Clip type"> on it, on its web, at that height; click a clip to remove it.
+            <span class="row clip-actions">Clip every stud: <button class="secondary" data-act="clip-top">2" under the top</button><button class="secondary" data-act="clip-mid">at mid-height</button>
+            or at <input id="clip-at" class="mini" value="${esc(lenText(clipAt))}" aria-label="Height for clips on every stud"><button class="secondary" data-act="clip-all">Clip every stud</button>
+            ${n ? `<button class="link danger" data-act="clip-clear">Remove all ${n} clip${n === 1 ? '' : 's'}</button>` : ''}<button class="link" data-act="tool" data-tool="select">Done (Esc)</button></span>`;
     } else if (tool === 'opening') {
         el.innerHTML = '<b>Drawing an opening:</b> drag a rectangle on the panel. Touching the floor it is a door; up through the top a steel penetration; else a window (make it an MEP opening on the right). Esc to stop.';
     } else {
@@ -570,11 +590,17 @@ function renderSketch() {
         if (!(w > 0 && h > 0)) return;
         const name = G.openingName(p.openings, i), dims = b.through ? `${fmtFtIn(w)} wide` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`;
         const size = Math.min(fs * 1.1, (w * 0.9) / (name.length * 0.62), h * 0.36), small = Math.min(fs * 0.8, (w * 0.92) / (dims.length * 0.56), h * 0.22);
-        const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - b.left) < 1e-6 && Math.abs(x.bottom - b.bottom) < 1e-6);
+        if (G.offsetOf(o) > 0) { const r = G.roughOpening(o, H), rt = b.through ? topY : r.top; parts.push(`<rect x="${r.left}" y="${Y(rt)}" width="${r.right - r.left}" height="${rt - r.bottom}" class="sk-ro"><title>${esc(`${name}'s rough opening: ${roText(p, i)}`)}</title></rect>`); }
+        const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - G.roughOpening(o, H).left) < 1e-6 && Math.abs(x.bottom - G.roughOpening(o, H).bottom) < 1e-6);
         if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${fmtFtIn(fb.right - fb.left)} between jambs`)}</title></rect>`);
         parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
+    // Clips, on their studs' webs (at least a little block on screen, however small the panel is drawn).
+    if (tool !== 'perimeter' && laid.lay) for (const c of G.placeClips(laid.lay, p.clips).clips) {
+        const w = Math.max(1.25, u * 0.9), h = Math.max(3, u * 1.8);
+        parts.push(`<rect x="${c.side === 'R' ? c.x : c.x - w}" y="${Y(c.y + h / 2)}" width="${w}" height="${h}" class="sk-clip${hover === `clip:${c.i}` ? ' on' : ''}" data-clip="${c.i}" data-hover="clip:${c.i}"><title>${esc(`${c.mark} ${c.type} at ${fmtFtIn(c.y)}, on its stud's web · ${tool === 'clip' ? 'click to remove it' : 'right-click for options'}`)}</title></rect>`);
+    }
     // Grips (shape handles, as in Revit): round at the panel's corners, arrows at the middle of its edges (an end moves
     // the end out or in, the openings staying where they are; a run of the top moves up or down); square at the
     // selected opening's corners, diamonds at the middle of its edges (resize it).
@@ -584,9 +610,9 @@ function renderSketch() {
         const tip = (sg) => `${x + dx * a * sg},${Y(y) - dy * a * sg} ${x + dx * a * 0.25 * sg + px * w},${Y(y) - (dy * a * 0.25 * sg + py * w)} ${x + dx * a * 0.25 * sg - px * w},${Y(y) - (dy * a * 0.25 * sg - py * w)}`;
         return `<g class="sk-arrow" data-drag="${what}"><title>${esc(title)}</title><circle cx="${x}" cy="${Y(y)}" r="${a * 1.05}" class="sk-arrow-hit"/><polygon points="${tip(1)}"/><polygon points="${tip(-1)}"/></g>`;
     };
-    const grip = (x, y, what, title, diamond = false) => { const g = u * 1.05; return diamond
+    const grip = (x, y, what, title, diamond = false, g = u * 1.05) => diamond
         ? `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" transform="rotate(45 ${x} ${Y(y)})" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`
-        : `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`; };
+        : `<rect x="${x - g}" y="${Y(y) - g}" width="${g * 2}" height="${g * 2}" class="sk-grip" data-drag="${what}"><title>${esc(title)}</title></rect>`;
     const s = p.shape;
     const shapeLocked = !G.canEdit(p, 'shape');
     if (tool === 'select' && valid && !shapeLocked) {
@@ -605,15 +631,21 @@ function renderSketch() {
                 .filter(([g]) => !(g === 't' && o.kind === 'steel') && !(g === 'b' && o.kind === 'door'));
             const corners = [['tl', b.left, topY], ['tr', b.right, topY], ['bl', b.left, b.bottom], ['br', b.right, b.bottom]]
                 .filter(([g]) => !(g[0] === 't' && o.kind === 'steel') && !(g[0] === 'b' && o.kind === 'door'));
-            for (const [g, x, y, title] of sides) parts.push(grip(x, y, `og:${sel}:${g}`, `${title}: drag to resize`, true));
-            for (const [g, x, y] of corners) parts.push(grip(x, y, `og:${sel}:${g}`, 'Drag this corner to resize'));
+            // Grips sized to the opening, so a small one stays visible under them; its side grips only when there is room.
+            const gs = Math.max(u * 0.3, Math.min(u * 1.05, Math.min(b.right - b.left, topY - b.bottom) * 0.1)), roomy = Math.min(b.right - b.left, topY - b.bottom) > gs * 9;
+            if (roomy) for (const [g, x, y, title] of sides) parts.push(grip(x, y, `og:${sel}:${g}`, `${title}: drag to resize`, true, gs));
+            for (const [g, x, y] of corners) parts.push(grip(x, y, `og:${sel}:${g}`, 'Drag this corner to resize', false, gs));
         }
     }
     // Context: dimensions all around what is moved, selected or pointed at.
     const ctx = [];
+    const highest0 = (b) => Math.min(b.top, at((b.left + b.right) / 2));
     const openingDims = (i, cls) => {
         const b = boxes[i], o = p.openings[i], others = boxes.filter((_, j) => j !== i), cx = (b.left + b.right) / 2;
-        const highest = Math.min(b.top, at(cx)), mid = b.bottom + (highest - b.bottom) * 0.35, vx = b.left + (b.right - b.left) * 0.28; // side dimensions low, up and down ones off center (clear of its name and size)
+        // Side dimensions low, up and down ones off center (clear of its name and size); a small opening's up and down
+        // ones beside it, so their text never covers it.
+        const small = b.right - b.left < cs * 7 || highest0(b) - b.bottom < cs * 4;
+        const highest = Math.min(b.top, at(cx)), mid = small ? (b.bottom + highest) / 2 : b.bottom + (highest - b.bottom) * 0.35, vx = small ? b.right + cs * 1.6 : b.left + (b.right - b.left) * 0.28;
         const across = others.filter(c => c.bottom < mid && c.top > mid);
         const lo = Math.max(0, ...across.filter(c => c.right <= b.left + 1e-6).map(c => c.right)), hi = Math.min(L, ...across.filter(c => c.left >= b.right - 1e-6).map(c => c.left));
         ctx.push(dimH(lo, b.left, mid, fmtFtIn(b.left - lo), cls), dimH(b.right, hi, mid, fmtFtIn(hi - b.right), cls));
@@ -684,7 +716,7 @@ function renderSketch() {
 let laid = { key: '', at: 0, lay: null };
 const ROLE_NAMES = { stud: 'Stud on center', 'end stud': 'End stud', 'jamb stud': 'Jamb', cripple: 'Cripple' };
 function centerlines(p, H, top) {
-    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings, p.layoutStartIn, p.layoutFromRight, p.flipStuds]);
+    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings, p.layoutStartIn, p.layoutFromRight, p.flipStuds, p.studFlips]);
     if (key !== laid.key && (!drag || Date.now() - laid.at > 120)) {
         let lay = null;
         try { if (!G.panelErrors(p).length) lay = frameWall(G.frameInputs(p)); } catch { /* inputs to fix */ }
@@ -703,7 +735,9 @@ function centerlines(p, H, top) {
             cs.push(`<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="sk-c"/>`);
         }
     });
-    return `<g class="sk-cl">${lines.join('')}${cs.join('')}</g><g class="sk-mem-hits">${hits.join('')}</g>`;
+    // Headers and sills as framed (a box header shows its depth), behind the openings.
+    const hds = lay.members.filter(m => m.role === 'head track' || m.role === 'sill track').map(m => `<rect x="${m.x}" y="${-(m.y + m.h)}" width="${m.w}" height="${m.h}" class="sk-hd"/>`);
+    return `<g class="sk-cl">${hds.join('')}${lines.join('')}${cs.join('')}</g><g class="sk-mem-hits">${hits.join('')}</g>`;
 }
 
 function wallPoint(e) {
@@ -731,6 +765,7 @@ function bindSketch(svg) {
         e.preventDefault();
         if (tool === 'perimeter') { drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return; }
         if (tool === 'opening') { rectDraw = { a: [snap(q[0]), snap(q[1])], b: [snap(q[0]), snap(q[1])] }; drag = { what: 'rect', x: e.clientX, y: e.clientY, moved: false }; return; }
+        if (tool === 'clip') { const c = e.target.closest('[data-clip]'); c ? removeClip(p, Number(c.dataset.clip)) : addClips(p, [{ type: clipType, x: round16(q[0]), y: round16(q[1]) }]); return; }
         drag = { what: h?.dataset.drag || 'none', start: q, moved: false, orig: structuredClone({ shape: p.shape, openings: p.openings }), x: e.clientX, y: e.clientY, view0: { ...view } };
         const m = /^op:(\d+)$/.exec(drag.what);
         if (m && sel !== Number(m[1])) { sel = Number(m[1]); if (ask !== sel) ask = null; renderCatalogue(); renderChips(); renderSketch(); }
@@ -832,6 +867,7 @@ function finishRect() {
 const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
+    if (document.getElementById('fr-dialog')?.open) return; // the framing dialog has the keys
     if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
     if (tool === 'perimeter' && peri) { perimeterKey(e); return; }
@@ -935,21 +971,26 @@ function openMenu(e) {
     const endMenu = (side) => out.push(head(`The ${side} end`, `${fmtFtIn(at(side === 'left' ? 0 : L))} high · end stud ${studName(p.members)}`),
         btn(`Start the stud layout from the ${side} end`, 'layout-from', { side }, { off: !!p.layoutFromRight === (side === 'right'), title: side === 'right' ? 'Flip panel: the layout and its offsets from this end' : 'The layout from the left end, as usual' }));
     const out = [];
-    const opening = /^op:(\d+)$/.exec(key), mem = /^mem:(\d+)$/.exec(key), edge = /^edge:(\d+)$/.exec(key), pt = /^pt:(\d+)$/.exec(key), end = /^pg:(l|r|tl|tr|bl|br)$/.exec(key);
+    const opening = /^op:(\d+)$/.exec(key), mem = /^mem:(\d+)$/.exec(key), edge = /^edge:(\d+)$/.exec(key), pt = /^pt:(\d+)$/.exec(key), end = /^pg:(l|r|tl|tr|bl|br)$/.exec(key), clip = /^clip:(\d+)$/.exec(key);
     if (opening && p.openings[Number(opening[1])]) {
         const i = Number(opening[1]), o = p.openings[i], locked = G.isLockedOpening(p, o), type = G.OPENING_TYPES[o.kind];
         choose(i);
         out.push(head(`${G.openingName(p.openings, i)} · ${type.name}`, `${o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, through the top` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}`} · ${fmtFtIn(o.leftIn)} from the left end${locked ? ' · 🔒 the model\'s' : ''}`));
+        out.push(btn('⚙ Framing details… (jambs, header, rough opening)', 'framing', { i }));
         out.push(...type.members.map(k => pick(openingChoice(i, k), G.MEMBER_LABELS[k])));
         out.push(`<label class="mi-pick"><span>Kind</span><select data-f="openings.${i}.kind" aria-label="Kind of opening"${locked ? ' disabled' : ''}>${Object.entries(G.OPENING_TYPES).map(([k, t]) => `<option value="${k}" ${k === o.kind ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>`);
         out.push(check('Jambs on the stud layout', `openings.${i}.toLayout`, o.toLayout, toLayoutNote(p, i)));
-        out.push('<hr>', btn('Center it', 'center', { i }, { off: locked }), btn('Copy it', 'copy-op', { i }), btn('Remove it', 'del-op', { i }, { off: locked, cls: 'danger' }));
+        out.push('<hr>', btn('Center it', 'center', { i }, { off: locked }), btn('⇆ Mirror it across the panel', 'mirror-op', { i }, { off: locked, title: 'The same distance from the other end' }),
+            btn('Copy it', 'copy-op', { i }), btn('Remove it', 'del-op', { i }, { off: locked, cls: 'danger' }));
     } else if (mem && laid.lay?.members[Number(mem[1])]) {
         const m = laid.lay.members[Number(mem[1])], cx = m.x + m.w / 2, j = jambOf(p, m);
         out.push(head(`${ROLE_NAMES[m.role] || m.role}${j != null ? ` of ${G.openingName(p.openings, j)}` : ''}`, `${m.type} · ${fmtFtIn(m.lengthIn)} long · center ${fmtFtIn(cx)} from the left end, ${fmtFtIn(L - cx)} from the right`));
         if (j != null) choose(j);
         out.push(j != null ? pick(openingChoice(j, 'jamb'), 'Jambs') : pick(coreChoice('stud'), m.role === 'stud' ? 'Studs' : 'Stud type'));
         if (m.role !== 'end stud') out.push(btn('Start the stud layout here', 'layout-here', { x: cx }, { title: 'This stud\'s line becomes a layout line: the first stud is set by hand from it (the optimizer gives way)' }));
+        const flipped = (p.studFlips || []).some(c => Math.abs(c - cx) < 0.5);
+        out.push(btn(flipped ? '⟲ Flip this stud back' : '⟲ Flip this stud', 'stud-flip', { x: round16(cx) }, { title: 'Just this stud faces the other way' }),
+            btn(`◫ Add a clip on it here (${fmtFtIn(y)} up)`, 'clip-here', { x: round16(cx), y: round16(y) }));
     } else if (edge) {
         const outline = [[0, 0], [L, 0], ...(top ? [...top].reverse() : [[L, H], [0, H]])], n = Number(edge[1]), [x1, y1] = outline[n], [x2, y2] = outline[(n + 1) % outline.length];
         if (y1 === 0 && y2 === 0) out.push(head('Bottom track', `${fmtFtIn(L)} long`), pick(coreChoice('track'), 'Type'));
@@ -963,16 +1004,23 @@ function openMenu(e) {
     else if (pt && p.shape.points?.[Number(pt[1])]) {
         const k = Number(pt[1]), q = p.shape.points[k];
         out.push(head(`Point ${k + 1} on the top`, `${fmtFtIn(q[0])} from the left end · ${fmtFtIn(q[1])} high`), btn('Remove this point', 'del-point', { i: k }, { off: !shapeFree }));
+    } else if (clip && p.clips?.[Number(clip[1])]) {
+        const i = Number(clip[1]), c = p.clips[i], at2 = laid.lay ? G.placeClips(laid.lay, p.clips).clips.find(k => k.i === i) : null;
+        out.push(head(`${at2?.mark || 'Clip'} · ${c.type}`, `${fmtFtIn(c.y)} up${at2?.stud ? `, on ${at2.stud}` : ''} (on the stud's web)`),
+            `<label class="mi-pick"><span>Type</span><select data-f="clips.${i}.type" aria-label="Clip type">${[...new Set([c.type, ...G.CLIP_TYPES, ...(recent.clip || [])])].map(v => `<option ${v === c.type ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`,
+            btn('Remove this clip', 'clip-del', { i }, { cls: 'danger' }));
     } else if (key === 'peak') {
         out.push(head('The peak', `${fmtFtIn(p.shape.peakIn)} high, ${fmtFtIn(p.shape.peakAtIn ?? L / 2)} from the left end`), btn('Make the top a drawn one (points to drag)', 'shape', { kind: 'custom' }, { off: !shapeFree }));
     } else if (x > 0 && x < L && y >= 0 && y < at(x)) {
         out.push(head('Add an opening here', `${fmtFtIn(x)} from the left end${y > 1 ? ` · ${fmtFtIn(y)} up` : ''}`),
-            `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`);
+            `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`,
+            btn(`◫ Add a ${clipType.toLowerCase()} on the nearest stud`, 'clip-here', { x: round16(x), y: round16(y) }));
     }
     out.push(out.length ? '<hr>' : '', btn('⟲ Preview 5 s', 'preview', {}, { title: 'The framing elevation with its tags and dimensions, for 5 seconds' }),
         check('Opening optimizer', 'optimizeOpenings', p.optimizeOpenings, p.layoutStartIn > 0 ? 'first stud set by hand' : ''),
         check('Flip studs', 'flipStuds', p.flipStuds, 'studs face the other way'),
         check('Flip panel', 'layoutFromRight', p.layoutFromRight, 'layout from the right end'),
+        check('Side B', 'sideB', p.sideB, 'mirror the sheet'),
         p.layoutStartIn > 0 ? btn(`Clear the first stud set by hand (${inch(p.layoutStartIn)})`, 'layout-reset') : '');
     const box = document.getElementById('sk-menu');
     box.innerHTML = out.join('');
@@ -1035,6 +1083,174 @@ function copyOpening(p, i) {
     renderCatalogue(); renderChips(); changed();
     notice(spot == null ? `${G.openingName(p.openings, sel)} is a copy of ${from}, but there is no free room beside it on this panel: move it, or remove it.` : `${G.openingName(p.openings, sel)} is a copy of ${from}, with its members: drag it into place.`, spot == null);
 }
+
+// --- Clips -------------------------------------------------------------------------------------------------------------
+let clipType = load(KEYS.recent, {}).clip?.[0] || G.CLIP_TYPES[0], clipAt = 48;
+main.addEventListener('change', (e) => { if (e.target.id === 'clip-type') { clipType = e.target.value.trim() || G.CLIP_TYPES[0]; recent.clip = G.remember(recent.clip, clipType); store(KEYS.recent, recent); renderDatalists(); } });
+// New clips: only those that land on a stud and not on one already there.
+function addClips(p, list) {
+    if (!laid.lay) { notice('Fix the panel\'s inputs first: clips go on its studs.', true); return; }
+    const before = (p.clips || []).length, all = [...(p.clips || []), ...list], placed = G.placeClips(laid.lay, all).clips.filter(c => c.i >= before);
+    if (!placed.length) { notice(list.length === 1 ? 'No stud there to clip (or that stud has a clip at that height already).' : 'Every stud there has a clip at that height already.', true); return; }
+    p.clips = [...(p.clips || []), ...placed.map(c => all[c.i])];
+    renderHint(); changed();
+    notice(`${placed.length} ${placed[0].type.toLowerCase()}${placed.length === 1 ? '' : 's'} added, on ${placed.length === 1 ? 'the stud\'s web' : 'the studs\' webs'}.`);
+}
+function removeClip(p, i) {
+    if (!p.clips?.[i]) return;
+    const [c] = p.clips.splice(i, 1);
+    hover = null; renderHint(); changed();
+    notice(`${c.type} at ${fmtFtIn(c.y)} removed.`);
+}
+
+// --- Framing details: an opening's jambs, header, sill and rough opening, with a live preview -------------------------
+const roText = (p, i) => { const o = p.openings[i], r = G.roughOpening(o, G.shapeTop(p.shape).heightIn); return o.kind === 'steel' ? `${fmtFtIn(r.right - r.left)} wide` : `${fmtFtIn(r.right - r.left)} x ${fmtFtIn(r.top - r.bottom)}`; };
+function framingSummary(p, i) {
+    const fr = G.openingFraming(p, p.openings[i]);
+    return [fr.plies > 1 ? `${fr.plies} jamb studs each side, ${G.JAMB_STYLES[fr.jambStyle].toLowerCase()}` : '1 jamb stud each side',
+        fr.head ? (fr.head.depthIn ? `${inch(fr.head.depthIn)} ${fr.head.style === 'back' ? 'back-to-back' : 'box'} header` : 'track header') + (fr.bearing === 'jacks' ? ' on jack studs' : '') : '',
+        fr.crippleEnds ? 'cripples at the ends' : ''].filter(Boolean).join(' · ');
+}
+let fd = null; // the dialog's state: { i, draft (the opening being edited), jamb, head, sill (picker states), touched }
+const frDialog = () => document.getElementById('fr-dialog');
+// draft: start from this version of the opening (Back to the defaults) instead of the panel's.
+function openFraming(i, draft = null) {
+    const p = cur(), o = p.openings[i];
+    if (!o) return;
+    const d = draft || structuredClone(o), panel = { ...p, openings: p.openings.map((x, j) => (j === i ? d : x)) };
+    const stud = studName(p.members), track = bottomTrack(p.members);
+    const state = (k) => { const sp = G.specParts(G.memberFor(panel, d, k).spec), byStuds = sp.studQty > 0;
+        return { style: byStuds ? (d[`${k}Style`] === 'back' ? 'back' : 'box') : 'track', studs: byStuds ? sp.studQty : 2, stud: sp.studs[0]?.name || stud, tracks: byStuds ? sp.trackQty : Math.max(1, sp.trackQty), track: sp.tracks[0]?.name || track }; };
+    const jp = G.specParts(G.memberFor(panel, d, 'jamb').spec);
+    fd = { i, draft: d, jamb: { plies: Math.max(1, Math.min(3, jp.studQty || 1)), stud: jp.studs[0]?.name || stud, tracks: jp.tracks }, head: state('head'), sill: state('sill'), touched: new Set() };
+    if (sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); }
+    renderFraming();
+    if (!frDialog().open) frDialog().showModal();
+}
+// The draft's member texts from the pickers (only those touched: an untouched member keeps what it had, '' included).
+function framingSpecs() {
+    const d = fd.draft, spec = (s) => (s.style === 'track' ? `${s.tracks > 1 ? `(${s.tracks}) ` : ''}${s.track}` : `(${s.studs}) ${s.stud}${s.tracks ? ` WITH (${s.tracks}) ${s.track}` : ''}`);
+    if (fd.touched.has('jamb')) { const j = fd.jamb; d.jamb = `${j.plies > 1 ? `(${j.plies}) ` : ''}${j.stud}${j.tracks.length ? ` WITH ${j.tracks.map(t => `(${t.qty}) ${t.name}`).join(' WITH ')}` : ''}`; }
+    for (const k of ['head', 'sill']) if (fd.touched.has(k)) { d[k] = spec(fd[k]); if (fd[k].style === 'back') d[`${k}Style`] = 'back'; else delete d[`${k}Style`]; }
+}
+const draftPanel = () => { const p = cur(); return { ...p, openings: p.openings.map((o, j) => (j === fd.i ? fd.draft : o)) }; };
+function renderFraming() {
+    const p = cur(), d = fd.draft, kind = d.kind, type = G.OPENING_TYPES[kind], name = G.openingName(p.openings, fd.i), panel = draftPanel();
+    const wall = G.parseMember(p.members.stud), deep = (n) => G.parseMember(n)?.depthIn, sameDepth = (n) => Math.abs((deep(n) ?? -1) - (wall?.depthIn ?? -2)) < 1e-6;
+    const ch = G.memberChoices(p.members), jambStuds = G.STUDS.filter(sameDepth), tracks = ch.track.filter(sameDepth);
+    const fr = G.openingFraming(panel, d), off = G.offsetOf(d), dflt = G.FRAMING_OFFSETS[kind];
+    const seg = (key, value, opts) => `<div class="seg fd-seg">${opts.map(([v, label, offOpt, title]) => `<button type="button" class="${String(v) === String(value) ? 'on' : 'secondary'}" data-fd="${key}" data-v="${v}"${offOpt ? ' disabled' : ''}${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('')}</div>`;
+    const pickList = (key, value, list) => `<select data-fd="${key}">${[...new Set([value, ...list])].filter(Boolean).map(v => `<option ${v === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+    const member = (k, label) => {
+        const s = fd[k], st = fr[k];
+        return `<fieldset class="fd-group"><legend>${label}</legend>
+            <div class="fd-line"><span>Made of</span>${seg(`${k}Style`, s.style, [['track', 'Track'], ['box', 'Box (toe to toe)'], ['back', 'Back to back']])}</div>
+            ${s.style === 'track' ? `<div class="fd-line"><span>Track</span>${seg(`${k}Tracks`, s.tracks, [[1, '1'], [2, '2 nested']])}${pickList(`${k}Track`, s.track, tracks)}</div>`
+                : `<div class="fd-line"><span>Studs</span>${seg(`${k}Studs`, s.studs, [[1, '1'], [2, '2']])}${pickList(`${k}Stud`, s.stud, G.STUDS)}<em>${inch(deep(s.stud) || 0)} deep</em></div>
+                   <div class="fd-line"><span>Tracks</span>${seg(`${k}Tracks`, s.tracks, [[0, 'none'], [1, '1 (under)'], [2, '2 (over and under)']])}${s.tracks ? pickList(`${k}Track`, s.track, tracks) : ''}</div>`}
+            <div class="fd-line"><span>As text</span><input type="text" data-fd="${k}Spec" value="${esc(d[k] || '')}" placeholder="${esc(st?.spec || '')} (the default)" list="dl-${k === 'head' ? 'header' : k}"></div>
+            ${k === 'head' ? `<div class="fd-line"><span>Bears</span>${seg('bearing', fr.bearing, [['between', 'Between the jambs'], ['jacks', 'On jack studs', fd.jamb.plies < 2, fd.jamb.plies < 2 ? 'Needs 2 or more jamb studs each side' : 'The header runs over the first jamb stud (a jack under it); the next is the king']])}</div>` : ''}
+        </fieldset>`;
+    };
+    const pv = framingPreview(panel);
+    frDialog().innerHTML = `<form method="dialog" class="fd">
+        <div class="fd-head"><b class="op-name ${kind}">${name}</b><span>${esc(type.name)} · ${esc(kind === 'steel' ? `${fmtFtIn(d.widthIn)} wide` : `${fmtFtIn(d.widthIn)} x ${fmtFtIn(d.heightIn)}`)}${G.isLockedOpening(p, d) ? ' · 🔒 the model\'s (its framing can change)' : ''}</span>
+            <span class="spacer"></span><button type="button" class="link" data-fd="cancel" aria-label="Close">✕</button></div>
+        <div class="fd-body"><div class="fd-controls">
+            <fieldset class="fd-group"><legend>Rough opening</legend>
+                <div class="fd-line"><span>Framing offset</span><input type="text" class="mini" data-fd="offset" value="${esc(inch(off))}"><em>each side${kind === 'door' ? ' and over it' : kind === 'steel' ? ' and under it' : ', over and under'}; ${kind}s default to ${inch(dflt)}</em>
+                    ${d.offsetIn != null && d.offsetIn !== '' ? '<button type="button" class="link" data-fd="offsetReset">default</button>' : ''}</div>
+                <div class="fd-line"><span></span><b>${esc(kind === 'steel' ? `${fmtFtIn(fr.ro.right - fr.ro.left)} wide` : `${fmtFtIn(fr.ro.right - fr.ro.left)} x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`)}</b><em>framed around</em></div>
+            </fieldset>
+            <fieldset class="fd-group"><legend>Jambs</legend>
+                <div class="fd-line"><span>Studs each side</span>${seg('plies', fd.jamb.plies, [[1, '1'], [2, '2 (double)'], [3, '3']])}${pickList('jambStud', fd.jamb.stud, jambStuds)}</div>
+                <div class="fd-line"><span>Arranged</span>${seg('jambStyle', fr.jambStyle, Object.entries(G.JAMB_STYLES).map(([v, l]) => [v, l, fd.jamb.plies < 2]))}</div>
+                <div class="fd-line"><span></span><label class="fd-check"><input type="checkbox" data-fd="toLayout" ${d.toLayout ? 'checked' : ''}> On the stud layout (the nearest studs on center are the jambs)</label></div>
+            </fieldset>
+            ${type.members.includes('head') ? member('head', 'Header') : ''}
+            ${type.members.includes('sill') ? member('sill', kind === 'steel' ? 'Sill (under the steel)' : 'Sill') : ''}
+            <fieldset class="fd-group"><legend>Studs above and below</legend>
+                <label class="fd-check"><input type="checkbox" data-fd="crippleEnds" ${d.crippleEnds ? 'checked' : ''}> Also a cripple at each end of the header and sill (against the jambs), besides those on the layout</label>
+            </fieldset>
+        </div>
+        <div class="fd-preview"><div class="fd-svg">${pv.svg}</div>${pv.errors.length ? `<ul class="errors">${pv.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : `<p class="muted small">${esc(pv.caption)}</p>`}</div></div>
+        <div class="fd-foot"><button type="button" class="link" data-fd="reset">Back to the defaults</button><span class="spacer"></span>
+            <button type="button" class="secondary" data-fd="cancel">Cancel</button><button type="button" data-fd="apply" ${pv.errors.length ? 'disabled' : ''}>Apply</button></div>
+    </form>`;
+}
+// The opening framed, a bay or two each side: the members (studs white, jamb studs blue-grey, tracks yellow, headers
+// and sills salmon), each stud's C in plan under it, the rough opening dashed, the opening as typed inside it.
+function framingPreview(panel) {
+    const errors = G.panelErrors(panel).filter(e => e.where === `opening-${fd.i}` || e.where === 'members').map(e => e.message);
+    if (errors.length) return { errors, svg: '' };
+    const inputs = G.frameInputs(panel), lay = frameWall(inputs), ro = inputs.openings[fd.i], L = lay.lengthIn, H = lay.heightIn, sp = inputs.spacingIn;
+    if (!ro) return { errors: ['Not framed: check its size and place.'], svg: '' };
+    const x0 = Math.max(0, ro.left - sp * 1.6), x1 = Math.min(L, ro.right + sp * 1.6), pad = Math.max(x1 - x0, H) * 0.06;
+    const inView = (m) => m.x + m.w > x0 - 0.01 && m.x < x1 + 0.01;
+    const fill = (m) => (m.role === 'head track' || m.role === 'sill track' ? '#f4a7a0' : m.orient === 'h' ? '#f2d64b' : m.role === 'jamb stud' ? '#cfdcea' : m.role === 'cripple' ? '#f3f3f3' : '#ffffff');
+    const rects = lay.members.filter(inView).map(m => { const a = Math.max(m.x, x0), b = Math.min(m.x + m.w, x1);
+        return m.pts && m.orient === 'v' ? `<polygon points="${m.pts.map(([x, y]) => `${x},${-y}`).join(' ')}" fill="${fill(m)}" class="fd-m"/>` : `<rect x="${a}" y="${-(m.y + m.h)}" width="${b - a}" height="${m.h}" fill="${fill(m)}" class="fd-m"><title>${esc(`${m.role}${m.ply ? ` (ply ${m.ply})` : ''}: ${m.type}`)}</title></rect>`; });
+    const cs = lay.members.filter(m => m.orient === 'v' && inView(m) && m.y < 2).map(m => { const ya = 1.2, yb = 4.2, lip = 1, r = webOnRight(m, lay), [open, web] = r ? [m.x, m.x + m.w] : [m.x + m.w, m.x];
+        return `<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="fd-c"/>`; });
+    const clear = ro.clear ? `<rect x="${ro.clear.left}" y="${-ro.clear.top}" width="${ro.clear.right - ro.clear.left}" height="${ro.clear.top - ro.clear.bottom}" class="fd-clear"/>` : '';
+    const roTop = ro.through ? H : ro.top;
+    const svg = `<svg viewBox="${x0 - pad} ${-H - pad} ${x1 - x0 + 2 * pad} ${H + pad * 2.2}" role="img" aria-label="The opening's framing">
+        <line x1="${x0 - pad}" y1="0" x2="${x1 + pad}" y2="0" class="fd-floor"/>${rects.join('')}${cs.join('')}
+        <rect x="${ro.left}" y="${-roTop}" width="${ro.right - ro.left}" height="${roTop - ro.bottom}" class="fd-ro"/>${clear}</svg>`;
+    const fr = G.openingFraming(panel, fd.draft), vs = lay.members.filter(m => m.orient === 'v');
+    const caption = `Rough opening ${fmtFtIn(ro.right - ro.left)}${ro.through ? ' wide' : ` x ${fmtFtIn(roTop - ro.bottom)}`} (dashed), the opening as typed inside it. ${fr.plies} jamb stud${fr.plies > 1 ? 's' : ''} each side${fr.head?.depthIn ? `; a ${inch(fr.head.depthIn)} deep header${fr.bearing === 'jacks' ? ' on jack studs' : ''}` : ''}. The panel: ${vs.length} stud pieces${lay.issues.length ? `, framing check: ${lay.issues[0].message}` : ', framing check passed'}.`;
+    return { errors: lay.issues.length ? lay.issues.map(i => i.message).slice(0, 3) : [], svg, caption };
+}
+function framingInput(e) {
+    const el = e.target.closest('[data-fd]');
+    if (!el || !fd) return;
+    const k = el.dataset.fd, v = el.dataset.v ?? (el.type === 'checkbox' ? el.checked : el.value), d = fd.draft;
+    const num = (x) => Number(x);
+    if (k === 'cancel') { frDialog().close(); return; }
+    if (k === 'apply') { applyFraming(); return; }
+    if (k === 'reset') { const r = { ...d, head: '', jamb: '', sill: '' }; for (const f of ['offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout']) delete r[f]; openFraming(fd.i, r); return; }
+    if (k === 'offset') { const n = G.parseLength(String(v)); if (n == null) return; d.offsetIn = round16(n); }
+    else if (k === 'offsetReset') delete d.offsetIn;
+    else if (k === 'plies') { fd.jamb.plies = num(v); fd.touched.add('jamb'); if (fd.jamb.plies < 2) delete d.headBearing; }
+    else if (k === 'jambStud') { fd.jamb.stud = v; fd.touched.add('jamb'); }
+    else if (k === 'jambStyle') { if (v === 'box') delete d.jambStyle; else d.jambStyle = v; }
+    else if (k === 'toLayout') { if (v) d.toLayout = true; else delete d.toLayout; }
+    else if (k === 'crippleEnds') { if (v) d.crippleEnds = true; else delete d.crippleEnds; }
+    else if (k === 'bearing') { if (v === 'jacks') d.headBearing = 'jacks'; else delete d.headBearing; }
+    else {
+        const m = /^(head|sill)(Style|Studs|Stud|Tracks|Track|Spec)$/.exec(k);
+        if (!m) return;
+        const [, part, what] = m, s = fd[part];
+        if (what === 'Spec') { d[part] = String(v).trim(); fd.touched.delete(part); const sp = G.specParts(d[part] || G.memberFor(draftPanel(), d, part).spec); s.style = sp.studQty ? (s.style === 'back' ? 'back' : 'box') : 'track'; }
+        else {
+            if (what === 'Style') { s.style = v; if (v !== 'track' && !G.parseMember(s.stud)) s.stud = studName(cur().members); }
+            if (what === 'Studs') s.studs = num(v);
+            if (what === 'Stud') s.stud = v;
+            if (what === 'Tracks') s.tracks = num(v);
+            if (what === 'Track') s.track = v;
+            if (s.style === 'track' && s.tracks < 1) s.tracks = 1;
+            fd.touched.add(part);
+        }
+    }
+    framingSpecs();
+    if (e.type === 'input' && el.type === 'text') { const pv = framingPreview(draftPanel()); frDialog().querySelector('.fd-svg').innerHTML = pv.svg; return; } // typing: the preview only
+    renderFraming();
+    frDialog().querySelector(`[data-fd="${k}"]`)?.focus();
+}
+function applyFraming() {
+    const p = cur(), i = fd.i, o = p.openings[i], d = fd.draft;
+    // The dialog never moves or resizes the opening: only its framing changes (allowed on a Revit opening too).
+    p.openings[i] = { ...d, kind: o.kind, leftIn: o.leftIn, widthIn: o.widthIn, heightIn: o.heightIn, sillIn: o.sillIn, ...(o.locked ? { locked: true } : {}) };
+    for (const k of ['head', 'jamb', 'sill']) if (d[k]) { recent[recentKey(k)] = G.remember(recent[recentKey(k)], d[k]); }
+    store(KEYS.recent, recent);
+    frDialog().close();
+    renderMemberCards(); renderChips(); renderDatalists(); changed();
+    notice(`${G.openingName(p.openings, i)}: framing set (${framingSummary(p, i)}).`);
+}
+frDialog().addEventListener('click', (e) => { if (e.target === frDialog()) { frDialog().close(); return; } if (e.target.closest('button[data-fd]')) framingInput(e); });
+frDialog().addEventListener('change', (e) => { if (!e.target.closest('button')) framingInput(e); });
+frDialog().addEventListener('input', (e) => { if (e.target.type === 'text') framingInput(e); });
+frDialog().addEventListener('close', () => { fd = null; });
 
 // --- Openings list under the sketch --------------------------------------------------------------------------------------
 function renderChips() {

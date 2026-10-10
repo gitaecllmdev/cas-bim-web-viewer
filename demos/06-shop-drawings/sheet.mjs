@@ -34,7 +34,7 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<
 const n = (v) => Number(v.toFixed(4));
 const COLORS = { track: '#f2d64b', trackStroke: '#6b5a00', stud: '#ffffff', studStroke: '#1c1c1c', dim: '#1b6aa5', opening: '#9aa0a6', text: '#111',
     hi: '#ff8a3d', hiStroke: '#b34700', hiRow: '#ffe3cc', // hi*: the highlighted mark (on-screen preview only)
-    openingDim: '#a01818', context: '#e4e4e4', contextText: '#8d8d8d', level: '#5b5b5b' };
+    openingDim: '#a01818', context: '#e4e4e4', contextText: '#8d8d8d', level: '#5b5b5b', clip: '#546e7a', clipStroke: '#263238' };
 // Member fill by function, as in the CAS legend: tracks yellow, headers and sills salmon, studs light grey.
 const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4a7a0', SBW: '#f4a7a0', HDM: '#f4a7a0', SBM: '#f4a7a0', SBS: '#f4a7a0', EV: '#ededed', SV: '#ededed', SD: '#ededed', CR: '#ededed' };
 
@@ -186,8 +186,10 @@ export function sheetOps(layout, info) {
             out.push({ t: 'hit', x: px + cw[5] - zw, y: y0, w: zw, h: rowH, step: `${c.mark}|1`, title: `${c.mark}: 1/8" longer` });
         }
     }
+    for (const c of layout.clipList || []) row([c.mark, String(c.qty), 'CLIP', c.type.toUpperCase(), '-', '']); // clips (Panel Shop Generator)
     out.push(rect(cx, 0.45, tableW, cy - 0.45, { width: 0.02 })); // the table's outline
-    out.push(text(cx, cy + 0.16, `GRAND TOTAL: ${cutList.reduce((a, c) => a + c.qty, 0)}`, { size: 0.08, weight: 'bold' }));
+    const clipCount = (layout.clipList || []).reduce((a, c) => a + c.qty, 0);
+    out.push(text(cx, cy + 0.16, `GRAND TOTAL: ${cutList.reduce((a, c) => a + c.qty, 0)}${clipCount ? ` · CLIPS: ${clipCount}` : ''}`, { size: 0.08, weight: 'bold' }));
     if (prefabSet) { // the key, right of the total: PREFAB LENGTH [blue] LONGER [green] SHORTER
         const parts = [['PREFAB LENGTH:', COLORS.text, null], ['LONGER', PREFAB_COLORS.more, PREFAB_COLORS.moreFill], ['SHORTER', PREFAB_COLORS.less, PREFAB_COLORS.lessFill]];
         const sz = 0.07, gap = 0.06, widths = parts.map(([t]) => textWidth(t, sz, true));
@@ -338,6 +340,11 @@ export function sheetOps(layout, info) {
                 : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 };
         // Under a sloped top: the member's outline (its top cut to the slope).
         out.push(m.pts ? { t: 'poly', pts: m.pts.map(([x, y]) => [X(x), Y(y)]), ...look } : rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, look));
+    }
+    for (const c of layout.clips || []) {
+        const w = 1.25, x0 = c.side === 'R' ? c.x : c.x - w;
+        out.push(rect(X(x0), Y(c.y + 1.5), w * s, 3 * s, { fill: COLORS.clip, stroke: COLORS.clipStroke, width: 0.005 }));
+        out.push(text(c.side === 'R' ? X(x0 + w) + 0.02 : X(x0) - 0.02, Y(c.y) + 0.02, c.mark, { size: 0.055, anchor: c.side === 'R' ? 'start' : 'end', weight: 'bold', fill: COLORS.clipStroke }));
     }
     // Tags on every member. Verticals: at mid-height, beside the stud (no box over it, so the member reads unbroken):
     // left of it, or right of it when a stud stands right against its left side (a jamb pair); level text when the

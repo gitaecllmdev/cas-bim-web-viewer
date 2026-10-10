@@ -52,41 +52,47 @@ function boxFaces([x0, y0, z0], [x1, y1, z1]) {
     ];
 }
 
-// A member with an outline (m.pts: under a sloped top) as a prism D deep, in pieces SEG long along it like the boxes:
-// the outline cut to each piece, its front and back faces and one side face per edge. Cut faces between pieces are
-// inside the member: never drawn.
-function outlineFaces(m, D, project, eye) {
+// The part of polygon P on one side of the line (axis) = v: keepAbove keeps axis >= v.
+const half = (P, axis, v, keepAbove) => {
+    const out = [], f = (p) => (keepAbove ? p[axis] - v : v - p[axis]);
+    P.forEach((p, i) => {
+        const q = P[(i + 1) % P.length], fp = f(p), fq = f(q);
+        if (fp >= 0) out.push(p);
+        if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]); }
+    });
+    return out;
+};
+// A member with an outline (m.pts: under a sloped top) in pieces seg long along it like the boxes: a stud as its C
+// (each plate of plates() is the outline cut to the plate's width, z0 to z1 deep), a track as a prism D deep. Each
+// piece: the outline cut to it, its front and back faces and one side face per edge. Cut faces between pieces are
+// inside the member: never drawn. (An edge is a cut only when both its ends lie on the same cut line: a side running
+// the length of the piece is a real edge, with its face.)
+function outlineFaces(m, layout, D, project, eye, seg = SEG, color = FUNC_COLOR[m.func] || STUD) {
     const long = m.orient === 'h' ? 0 : 1, lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
-    const pieces = Math.max(1, Math.ceil(len / SEG - 1e-9));
-    const color = FUNC_COLOR[m.func] || STUD;
-    const half = (P, v, keepAbove) => { // the part of polygon P on one side of the line (axis long) = v
-        const out = [], f = (p) => (keepAbove ? p[long] - v : v - p[long]);
-        P.forEach((p, i) => {
-            const q = P[(i + 1) % P.length], fp = f(p), fq = f(q);
-            if (fp >= 0) out.push(p);
-            if ((fp >= 0) !== (fq >= 0)) { const t = fp / (fp - fq); out.push([p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]); }
-        });
-        return out;
-    };
+    const pieces = Math.max(1, Math.ceil(len / seg - 1e-9));
+    const parts = m.orient === 'v'
+        ? plates(m, layout, D).map(([pmin, pmax]) => [half(half(m.pts, 0, pmin[0], true), 0, pmax[0], false), pmin[2], pmax[2]]).filter(([Q]) => Q.length >= 3)
+        : [[m.pts, 0, D]];
     const faces = [];
-    for (let i = 0; i < pieces; i++) {
+    for (const [shape, z0, z1] of parts) for (let i = 0; i < pieces; i++) {
         const a = lo + (len * i) / pieces, b = lo + (len * (i + 1)) / pieces;
-        const P = half(half(m.pts, a, true), b, false);
+        const P = half(half(shape, long, a, true), long, b, false);
         if (P.length < 3) continue;
-        const cut = (p) => (i > 0 && Math.abs(p[long] - a) < 1e-6) || (i < pieces - 1 && Math.abs(p[long] - b) < 1e-6);
-        const polys = [{ n: [0, 0, 1], k: 1.0, c: P.map(([x, y]) => [x, y, D]) }, { n: [0, 0, -1], k: 0.7, c: [...P].reverse().map(([x, y]) => [x, y, 0]) }];
+        const onA = (p) => i > 0 && Math.abs(p[long] - a) < 1e-6, onB = (p) => i < pieces - 1 && Math.abs(p[long] - b) < 1e-6;
+        const cutEdge = (p, q) => (onA(p) && onA(q)) || (onB(p) && onB(q));
+        const polys = [{ n: [0, 0, 1], k: 1.0, c: P.map(([x, y]) => [x, y, z1]) }, { n: [0, 0, -1], k: 0.7, c: [...P].reverse().map(([x, y]) => [x, y, z0]) }];
         P.forEach((p, j) => {
             const q = P[(j + 1) % P.length];
-            if (cut(p) && cut(q)) return; // the cut between two pieces
+            if (cutEdge(p, q)) return; // the cut between two pieces
             const dx = q[0] - p[0], dy = q[1] - p[1], l = Math.hypot(dx, dy);
             if (l < 1e-9) return;
             const n = [dy / l, -dx / l, 0], k = n[1] > 0.5 ? 1.06 : n[1] < -0.5 ? 0.65 : n[0] < 0 ? 0.82 : 0.75;
-            polys.push({ n, k, c: [[p[0], p[1], D], [p[0], p[1], 0], [q[0], q[1], 0], [q[0], q[1], D]] });
+            polys.push({ n, k, c: [[p[0], p[1], z1], [p[0], p[1], z0], [q[0], q[1], z0], [q[0], q[1], z1]] });
         });
         for (const f of polys) {
             const centroid = f.c.reduce((s, p) => s.map((v, k) => v + p[k] / f.c.length), [0, 0, 0]);
             if (dot(f.n, sub(eye, centroid)) <= 0) continue;
-            const edges = f.c.map((p, k) => [p, f.c[(k + 1) % f.c.length]]).filter(([p, q]) => !(cut(p) && cut(q)));
+            const edges = f.c.map((p, k) => [p, f.c[(k + 1) % f.c.length]]).filter(([p, q]) => !cutEdge(p, q));
             faces.push({ pts: f.c.map(project), edges: edges.map(([p, q]) => [project(p), project(q)]), fill: shade(color, f.k), depth: Math.hypot(...sub(centroid, eye)) });
         }
     }
@@ -110,11 +116,11 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     const seg = Math.max(SEG, Math.max(L, H) / 24);
     const faces = [];
     for (const m of members) {
-        if (m.pts) { faces.push(...outlineFaces(m, D, project, eye)); continue; } // under a sloped top
+        const color = (highlight != null && m.mark === highlight) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
+        if (m.pts) { faces.push(...outlineFaces(m, layout, D, project, eye, seg, color)); continue; } // under a sloped top
         const long = m.orient === 'h' ? 0 : 1; // the axis the member runs along
         const lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
         const pieces = Math.max(1, Math.ceil(len / seg - 1e-9));
-        const color = (highlight != null && m.mark === highlight) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
         const shape = plates(m, layout, D);
         for (let i = 0; i < pieces; i++) {
             const a = lo + (len * i) / pieces, b = lo + (len * (i + 1)) / pieces;
@@ -129,6 +135,15 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
                 });
                 faces.push({ pts: f.c.map(project), edges: edges.map(([p, q]) => [project(p), project(q)]), fill: shade(color, f.k), depth: Math.hypot(...sub(centroid, eye)) });
             }
+        }
+    }
+    // Clips (layout.clips): a small block on the stud's web, 1 1/4" out, 3" tall, in the middle of the wall's depth.
+    for (const c of layout.clips || []) {
+        const x0 = c.side === 'R' ? c.x : c.x - 1.25;
+        for (const f of boxFaces([x0, c.y - 1.5, D * 0.3], [x0 + 1.25, c.y + 1.5, D * 0.7])) {
+            const centroid = f.c.reduce((s, p) => s.map((v, k) => v + p[k] / 4), [0, 0, 0]);
+            if (dot(f.n, sub(eye, centroid)) <= 0) continue;
+            faces.push({ pts: f.c.map(project), edges: f.c.map((p, k) => [project(p), project(f.c[(k + 1) % 4])]), fill: shade('#546e7a', f.k), depth: Math.hypot(...sub(centroid, eye)) });
         }
     }
     faces.sort((a, b) => b.depth - a.depth); // far first
