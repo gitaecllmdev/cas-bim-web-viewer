@@ -7,7 +7,8 @@
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines } from './demos/06-shop-drawings/sheet.mjs';
+import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, renderLabelsPdf } from './demos/06-shop-drawings/sheet.mjs';
+import { labelPieces } from './demos/06-shop-drawings/labels.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
 import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
@@ -19,12 +20,15 @@ import * as R from './demos/06-shop-drawings/opening-rules.mjs';
 import * as MAN from './demos/06-shop-drawings/manual.mjs';
 import * as CL from './demos/06-shop-drawings/context-lines.mjs';
 import * as OC from './demos/06-shop-drawings/opening-context.mjs';
+import * as ST from './demos/06-shop-drawings/stock.mjs';
+import * as TY from './demos/06-shop-drawings/typical.mjs';
+import * as RV from './demos/06-shop-drawings/revisions.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos', profiles: 'cas-shopgen:profiles', engineering: 'cas-shopgen:engineering', reviewer: 'cas-shopgen:reviewer',
-    prefs: 'cas-shopgen:prefs', saved: 'cas-shopgen:saved' };
+    prefs: 'cas-shopgen:prefs', saved: 'cas-shopgen:saved', stock: 'cas-shopgen:stock', templates: 'cas-shopgen:templates' };
 const main = document.getElementById('gen');
 const $ = (sel) => main.querySelector(sel);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -39,6 +43,7 @@ const storedSet = load(KEYS.set, null);
 let set = storedSet?.panels ? { ...storedSet, panels: storedSet.panels.map(G.cleanPanel) } : { project: '', drawnBy: '', panels: [G.newPanel()], current: null };
 let recent = load(KEYS.recent, {}); // field -> values used before, newest first
 let combos = load(KEYS.combos, []); // [{ name, members }] saved here
+let templates = load(KEYS.templates, []); // panel templates saved here: [{ name, panel (generator.templateOf), savedAt }]
 // Framing profiles saved here: { jamb, head, sill: [profile] } (profiles.mjs), picked in an opening's Framing details.
 let profiles = (() => { const raw = load(KEYS.profiles, {}); return Object.fromEntries(P.PROFILE_KINDS.map(k => [k, (Array.isArray(raw?.[k]) ? raw[k] : []).map(x => P.cleanProfile(k, x)).filter(Boolean)])); })();
 // The engineering style catalog (the native catalog JSON, read and never changed) and this project's selection of it
@@ -154,6 +159,7 @@ main.addEventListener('change', (e) => {
     const pick = e.target.closest('[data-pick]');
     if (pick) { pickMember(pick.dataset.pick, pick.value); if (pick.closest('#sk-menu')) closeMenu(); return; }
     if (e.target.id === 'combo') { applyCombo(e.target.value); return; }
+    if (e.target.id === 'cmp-rev') { cmpRev = Number(e.target.value) || null; renderWorkspace(); return; }
     if (e.target.matches('[data-qb-step]')) { manStep = Number(e.target.value) || 0.5; renderWorkspace(); return; }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSetActions(); return; }
     if (e.target.id === 'check-group') { for (const x of set.panels) if ((x.group || '') === e.target.value) checked.add(x.id); e.target.value = '__'; renderSet(); return; }
@@ -226,7 +232,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'bottom-toggle': () => { prefs.bottomOpen = prefs.bottomOpen === false; storePrefs(); renderBottom(current); },
         side: () => { p.sideB = b.dataset.side === 'B'; changed(); renderSidePick(p); notice(`Viewing side ${p.sideB ? 'B: the drawing is mirrored' : 'A'} (the members are the same).`); },
         'flips-clear': () => { const n = (p.studFlips || []).length; p.studFlips = []; renderLayoutSec(); changed(); notice(`${n} stud flip${n === 1 ? '' : 's'} cleared: those studs face their usual way.`); },
-        new: () => addPanel(G.newPanel(p, set.panels.map(x => x.mark))),
+        new: () => toggleNewMenu(false) || addPanel(G.newPanel(p, set.panels.map(x => x.mark))),
         copy: () => {
             if (G.isFromModel(p) && !confirm(`Duplicate ${p.mark} as an unlinked copy?\n\nThe copy is not linked to the Revit wall: its outline and openings become editable, and it no longer reports to the model. ${p.mark} itself stays linked.`)) return;
             addPanel(G.copyPanel(p, set.panels.map(x => x.mark))); if (G.isFromModel(p)) notice(`${cur().mark} is an unlinked copy of ${p.mark}: not linked to the Revit wall, change anything on it.`);
@@ -263,10 +269,11 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         link: () => copyLink(p),
         'save-combo': () => saveCombo(p),
         'del-combo': () => deleteCombo(),
-        open: () => { set.current = b.dataset.id; sel = null; ask = null; selection = W.NONE; stylePending = null; schChecked = new Set(); schPick = null; main.classList.remove('nav-open'); setTool('select', false); renderAll(); },
+        open: () => openPanel(b.dataset.id),
         'set-pdf': () => downloadPdf(chosen()),
+        'set-pdf-typ': () => downloadPdf(chosen(), { perTypical: true }),
         'set-assign': () => assign(p),
-        'set-delete': () => deletePanels(),
+        'set-delete': () => { deletePanels(); if (setDialog().open) renderSetDialog(); },
         'set-export': () => exportJson(),
         'set-export-plan': () => exportPlanJson(),
         'eng-open': () => openCatalog(),
@@ -294,6 +301,10 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'man-lock-all': () => { if (confirm('Lock every member? Everything placed by hand goes back to the framing rules, and the copies are removed.')) manualEdit((q) => MAN.lockAll(q), 'Every member follows the framing rules again.'); },
         'man-nudge': () => manualNudge(Number(b.dataset.dx) * manualStep(), Number(b.dataset.dy) * manualStep()),
         'man-copy': () => manualCopy(b.dataset.key),
+        'oc-add': () => addOpeningFromInsert(p, b.dataset.uid),
+        'rev-issue': () => issueRevision(p),
+        'view-compare': () => setView('compare'),
+        'type-framing': () => typeFraming(p, i),
         'qb-type': () => { const el = $('#man-type-in'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); el.select(); } },
         'qb-opening': () => selectTarget({ kind: 'opening', key: b.dataset.key }),
         'qb-members': () => { prefs.bottom = 'openings'; prefs.bottomOpen = true; storePrefs(); renderBottom(current); main.querySelector('.sch-table tr.selected')?.scrollIntoView({ block: 'nearest' }); },
@@ -303,6 +314,23 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'op-rule-member': () => { if (!setFromRule(p, i, b.dataset.k, null)) notice('The rule gives alternatives: pick one of them under the member.'); else { renderMemberCards(); renderChips(); changed(); } },
         'op-arrange': () => { p.openings[i] = { ...p.openings[i], [`${b.dataset.k}Style`]: b.dataset.v }; renderMemberCards(); changed(); },
         'set-import': () => document.getElementById('import-file').click(),
+        'new-menu': () => toggleNewMenu(),
+        'hist-menu': () => toggleHistMenu(),
+        'undo-to': () => { toggleHistMenu(false); undoSteps(Number(b.dataset.v)); },
+        help: () => openHelp(),
+        'help-close': () => helpDialog().close(),
+        'new-blank': () => { toggleNewMenu(false); const marks = set.panels.map(x => x.mark); addPanel({ ...G.newPanel(null, marks), mark: G.nextNumberMark(cur()?.mark || 'P-100', marks) }); },
+        'new-tpl': () => { toggleNewMenu(false); const t = templates[Number(b.dataset.v)]; if (!t) return; addPanel(G.fromTemplate(t.panel, cur()?.mark, set.panels.map(x => x.mark))); notice(`${cur().mark} added from the template "${t.name}": type a name over its mark.`); },
+        'tpl-del': () => { const t = templates[Number(b.dataset.v)]; if (!t || !confirm(`Forget the template "${t.name}"? (Panels made from it stay.)`)) return; templates = templates.filter(x => x !== t); store(KEYS.templates, templates); toggleNewMenu(true); },
+        'tpl-save': () => saveTemplate(p),
+        'set-open': () => openSetDialog(b.dataset.v),
+        'sd-close': () => setDialog().close(),
+        'sd-tab': () => { setTab = b.dataset.v; renderSetDialog(); setDialog().querySelector('[role=tab][aria-selected=true]')?.focus(); },
+        'sd-csv': () => setCsv(b.dataset.v),
+        'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); },
+        'sd-labels': () => downloadLabels(),
+        'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
+        'sd-rules': () => rulesOnChecked(),
         'set-check-all': () => { set.panels.forEach(x => checked.add(x.id)); renderSet(); },
         'set-check-none': () => { checked.clear(); renderSet(); },
         'set-clear': () => clearSet(),
@@ -311,6 +339,99 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
     if (b.closest('#sk-menu')) closeMenu();
 });
 
+// --- Keys on the selection (any view): Delete, Ctrl+D copy, M mirror; the help (?) and the history list --------------------
+// -> true when the key was used.
+function selectionKey(e, what) {
+    const p = cur();
+    if (selection.kind === 'member') {
+        const key = selectedLayoutKey(), m = layoutA()?.members.find(x => x.key === key);
+        if (!m || m.parts?.length) return false;
+        e.preventDefault();
+        historyHint = { label: what === 'copy' ? `copying ${m.mark}` : what === 'mirror' ? `mirroring ${m.mark}` : `removing ${m.mark}` };
+        if (what === 'copy') manualCopy(key);
+        else if (what === 'mirror') manualMirror(key);
+        else if (MAN.isAdded(key)) manualEdit((q) => MAN.lock(q, key), 'The copy removed (Ctrl+Z brings it back).', { keep: false });
+        else manualEdit((q) => MAN.remove(q, key), `${m.mark} ${m.role} removed (Ctrl+Z, or Reset on it, brings it back).`, { keep: false });
+        return true;
+    }
+    const i = selection.kind === 'opening' ? G.openingKeys(p).indexOf(selection.key) : sel ?? -1, o = p.openings[i];
+    if (!o) return false;
+    e.preventDefault();
+    const name = G.openingName(p.openings, i);
+    if (what === 'copy') { historyHint = { label: 'copying the opening' }; copyOpening(p, i); return true; }
+    if (!G.canEdit(p, `openings.${i}.leftIn`)) { lockedNotice('the model\'s openings'); return true; }
+    historyHint = { label: what === 'mirror' ? 'mirroring the opening' : 'removing the opening' };
+    if (what === 'mirror') { o.leftIn = round16(G.shapeTop(p.shape).lengthIn - o.leftIn - o.widthIn); syncCatalogueFields(); changed(); notice(`${name} mirrored across the panel's middle.`); return true; }
+    p.openings.splice(i, 1); sel = null; ask = null; selection = W.NONE; renderCatalogue(); renderChips(); changed(); renderWorkspace();
+    notice(`${name} deleted (Ctrl+Z brings it back).`);
+    return true;
+}
+const helpDialog = () => document.getElementById('help-dialog');
+const SHORTCUTS = [
+    ['Ctrl+Z / Ctrl+Y', 'Undo / redo (▾ beside Undo: back to any earlier change)'],
+    ['Ctrl+Alt+N', 'A new panel like the open one (▾ beside it: blank, or from a template)'],
+    ['Click', 'A member or an opening in the Elevation: its actions show beside it'],
+    ['Arrow keys', 'Move the selected member one step (the step beside it); Shift: 1"'],
+    ['Arrow keys (sketch)', 'Move the selected opening 1/2"; Shift: 6"'],
+    ['Delete', 'Remove the selected member or opening (Ctrl+Z brings it back)'],
+    ['Ctrl+D', 'Copy the selected member or opening'],
+    ['M', 'Mirror the selected member or opening across the panel\'s middle'],
+    ['Esc', 'Clear the selection, close a menu'],
+    ['?', 'This list'],
+];
+function openHelp() {
+    const d = helpDialog();
+    d.innerHTML = `<div class="sd"><header class="sd-head"><h2 id="help-title">Keyboard shortcuts and tips</h2><span class="spacer"></span><button class="link" data-act="help-close">Close</button></header>
+        <div class="sd-body"><table class="sd-table"><tbody>${SHORTCUTS.map(([k, v]) => `<tr><td><kbd>${esc(k)}</kbd></td><td>${esc(v)}</td></tr>`).join('')}</tbody></table>
+        <p class="muted small">Lengths: 10'-6", 10' 6, 10.5' or 126 (a bare number is inches), to 1/16". Everything is kept in this browser as you work; Export writes a file to keep or share. The set's overview, stock and labels: Set.</p></div></div>`;
+    if (!d.open) d.showModal();
+}
+// The changes so far, newest first: undo back to before any of them.
+const histMenu = () => document.getElementById('hist-menu');
+function toggleHistMenu(open = histMenu().hidden) {
+    const m = histMenu(), past = undoHistory.past;
+    document.getElementById('hist-btn')?.setAttribute('aria-expanded', String(open && past.length > 0));
+    if (!open || !past.length) { m.hidden = true; return; }
+    m.innerHTML = `<div class="nm-head">Undo back to before</div>${past.slice().reverse().map((h, k) => `<button role="menuitem" data-act="undo-to" data-v="${k + 1}">${esc(h.label)}<small>${k ? `and the ${k} change${k === 1 ? '' : 's'} after it` : 'the last change'}</small></button>`).join('')}`;
+    m.hidden = false;
+    m.querySelector('[role=menuitem]')?.focus();
+}
+document.addEventListener('click', (e) => { if (!histMenu().hidden && !e.target.closest('.hist-split')) toggleHistMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !histMenu().hidden) { toggleHistMenu(false); document.getElementById('hist-btn')?.focus(); } });
+function undoSteps(n) {
+    const labels = [];
+    for (let k = 0; k < n && undoHistory.past.length; k++) { labels.push(undoHistory.past[undoHistory.past.length - 1].label); doUndo(); }
+    if (labels.length > 1) notice(`Undone ${labels.length} changes: ${labels.join(', ')}.`);
+}
+
+// --- New panel: like the open one, blank, or from a template (saved in this browser) ------------------------------------
+const newMenu = () => document.getElementById('new-menu');
+function tplSummary(t) {
+    const p = G.cleanPanel({ ...t.panel, id: 'x', mark: 'x' }), L = G.shapeTop(p.shape);
+    return `${fmtFtIn(L.lengthIn)} x ${fmtFtIn(L.heightIn)} · ${G.openingsSummary(p.openings) || 'no openings'} · ${studName(p.members)} @ ${p.members.spacingIn}"`;
+}
+function toggleNewMenu(open = newMenu().hidden) {
+    const m = newMenu(), p = cur();
+    document.querySelector('[data-act=new-menu]')?.setAttribute('aria-expanded', String(open));
+    if (!open) { m.hidden = true; return; }
+    m.innerHTML = `${p ? `<button role="menuitem" data-act="new">Like the open panel (${esc(p.mark)}): its shape and members</button>` : ''}
+        <button role="menuitem" data-act="new-blank">A blank 10'-0" x 10'-0" panel</button>
+        <div class="nm-head">From a template</div>
+        ${templates.length ? templates.map((t, k) => `<div class="nm-row"><button role="menuitem" data-act="new-tpl" data-v="${k}"><b>${esc(t.name)}</b><small>${esc(tplSummary(t))}</small></button><button class="link small" data-act="tpl-del" data-v="${k}" title="Forget this template" aria-label="Forget ${esc(t.name)}">✕</button></div>`).join('')
+            : '<p class="muted small">None yet: open a panel and use Save as template on its card.</p>'}`;
+    m.hidden = false;
+    m.querySelector('[role=menuitem]')?.focus();
+}
+document.addEventListener('click', (e) => { if (!newMenu().hidden && !e.target.closest('.new-split')) toggleNewMenu(false); });
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !newMenu().hidden) { toggleNewMenu(false); document.querySelector('[data-act=new-menu]')?.focus(); } });
+function saveTemplate(p) {
+    const L = G.shapeTop(p.shape), name = prompt('Name this template (it is kept in this browser):', `${p.mark} ${fmtFtIn(L.lengthIn)} x ${fmtFtIn(L.heightIn)}`)?.trim();
+    if (!name) return;
+    templates = [{ name: name.slice(0, 80), panel: G.templateOf(p), savedAt: today() }, ...templates.filter(t => t.name !== name)].slice(0, 40);
+    store(KEYS.templates, templates);
+    notice(`Template "${name}" saved: + New panel ▾ starts a panel from it (its shape, openings, members and layout; not the model's link).`);
+}
+function openPanel(id) { set.current = id; sel = null; ask = null; selection = W.NONE; stylePending = null; schChecked = new Set(); schPick = null; main.classList.remove('nav-open'); setTool('select', false); renderAll(); }
 function addPanel(panel) {
     set.panels.push(panel);
     set.current = panel.id;
@@ -970,21 +1091,26 @@ function finishRect() {
 const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
-    if (document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open) return; // a dialog has the keys
+    if (document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open || setDialog()?.open || helpDialog()?.open) return; // a dialog has the keys
     if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
-    if (e.ctrlKey || e.metaKey) { // undo / redo (in a text box, the box's own undo)
+    if (e.ctrlKey || e.metaKey) { // undo / redo (in a text box, the box's own undo); a new panel; copy the selection
         const k = e.key.toLowerCase();
         if (k === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); return; }
         if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); return; }
+        if (k === 'n' && e.altKey) { e.preventDefault(); document.querySelector('.ws-bar [data-act=new]')?.click(); return; }
+        if (k === 'd' && cur() && selectionKey(e, 'copy')) return;
         return;
     }
+    if (e.key === '?' && !e.altKey) { e.preventDefault(); openHelp(); return; }
     if (!cur()) return;
+    if ((e.key === 'Delete' || e.key === 'Backspace') && selectionKey(e, 'delete')) return;
+    if ((e.key === 'm' || e.key === 'M') && !e.altKey && selectionKey(e, 'mirror')) return;
     if (tool === 'perimeter' && peri) { perimeterKey(e); return; }
     if (e.key === 'Escape') { if (tool !== 'select') setTool('select'); else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); } else if (selection.kind !== 'none') selectTarget(W.NONE); return; }
-    if (editMode && selection.kind === 'member' && /^Arrow/.test(e.key)) {
+    if (selection.kind === 'member' && prefs.view === 'elevation' && /^Arrow/.test(e.key)) {
         e.preventDefault();
-        const d = e.shiftKey ? 1 : 1 / 16;
+        const d = e.shiftKey ? 1 : manualStep();
         manualNudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? d : e.key === 'ArrowDown' ? -d : 0);
         return;
     }
@@ -1648,10 +1774,17 @@ function renderChips() {
 // --- The sheet ---------------------------------------------------------------------------------------------------------
 // No QR code on these sheets: a panel typed in here has no page of its own, and a link holding the whole panel makes a
 // dense code that won't scan from a distance (Copy link shares it).
+// The sheet's revisions and clouds (revisions.mjs sheetChanges): the changes since the last revision, else that revision's.
+function sheetRevisions(p) {
+    if (!p.revisions?.length) return {};
+    const lay = framed(p).plan?.layout, sc = lay ? RV.sheetChanges(p, lay) : null;
+    return { revisions: p.revisions.map(r => ({ n: r.n, date: r.date, note: r.note })), clouds: sc?.changes.length ? { rev: sc.rev, pending: sc.pending, boxes: RV.cloudBoxes(sc.changes) } : null };
+}
 function sheetInfo(p) {
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p) };
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p),
+        sheetNotes: [TY.typicalNote(typicalOfPanel(p))].filter(Boolean), ...sheetRevisions(p) };
 }
 // The panel's resolved plan (framing-plan.mjs: the same calculation the plan export carries) and its drawing for the
 // sheet's side (side B mirrors the drawing only). errors: what stops it being drawn; notes: what to know (warnings, and
@@ -1778,10 +1911,36 @@ function renderActiveView(p, f) {
     else if (id === 'plan') { const wide = `style="--plan-min:${Math.round(layout.lengthIn * 8)}px"`;
         host.innerHTML = `<p class="view-caption">Top track plan (looking down): the studs at the top, and which way each faces.</p><div class="view-svg plan" ${wide}>${pre}${svgFit(renderSheetRegion(layout, info, 'planTop'))}</div>
         <p class="view-caption">Bottom track plan: the studs at the floor, and the openings' edges.${layout.lengthIn * 8 > host.clientWidth ? ' Scroll sideways for the whole length.' : ''} ${selCaption(f)}</p><div class="view-svg plan" ${wide}>${svgFit(renderSheetRegion(layout, info, 'planBottom'))}</div>`; }
+    else if (id === 'compare') host.innerHTML = compareView(p, f);
     else if (id === '3d') host.innerHTML = `<div class="view-svg">${pre}${svgFit(renderIsoView(layout, { widthIn: 10, heightIn: 6.5, highlight: info.highlight }))}</div>
         <p class="view-caption">3D view, side ${p.sideB ? 'B' : 'A'}, not to scale. Select in the elevation, plan or cut list: the selection is colored here.</p>`;
     decorateHits(host, f);
     if (id === 'elevation') { drawHandles(host, f); quickBar(host, p, f); restoreFocus(host, fx); }
+}
+// --- Compare: the framing now against an issued revision (revisions.mjs); its MWF source later ---------------------------
+let cmpRev = null; // the revision compared with (null: the last)
+const openingNameByKey = (p, key) => { const i = G.openingKeys(p).indexOf(key); return i >= 0 ? G.openingName(p.openings, i) : key; };
+function compareView(p, f) {
+    const lay = f.plan?.layout, revs = p.revisions || [], next = (revs[revs.length - 1]?.n || 0) + 1;
+    const mwf = W.VIEWS.find(v => v.id === 'compare')?.mwf;
+    const issue = `<span class="cmp-issue"><input type="text" id="rev-note" class="mini wide" maxlength="200" placeholder="What revision ${next} is for" aria-label="What revision ${next} is for"><button class="small" data-act="rev-issue">Issue revision ${next}</button></span>`;
+    if (!lay) return notFramed(f);
+    if (!revs.length) return `<div class="cmp"><p><b>No revision issued yet.</b> Issue one to keep this framing as it is now: later changes are listed here against it, and the sheet clouds them and lists the revisions.</p>${issue}
+        <p class="muted small">Observed MWF framing against this plan: ${esc(mwf?.reason || 'later')}</p></div>`;
+    const r = revs.find(x => x.n === cmpRev) || revs[revs.length - 1], changes = RV.diffSnapshots(r.snap, RV.snapshotOf(lay));
+    const info = { ...sheetInfoFor(p, f), clouds: { rev: r.n, pending: true, boxes: RV.cloudBoxes(changes) } };
+    return `<div class="cmp"><div class="cmp-head"><label class="small">Compare with <select id="cmp-rev" aria-label="Compare with">${revs.slice().reverse().map(x => `<option value="${x.n}" ${x === r ? 'selected' : ''}>Revision ${x.n} · ${esc(x.date)}${x.note ? ` · ${esc(x.note)}` : ''}</option>`).join('')}
+            <option disabled>MWF framing in the model (needs its read-only export: later)</option></select></label><span class="spacer"></span>${issue}</div>
+        <p class="cmp-sum">${changes.length ? `<b>${changes.length} change${changes.length === 1 ? '' : 's'}</b> since revision ${r.n} (${esc(r.date)}), clouded below:` : `<b>No change</b> since revision ${r.n} (${esc(r.date)}).`}</p>
+        ${changes.length ? `<ul class="cmp-list">${changes.map(c => `<li class="${c.kind}">${esc(RV.describe(c, fmtFtIn, (k) => openingNameByKey(p, k)))}</li>`).join('')}</ul>` : ''}
+        <div class="view-svg">${svgFit(renderSheetRegion(f.layout, info, 'elevation'))}</div></div>`;
+}
+function issueRevision(p) {
+    const lay = framed(p).plan?.layout;
+    if (!lay) { notice('Frame the panel first: a revision keeps its framing.', true); return; }
+    const note = (main.querySelector('#rev-note')?.value || '').trim(), q = RV.issueRevision(p, lay, { note, date: today() }), r = q.revisions[q.revisions.length - 1];
+    replacePanel(q); cmpRev = null; changed(); renderWorkspace();
+    notice(`Revision ${r.n} issued (${r.date}${r.note ? `: ${r.note}` : ''}). Its sheet lists it; changes from now on are clouded against it.`);
 }
 // What the colors say while a member is selected: it is filled, the others with its cut list label only outlined.
 function selCaption(f) {
@@ -1865,8 +2024,9 @@ function renderInspectorContext(p, f) {
     box.innerHTML = `<div class="ctx-card"><h3 class="ctx-title"><input class="ctx-mark" type="text" data-f="mark" value="${esc(p.mark)}" placeholder="Panel mark" aria-label="Panel mark (rename this panel)" title="Rename this panel" autocomplete="off" spellcheck="false">${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
         <dl><dt>Geometry</dt><dd>${own.geometry === 'model' ? `<span class="own model" title="${esc(`Revit wall ${p.revit?.uniqueId || ''}`)}">🔒 the Revit wall's: outline and openings locked</span>` : '<span class="own typed">typed or drawn here: editable</span>'}</dd>
             ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${ocTag(octx.get(o.key))}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
-        ${loose.length ? `<div class="oc-loose small" role="note"><b>In the model, with no opening here</b> (not framed; add an opening if it needs one):<ul>${loose.map(x => `<li title="${esc(`${x.category}${x.uniqueId ? ` (UniqueId ${x.uniqueId})` : ''}`)}"><i class="oc-dot" style="background:${x.color}"></i>${esc(x.tradeLabel)}${x.name ? ` · ${esc(x.name)}` : ''} <span class="muted">at ${esc(fmtFtIn(x.at[0]))} along, ${esc(fmtFtIn(x.at[1]))} up (side A)</span></li>`).join('')}</ul></div>` : ''}
-        ${manualSummary(p, f)}<div class="acts"><button class="secondary" data-act="copy" title="${esc(own.duplicate.explain)}">${esc(own.duplicate.label)}</button></div></div>`;
+        ${revLine(p)}${typLine(p)}${loose.length ? `<div class="oc-loose small" role="note"><b>In the model, with no opening here</b> (not framed; add an opening if it needs one):<ul>${loose.map(x => `<li title="${esc(`${x.category}${x.uniqueId ? ` (UniqueId ${x.uniqueId})` : ''}`)}"><i class="oc-dot" style="background:${x.color}"></i>${esc(x.tradeLabel)}${x.name ? ` · ${esc(x.name)}` : ''} <span class="muted">at ${esc(fmtFtIn(x.at[0]))} along, ${esc(fmtFtIn(x.at[1]))} up (side A)</span>
+                ${x.uniqueId ? `<button class="secondary small" data-act="oc-add" data-uid="${esc(x.uniqueId)}" title="An opening at its place, sized from its type name when it says (check the size)">Add an opening here</button>` : ''}</li>`).join('')}</ul></div>` : ''}
+        ${manualSummary(p, f)}<div class="acts"><button class="secondary" data-act="copy" title="${esc(own.duplicate.explain)}">${esc(own.duplicate.label)}</button><button class="secondary" data-act="tpl-save" title="Keep its shape, openings, members and layout to start new panels from (+ New panel ▾)">Save as template</button></div></div>`;
     restoreFocus(box, fx);
 }
 // --- Manual edit mode: members unlocked and placed by hand (manual.mjs) -----------------------------------------------
@@ -2078,7 +2238,29 @@ function quickOpening(p) {
     return `<b>${esc(G.openingName(p.openings, i))}</b>${ocTag(c)}<span class="qb-sep"></span>${fields}<span class="qb-sep"></span>
         <button class="secondary small" data-act="framing" data-i="${i}" title="Jambs, header, sill, offsets, and their drawings">Framing…</button>
         <button class="secondary small" data-act="qb-members" data-i="${i}" title="Its jambs, header and sill in the Openings schedule">Members</button>
+        ${typeFramingButton(p, c, i)}
         ${locked || !(H > 0) ? '' : `<button class="secondary small danger" data-act="del-op" data-i="${i}">Delete</button>`}`;
+}
+// Its model type's openings across the set take this one's framing (and panels imported later: the set remembers it).
+function typeFramingButton(p, c, i) {
+    const key = OC.typeKeyOf(c);
+    if (!key) return '';
+    const all = OC.sameTypeOpenings(set.panels, key), others = all.length - 1, panels = new Set(all.map(x => x.panelId)).size;
+    return `<button class="secondary small" data-act="type-framing" data-i="${i}" title="${esc(`Every ${OC.typeNameOf(key)} in the set (${all.length} in ${panels} panel${panels === 1 ? '' : 's'}) takes this opening's framing, and so do those in panels imported later`)}">Same framing for every ${esc(OC.typeNameOf(key))}${others ? ` (+${others})` : ''}</button>`;
+}
+const framingWords = (f) => [f.jamb ? `jambs ${f.jamb}` : 'jambs: the panel\'s', f.head ? `header ${f.head}` : '', f.sill ? `sill ${f.sill}` : '', f.offsetIn != null ? `framing offset ${DT.inches(f.offsetIn)}` : '',
+    f.jambStyle ? `jambs ${f.jambStyle}` : '', f.headStyle ? `header ${f.headStyle}` : '', f.headBearing ? 'header on jack studs' : '', f.style ? 'its engineering style' : ''].filter(Boolean).join(', ');
+function typeFraming(p, i) {
+    const c = OC.openingContexts(p)[i], key = OC.typeKeyOf(c), framing = OC.framingOf(p.openings[i]);
+    if (!key) return;
+    const targets = OC.sameTypeOpenings(set.panels, key).filter(x => !(x.panelId === p.id && x.index === i));
+    const list = targets.map(x => `${x.mark} ${G.openingName(set.panels.find(q => q.id === x.panelId).openings, x.index)}`);
+    if (!confirm(`Give ${G.openingName(p.openings, i)}'s framing (${framingWords(framing) || 'the panel defaults'}) to every ${OC.typeNameOf(key)}?\n\n${targets.length ? `Changes ${targets.length}: ${list.join(', ')}.` : 'No other opening of this type yet.'}\nPanels imported later take it too (the set remembers it; Export keeps it). Nothing moves.`)) return;
+    const res = OC.applyTypeFraming(set.panels, key, framing);
+    set.panels = res.panels;
+    set.typeFraming = { ...(set.typeFraming || {}), [key]: framing };
+    changed(); renderAll();
+    notice(`${OC.typeNameOf(key)}: ${res.changed.length ? `${res.changed.length} opening${res.changed.length === 1 ? '' : 's'} changed (${res.changed.map(x => `${x.mark} ${G.openingName(set.panels.find(q => q.id === x.panelId).openings, x.index)}`).join(', ')})` : 'every one had it already'}; remembered for panels imported later.`);
 }
 // Members placed by hand and a bay now over the stud spacing: said over the view in any mode.
 function bayStrip(p, f) {
@@ -2235,8 +2417,29 @@ function openingSchedule(p) {
 // the model's outline, or typed here. long: the family and type on a line of their own.
 function ocTag(c, long = false) {
     if (!c) return '';
-    const what = c.source === 'model' ? c.tradeLabel : c.source === 'model-geometry' ? 'the model\'s outline' : 'typed here';
+    const what = c.source === 'model' ? c.tradeLabel : c.source === 'model-element' ? `${c.tradeLabel} (opening added here)` : c.source === 'model-geometry' ? 'the model\'s outline' : 'typed here';
     return `<span class="oc" title="${esc(c.title)}"><i class="oc-dot" style="background:${c.color}"></i>${esc(what)}${c.name ? (long ? `<br><span class="oc-name">${esc(c.name)}</span>` : ` · <span class="oc-name">${esc(c.name)}</span>`) : ''}</span>`;
+}
+function revLine(p) {
+    const revs = p.revisions || [], lay = framed(p).plan?.layout;
+    if (!revs.length) return '';
+    const r = revs[revs.length - 1], n = lay ? RV.diffSnapshots(r.snap, RV.snapshotOf(lay)).length : 0;
+    return `<p class="typ-line small"><b>Revision ${r.n}</b> (${esc(r.date)}${r.note ? `: ${esc(r.note)}` : ''})${n ? ` · <span class="warning">${n} change${n === 1 ? '' : 's'} since</span>` : ''} · <button class="link" data-act="view-compare">Compare</button></p>`;
+}
+function typLine(p) {
+    const t = typicalOfPanel(p);
+    if (!t) return '';
+    return `<p class="typ-line small"><b>Typical</b>: the same framing as ${t.others.map(o => `<button class="link" data-act="open" data-id="${esc(o.id)}">${esc(o.mark)}</button>${o.hand === 'opposite' ? ' (opposite hand)' : ''}`).join(', ')}. ${t.reference ? 'Its sheet lists them.' : `One sheet can frame them all (${esc(t.group.members[0].mark)}'s).`}</p>`;
+}
+// An opening for a model element that has none: at its place, sized from its type when it says; selected to check.
+function addOpeningFromInsert(p, uid) {
+    const ins = OC.unframedInserts(p).find(x => x.uniqueId === uid);
+    if (!ins) return;
+    const { opening, sizeFrom } = OC.openingFromInsert(ins, Object.fromEntries(Object.entries(G.OPENING_TYPES).map(([k, t]) => [k, t.size])));
+    p.openings.push({ id: `e${Date.now().toString(36)}`, ...opening });
+    const i = p.openings.length - 1, name = G.openingName(p.openings, i), o = p.openings[i];
+    changed(); selectTarget({ kind: 'opening', key: G.openingKeys(p)[i] });
+    notice(`${name} added for ${ins.tradeLabel} · ${ins.name || ins.category}: ${fmtFtIn(o.widthIn)}${o.kind === 'steel' ? ' wide' : ` x ${fmtFtIn(o.heightIn)}`} at ${fmtFtIn(o.leftIn)} along${o.kind === 'door' ? '' : `, ${fmtFtIn(o.sillIn)} up`} (side A), ${sizeFrom === 'type' ? 'sized from its type name' : `the usual ${G.OPENING_TYPES[o.kind].name.toLowerCase()} size (its type name gives none)`}: check the size it needs.`);
 }
 function ocLegend(ctx) {
     const list = OC.tradesOf(ctx);
@@ -2310,6 +2513,7 @@ function renderCommands() {
     const p = cur(), cs = W.commandState({ panels: set.panels.length, current: p, plan: current.plan, selection, history: undoHistory, modelLinked: G.isFromModel(p) });
     const undoBtn = document.getElementById('undo-btn'), redoBtn = document.getElementById('redo-btn');
     undoBtn.disabled = !cs.undo.enabled; undoBtn.title = `${cs.undo.label} (Ctrl+Z)`;
+    const histBtn = document.getElementById('hist-btn'); if (histBtn) histBtn.disabled = !cs.undo.enabled;
     redoBtn.disabled = !cs.redo.enabled; redoBtn.title = `${cs.redo.label} (Ctrl+Y)`;
     const dup = document.getElementById('dup-btn');
     dup.disabled = !cs.duplicate.enabled; dup.textContent = G.isFromModel(p) ? 'Duplicate (unlinked)' : 'Duplicate';
@@ -2401,7 +2605,8 @@ function syncToggles() { renderLayoutSec(); }
 let undoHistory = W.newHistory();
 let historyHint = null; // { label, mergeKey } for the next commit
 let lastSnapshot = null;
-const snapshotOf = () => JSON.stringify({ project: set.project, drawnBy: set.drawnBy, source: set.source, extra: set.extra, panels: set.panels });
+// The whole document for undo: the model's grids and levels and the framing by model type too (an undo used to drop them).
+const snapshotOf = () => JSON.stringify({ project: set.project, drawnBy: set.drawnBy, source: set.source, grids: set.grids, levels: set.levels, typeFraming: set.typeFraming, extra: set.extra, panels: set.panels });
 function commit(label = null) {
     const snap = snapshotOf();
     if (lastSnapshot != null && snap !== lastSnapshot) {
@@ -2660,6 +2865,7 @@ function renderSet() {
     const shown = set.panels.filter(p => !q || [p.mark, p.group, p.wallType, p.level].join(' ').toLowerCase().includes(q));
     const byGroup = new Map();
     for (const p of shown) { const g = p.group || ''; (byGroup.get(g) || byGroup.set(g, []).get(g)).push(p); }
+    const typ = typicals();
     const item = (p) => {
         const { errors, layout, plan } = framed(p), on = p.id === cur()?.id, open = openChoices(plan).length;
         const state = errors.length ? '<span class="check-failed">Not framed</span>' : layout.issues.length ? '<span class="check-failed">Check failed</span>'
@@ -2668,7 +2874,7 @@ function renderSet() {
             <button class="nav-open" data-act="open" data-id="${esc(p.id)}" title="${esc(`Open ${p.mark}${p.wallType ? ` · ${p.wallType}` : ''}`)}" ${on ? 'aria-current="true"' : ''}>
                 <span class="thumb">${layout ? thumbnailSvg(layout) : ''}</span><b>${esc(p.mark)}${G.isFromModel(p) ? ' 🔒' : ''}</b>
                 <span class="muted">${layout ? `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')} · ${esc(G.openingsSummary(p.openings))}</span>
-                <span class="nav-state">${state}</span></button></li>`;
+                <span class="nav-state">${state}${typBadge(p, typ)}</span></button></li>`;
     };
     const fx = focusOf(box);
     box.innerHTML = `<div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
@@ -2679,6 +2885,7 @@ function renderSet() {
             ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}</div>
         <div>${[...byGroup].map(([g, list]) => `${groups.length > 1 ? `<div class="nav-group">${esc(g || 'No group')}</div>` : ''}<ul class="nav-list">${list.map(item).join('')}</ul>`).join('') || '<p class="muted small">No panel matches.</p>'}</div>
         <div id="set-actions" class="nav-actions"></div>
+        <div class="nav-actions"><button class="secondary" data-act="set-open" title="Every panel at a glance, the set's cut list and stock, labels and the set PDF">Set overview, stock, labels</button></div>
         <div class="nav-actions"><button class="secondary" data-act="set-export-plan" title="The resolved framing plans: every physical member, the cut list and what is still to decide (for the native CAS_FRAMING editor)">Export framing plan</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
     renderSetActions();
     restoreFocus(box, fx);
@@ -2696,16 +2903,194 @@ function restoreFocus(box, fx) {
     el.focus({ preventScroll: true });
     try { el.setSelectionRange(fx.start, fx.end); } catch { /* not a text field */ }
 }
+function typBadge(p, groups) {
+    const t = TY.typicalOf(groups, p.id);
+    if (!t) return '';
+    const words = t.others.map(o => `${o.mark}${o.hand === 'opposite' ? ' (opposite hand)' : ''}`).join(', ');
+    return ` <span class="typ-badge" title="${esc(`Typical: the same framing as ${words}`)}">${t.reference ? `TYP ×${t.group.members.length}` : `= ${esc(t.group.members[0].mark)}`}</span>`;
+}
 function renderSetActions() {
     const el = main.querySelector('#set-actions');
     if (!el) return;
     const n = chosen().length, some = checked.size > 0;
+    const skip = typicalSkips(chosen());
     el.innerHTML = `<button data-act="set-pdf">PDF (${some ? `${n} checked` : `all ${n}`})</button>
+        ${skip.size ? `<button class="secondary" data-act="set-pdf-typ" title="Each typical once: its sheet lists the other panels it frames">PDF, one per typical (${n - skip.size})</button>` : ''}
         ${some ? `<button class="secondary" data-act="set-assign" title="Give the checked panels the members of the panel open now">Give ${checked.size} checked these members</button>
         <button class="link danger" data-act="set-delete">Delete ${checked.size} checked</button>` : ''}
         <button class="link" data-act="set-clear" title="Start over: remove every panel here">Start a new set</button>`;
 }
 const chosen = () => (checked.size ? set.panels.filter(p => checked.has(p.id)) : set.panels);
+// Typical panels: the same framing (typical.mjs), side A; remembered while the panels are the same.
+let typMemo = { key: null, groups: [] };
+function typicals() {
+    const key = JSON.stringify([set.panels, set.source?.documentId ?? null, eng ? [eng.read.sha256, eng.selection] : null]);
+    if (typMemo.key !== key) typMemo = { key, groups: TY.typicalGroups(set.panels.map(p => ({ id: p.id, mark: p.mark, layout: framed(p).plan?.layout || null }))) };
+    return typMemo.groups;
+}
+const typicalOfPanel = (p) => TY.typicalOf(typicals(), p.id);
+
+// --- The set dialog: every panel at a glance, the set's cut list and stock, the shop-floor output -------------------------
+// Over the checked panels, else all of them (like the set PDF).
+const setDialog = () => document.getElementById('set-dialog');
+let setTab = 'overview', sdFilter = 'all';
+let stockPrefs = load(KEYS.stock, { stockIn: ST.DEFAULT_STOCK_IN, kerfIn: ST.DEFAULT_KERF_IN });
+const SET_TABS = [['overview', 'Overview'], ['stock', 'Cut list and stock'], ['floor', 'Shop floor']];
+const lf = (inches) => `${(inches / 12).toLocaleString(undefined, { maximumFractionDigits: 1 })} LF`;
+function openSetDialog(tab) {
+    if (tab) setTab = tab;
+    if (!SET_TABS.some(([k]) => k === setTab)) setTab = SET_TABS[0][0];
+    renderSetDialog();
+    const d = setDialog();
+    if (!d.open) d.showModal();
+}
+function renderSetDialog() {
+    const d = setDialog(), list = chosen(), scope = checked.size ? `the ${list.length} checked panel${list.length === 1 ? '' : 's'}` : `all ${list.length} panel${list.length === 1 ? '' : 's'}`;
+    const body = setTab === 'stock' ? stockTab(list) : setTab === 'overview' ? overviewTab() : setTab === 'floor' ? floorTab(list) : '';
+    d.innerHTML = `<div class="sd"><header class="sd-head"><h2 id="sd-title">${esc(set.project || 'The set')}</h2><span class="muted small">Over ${esc(scope)} (check panels in the list to narrow it)</span><span class="spacer"></span>
+            <button class="link" data-act="sd-close">Close</button></header>
+        <div class="sd-tabs" role="tablist">${SET_TABS.map(([k, label]) => `<button role="tab" data-act="sd-tab" data-v="${k}" aria-selected="${setTab === k}" class="${setTab === k ? 'on' : ''}">${esc(label)}</button>`).join('')}</div>
+        <div class="sd-body">${body}</div></div>`;
+}
+// Each chosen panel's cut list (skipped: panels with inputs to fix).
+function setItems(list) {
+    const items = [], skipped = [];
+    for (const p of list) { const { layout } = framed(p); if (layout) items.push({ panel: p.mark, id: p.id, layout, cutList: layout.cutList }); else skipped.push(p.mark); }
+    return { items, skipped };
+}
+// Every panel at a glance: its state, what is open, what is placed by hand, its typical; the checked ones take the bulk
+// actions (the same check boxes as the panel list).
+function panelState(p) {
+    const { errors, layout, plan } = framed(p), issues = plan?.issues || [], open = openChoices(plan).length;
+    const state = errors.length ? 'not-framed' : layout?.issues?.length ? 'failed' : open ? 'preliminary' : 'framed';
+    return { state, layout, errors, open, errorsN: issues.filter(i => i.severity === 'error').length, decide: issues.filter(i => i.severity === 'needs-resolution').length,
+        warnings: issues.filter(i => i.severity === 'warning').length, byHand: MAN.unlockedCount(p) + MAN.removedKeys(p).length };
+}
+const STATE_WORDS = { 'not-framed': ['Not framed', 'check-failed'], failed: ['Check failed', 'check-failed'], preliminary: ['Preliminary', 'eng-badge warn'], framed: ['✓ Framed', 'check-passed'] };
+function overviewTab() {
+    const typ = typicals(), rows = set.panels.map(p => ({ p, s: panelState(p) }));
+    const attention = (r) => r.s.state !== 'framed' || r.s.errorsN || r.s.decide;
+    const shown = rows.filter(r => sdFilter === 'all' || (sdFilter === 'attention' ? attention(r) : !attention(r)));
+    const count = (st) => rows.filter(r => r.s.state === st).length, n = checked.size;
+    const f = (k, label) => `<button class="${sdFilter === k ? 'on' : ''}" data-act="sd-filter" data-v="${k}" aria-pressed="${sdFilter === k}">${label}</button>`;
+    return `<div class="sd-stats"><span><b>${rows.length}</b> panels</span><span class="check-passed"><b>${count('framed')}</b> framed</span><span><b>${count('preliminary')}</b> preliminary</span><span class="check-failed"><b>${count('failed') + count('not-framed')}</b> to fix</span>
+            <span><b>${typ.length}</b> typical${typ.length === 1 ? '' : 's'} (${typ.reduce((k, g) => k + g.members.length, 0)} panels)</span></div>
+        <div class="sd-row"><span class="seg" role="group" aria-label="Show">${f('all', 'All')}${f('attention', 'Needs attention')}${f('framed', 'Ready')}</span><span class="spacer"></span>
+            <span class="small">${n ? `<b>${n} checked</b>:` : 'Check panels for:'}</span>
+            <button class="secondary small" data-act="sd-rules" ${n && eng ? '' : 'disabled'} title="${eng ? 'Every door and window on the checked panels takes the engineering rule that covers it' : 'Open the engineering catalog first'}">Use the rules on their openings</button>
+            <button class="secondary small" data-act="set-pdf" ${n ? '' : 'disabled'}>PDF of them</button>
+            <button class="link small danger" data-act="set-delete" ${n ? '' : 'disabled'}>Delete them</button></div>
+        <table class="sd-table sd-dash"><thead><tr><th><input type="checkbox" data-sd-all aria-label="Check every panel shown" ${shown.length && shown.every(r => checked.has(r.p.id)) ? 'checked' : ''}></th><th>Panel</th><th>Group / level</th><th>Size</th><th>Openings</th><th>State</th><th>To decide / errors</th><th>By hand</th><th>Typical</th><th>Rev</th><th>Studs</th></tr></thead><tbody>
+        ${shown.map(({ p, s }) => {
+            const [word, cls] = STATE_WORDS[s.state], t = TY.typicalOf(typ, p.id), L = s.layout;
+            return `<tr class="${p.id === cur()?.id ? 'on' : ''}"><td><input type="checkbox" data-check="${esc(p.id)}" ${checked.has(p.id) ? 'checked' : ''} aria-label="Check ${esc(p.mark)}"></td>
+                <td><button class="link" data-act="sd-open" data-id="${esc(p.id)}"><b>${esc(p.mark)}</b></button>${G.isFromModel(p) ? ' 🔒' : ''}</td>
+                <td class="small">${esc([p.group, p.level].filter(Boolean).join(' · ') || '—')}</td>
+                <td class="small">${L ? `${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}` : '—'}</td>
+                <td class="small">${esc(G.openingsSummary(p.openings))}</td>
+                <td><span class="${cls}">${word}${s.state === 'preliminary' ? ` (${s.open})` : ''}</span>${s.errors.length ? `<br><span class="small muted">${esc(s.errors[0].message || s.errors[0])}</span>` : ''}</td>
+                <td class="small">${s.decide || s.errorsN ? `${s.decide} / ${s.errorsN}` : '—'}${s.warnings ? ` <span class="muted">(${s.warnings} note${s.warnings === 1 ? '' : 's'})</span>` : ''}</td>
+                <td class="small">${s.byHand || '—'}</td>
+                <td class="small">${t ? (t.reference ? `TYP ×${t.group.members.length}` : `= ${esc(t.group.members[0].mark)}${t.hand === 'opposite' ? ' (opp.)' : ''}`) : '—'}</td>
+                <td class="small">${revCell(p, s)}</td>
+                <td class="small">${esc(studName(p.members))} @ ${esc(String(p.members.spacingIn ?? ''))}"</td></tr>`;
+        }).join('') || '<tr><td colspan="11" class="muted">No panel shown.</td></tr>'}</tbody></table>`;
+}
+function revCell(p, s) {
+    const r = p.revisions?.[p.revisions.length - 1];
+    if (!r) return '—';
+    const n = s.layout && framed(p).plan?.layout ? RV.diffSnapshots(r.snap, RV.snapshotOf(framed(p).plan.layout)).length : 0;
+    return `${r.n}${n ? ` <span class="warning" title="${n} change${n === 1 ? '' : 's'} since revision ${r.n}">+${n}</span>` : ''}`;
+}
+// The engineering rules on every opening of the checked panels (one undo step).
+function rulesOnChecked() {
+    if (!eng) { notice('Open the engineering catalog first (Engineering).', true); return; }
+    const used = [], none = [];
+    set.panels = set.panels.map(p => {
+        if (!checked.has(p.id)) return p;
+        let q = p;
+        p.openings.forEach((o, i) => {
+            const r = R.ruleFor(eng, q, i);
+            if (!r.applies) return;
+            if (r.status !== 'matched') { none.push(`${p.mark} ${G.openingName(p.openings, i)}`); return; }
+            try { q = SC.applyOpeningStyle(q, i, eng.read, r.match).panel; used.push(`${p.mark} ${G.openingName(p.openings, i)}`); } catch { none.push(`${p.mark} ${G.openingName(p.openings, i)}`); }
+        });
+        return q;
+    });
+    changed(); renderAll(); renderSetDialog();
+    notice(`Rules used on ${used.length} opening${used.length === 1 ? '' : 's'}${none.length ? `; no single rule for ${none.join(', ')}: pick those in each panel's Openings tab` : ''}.`, none.length > 0);
+}
+// Shop-floor output: the set PDF with its cover and bookmarks, the member labels.
+function floorTab(list) {
+    const { items, skipped } = setItems(list), skip = typicalSkips(list);
+    if (!items.length) return '<p class="muted">No framed panel to print.</p>';
+    const pieces = labelPieces(items.map(x => ({ panel: x.panel, cutList: x.cutList }))), sheets = Math.ceil(pieces.length / 30);
+    return `${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
+        <div class="sd-cards">
+            <section class="sd-card"><h3>The set PDF</h3><p class="small">A cover sheet (the panel index with each sheet's number, check, typical and revision; what to buy), then each panel's sheet, with a bookmark for each.</p>
+                <div class="acts"><button data-act="set-pdf">Download (${items.length} sheet${items.length === 1 ? '' : 's'} + cover)</button>
+                ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size} + cover)</button>` : ''}</div></section>
+            <section class="sd-card"><h3>Member labels</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
+                <div class="acts"><button data-act="sd-labels">Download ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button></div></section>
+            <section class="sd-card"><h3>Cut lists</h3><p class="small">What to buy, how each bar is cut, the set's cut list: CSV for a spreadsheet or the saw.</p>
+                <div class="acts"><button class="secondary" data-act="sd-tab" data-v="stock">Cut list and stock</button></div></section>
+        </div>`;
+}
+function downloadLabels() {
+    const { items } = setItems(chosen());
+    if (!items.length) return;
+    const pieces = labelPieces(items.map(x => ({ panel: x.panel, cutList: x.cutList })));
+    download(renderLabelsPdf(pieces, { project: set.project || '', title: `${set.project || 'Panel'} member labels` }), `member-labels-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
+    notice(`${pieces.length} labels downloaded (${Math.ceil(pieces.length / 30)} sheet${pieces.length > 30 ? 's' : ''} of 30): print at actual size.`);
+}
+function stockTab(list) {
+    const { items, skipped } = setItems(list);
+    if (!items.length) return '<p class="muted">No framed panel to take the cut list from.</p>';
+    let plan;
+    try { plan = ST.nestStock(items, stockPrefs); } catch (err) { return `<p class="check-failed">${esc(err.message)}</p>`; }
+    const rows = ST.setCutList(items), t = plan.totals, buyText = (x) => x.buy.map(b => `${b.count} × ${fmtFtIn(b.stockIn)}`).join(', ') || '—';
+    return `<div class="sd-row"><label class="field"><span>Stock lengths</span><input type="text" data-stock="stockIn" value="${esc(plan.stockIn.map(fmtFtIn).join(', '))}" aria-label="Stock lengths (comma separated)"></label>
+            <label class="field"><span>Saw kerf</span><input type="text" class="mini" data-stock="kerfIn" value="${esc(DT.inches(plan.kerfIn))}" aria-label="Saw kerf"></label>
+            <p class="muted small">Each type is fitted into bars of the longest stock, longest piece first, then each bar is bought at the shortest stock length that holds it. A purchasing aid: check it against your supplier's lengths and your saw.</p></div>
+        <div class="sd-stats"><span><b>${t.pieces}</b> pieces</span><span><b>${lf(t.cutIn)}</b> cut</span><span><b>${t.bars}</b> bars, <b>${lf(t.orderedIn)}</b> to buy</span><span><b>${t.wastePct.toFixed(1)}%</b> offcut</span></div>
+        ${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
+        <table class="sd-table"><thead><tr><th>Member type</th><th>Pieces</th><th>Cut</th><th>Buy</th><th>To buy</th><th>Offcut</th></tr></thead><tbody>
+            ${plan.types.map(x => `<tr><td><b>${esc(x.type)}</b></td><td>${x.pieces}</td><td>${lf(x.cutIn)}</td><td>${esc(buyText(x))}${x.long.length ? `<br><span class="warning small">${x.long.length} longer than the stock: cut to length</span>` : ''}</td><td>${lf(x.orderedIn)}</td><td>${x.wastePct.toFixed(1)}%</td></tr>`).join('')}
+        </tbody></table>
+        <div class="acts"><button class="secondary small" data-act="sd-csv" data-v="buy">Download what to buy (CSV)</button><button class="secondary small" data-act="sd-csv" data-v="cuts">Download the cut plan (CSV)</button><button class="secondary small" data-act="sd-csv" data-v="list">Download the set cut list (CSV)</button></div>
+        ${plan.types.map(x => `<details class="sd-bars"><summary>${esc(x.type)}: how each bar is cut (${x.bars.length} bar${x.bars.length === 1 ? '' : 's'})</summary><ol>
+            ${x.bars.map(b => `<li><b>${esc(fmtFtIn(b.stockIn))}</b>: ${b.cuts.map(c => `${esc(fmtFtIn(c.lengthIn))} <span class="muted">(${esc(c.panel)} ${esc(c.mark)})</span>`).join(' + ')} <span class="muted">· offcut ${esc(fmtFtIn(b.wasteIn))}</span></li>`).join('')}
+            ${x.long.map(c => `<li class="warning">${esc(fmtFtIn(c.lengthIn))} (${esc(c.panel)} ${esc(c.mark)}): longer than the stock, order cut to length</li>`).join('')}</ol></details>`).join('')}
+        <details class="sd-bars"><summary>The set's cut list (${rows.length} lines)</summary><table class="sd-table"><thead><tr><th>Member type</th><th>Length</th><th>Qty</th><th>Where</th></tr></thead><tbody>
+            ${rows.map(r => `<tr><td>${esc(r.type)}</td><td>${esc(fmtFtIn(r.lengthIn))}</td><td>${r.qty}</td><td class="small">${esc(r.uses.map(u => `${u.panel} ${u.mark} ×${u.qty}`).join(', '))}</td></tr>`).join('')}</tbody></table></details>`;
+}
+function setCsv(kind) {
+    const { items } = setItems(chosen());
+    if (!items.length) return;
+    const plan = ST.nestStock(items, stockPrefs), name = fileName(set.project || 'set');
+    const text = kind === 'buy' ? ST.purchaseCsv(plan) : kind === 'cuts' ? ST.cutPlanCsv(plan) : ST.setCutListCsv(ST.setCutList(items));
+    download(new TextEncoder().encode(text), `${kind === 'buy' ? 'stock-to-buy' : kind === 'cuts' ? 'cut-plan' : 'set-cut-list'}-${name}-${today()}.csv`, 'text/csv');
+}
+setDialog().addEventListener('change', (e) => {
+    if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSet(); renderSetDialog(); return; }
+    if (e.target.matches('[data-sd-all]')) {
+        const ids = [...setDialog().querySelectorAll('[data-check]')].map(x => x.dataset.check);
+        for (const id of ids) e.target.checked ? checked.add(id) : checked.delete(id);
+        renderSet(); renderSetDialog(); return;
+    }
+    const el = e.target.closest('[data-stock]');
+    if (!el) return;
+    if (el.dataset.stock === 'stockIn') {
+        const v = ST.parseStockList(el.value, G.parseLength);
+        if (!v.length) { notice('Type stock lengths like 10\', 12\', 20\'.', true); return; }
+        stockPrefs = { ...stockPrefs, stockIn: v };
+    } else {
+        const v = G.parseLength(el.value);
+        if (v == null || v < 0 || v > 1) { notice('A saw kerf between 0" and 1".', true); return; }
+        stockPrefs = { ...stockPrefs, kerfIn: v };
+    }
+    store(KEYS.stock, stockPrefs); renderSetDialog();
+});
 
 function assign(p) {
     const ids = [...checked].filter(id => id !== p.id);
@@ -2780,8 +3165,30 @@ function download(bytes, name, type) {
     setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 const fileName = (s) => String(s || 'panel').replace(/[^\w.-]+/g, '-').replace(/^-+|-+$/g, '') || 'panel';
-async function downloadPdf(panels) {
+// The panels a "one per typical" print leaves out: every typical's members after the first one printed.
+function typicalSkips(panels) {
+    const ids = new Set(panels.map(p => p.id)), skip = new Set();
+    for (const g of typicals()) { const inSet = g.members.filter(m => ids.has(m.id)); for (const m of inSet.slice(1)) skip.add(m.id); }
+    return skip;
+}
+// The cover sheet: each printed panel's sheet number and state, the set's stock to buy, what was left out.
+function coverOf(items, skipped, perTypical) {
+    const typ = typicals(), byMark = new Map(set.panels.map(p => [p.mark, p]));
+    const rows = items.map(({ layout, info }, k) => {
+        const p = byMark.get(info.mark), s = p ? panelState(p) : null, t = p ? TY.typicalOf(typ, p.id) : null, r = p?.revisions?.[p.revisions.length - 1];
+        return { sheet: String(k + 1), mark: info.mark, size: `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}`, level: info.level, wallType: info.wallType,
+            check: !s ? '' : s.state === 'failed' ? `FAILED (${layout.issues.length})` : s.state === 'preliminary' ? `PRELIMINARY (${s.open})` : 'PASSED',
+            typical: [t ? (t.reference ? `TYP x${t.group.members.length}` : `= ${t.group.members[0].mark}`) : '', r ? `REV ${r.n}` : ''].filter(Boolean).join(' · ') };
+    });
+    let stock = null;
+    try { stock = ST.nestStock(items.map(({ layout, info }) => ({ panel: info.mark, cutList: layout.cutList })), stockPrefs); } catch { stock = null; }
+    return { project: set.project || '', date: today(), drawnBy: set.drawnBy || '', rows, stock,
+        notes: [skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '', perTypical ? 'One sheet per typical: each typical sheet lists the other panels it frames.' : '',
+            'What to buy covers the printed sheets only' + (perTypical ? ': order each typical for every panel it frames.' : '.')] };
+}
+async function downloadPdf(panels, { perTypical = false } = {}) {
     const items = [], skipped = [];
+    if (perTypical) { const skip = typicalSkips(panels); panels = panels.filter(p => !skip.has(p.id)); }
     for (const p of panels) {
         const { layout } = framed(p);
         if (layout) items.push({ layout, info: sheetInfo(p) }); else skipped.push(p.mark);
@@ -2789,7 +3196,7 @@ async function downloadPdf(panels) {
     if (!items.length) { notice(`Nothing to print: ${skipped.join(', ')} ${skipped.length === 1 ? 'has' : 'have'} inputs to fix.`, true); return; }
     const logo = await logoJpeg();
     if (items.length === 1) download(renderSheetPdf(items[0].layout, items[0].info, logo), `shop-drawing-${fileName(items[0].info.mark)}.pdf`, 'application/pdf');
-    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
+    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`, { cover: coverOf(items, skipped, perTypical) }), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
     const failed = items.filter(x => x.layout.issues.length).map(x => x.info.mark);
     notice([`${items.length} sheet${items.length === 1 ? '' : 's'} downloaded.`, skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '',
         failed.length ? `Framing check failed on ${failed.join(', ')}: marked DO NOT RELEASE.` : ''].filter(Boolean).join(' '), !!(skipped.length || failed.length));
@@ -2837,6 +3244,12 @@ async function importJson(file) {
         });
         // A model's export: its source, grids and levels kept with the set (written back on Export JSON).
         const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? (replace ? undefined : set[k])]).filter(([, v]) => v != null));
+        const typeFr = { ...(replace ? {} : set.typeFraming || {}), ...(incoming.typeFraming || {}) };
+        if (Object.keys(typeFr).length) context.typeFraming = typeFr;
+        // Openings of a model type the set has framing for (and none chosen yet) take it.
+        let typed = 0;
+        for (const [key, fr] of Object.entries(typeFr)) { const r = OC.applyTypeFraming(added, key, fr, { only: 'unset' }); added.splice(0, added.length, ...r.panels); typed += r.changed.length; }
+        if (typed) warnings.push(`${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.`);
         // Unknown fields of the file (a newer exporter's) ride along to Export JSON.
         const extra = replace ? incoming.extra : { ...(incoming.extra || {}), ...(set.extra || {}) };
         set = { project: (replace ? incoming.project : set.project) || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, ...(extra && Object.keys(extra).length ? { extra } : {}),
@@ -2877,10 +3290,10 @@ window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p='
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
-const NO_PANEL_ACTS = new Set(['new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
-const NOT_EDITS = new Set(['qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
+const NO_PANEL_ACTS = new Set(['sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
+const NOT_EDITS = new Set(['sd-labels', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
-const ACT_LABELS = { 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
+const ACT_LABELS = { 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
     'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
     'clip-here': 'the clip', 'clip-del': 'removing the clip', 'clip-top': 'the clips', 'clip-mid': 'the clips', 'clip-all': 'the clips', 'clip-clear': 'removing the clips',
     'mirror-op': 'mirroring the opening', 'copy-op': 'copying the opening', center: 'centering the opening', 'peri-finish': 'the perimeter', 'set-assign': 'giving the members', 'set-delete': 'deleting panels',

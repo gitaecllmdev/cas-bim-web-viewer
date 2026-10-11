@@ -14,9 +14,9 @@ export const VIEWS = [
     { id: 'plan', label: 'Plan', hint: 'The top and bottom track plans: stud positions and which way each faces' },
     { id: '3d', label: '3D', hint: 'The framed panel in 3D (not to scale)' },
     { id: 'drawing', label: 'Drawing', hint: 'The quick shop drawing: the sheet as it prints' },
-    // Extension point: observed MWF framing against the proposed CAS plan. It needs a read-only MWF export of the placed
-    // members; nothing is written to MWF and no regeneration is invented here.
-    { id: 'compare', label: 'Compare', hint: 'Observed MWF framing against this plan', available: false, reason: 'Needs a read-only export of the MWF framing placed in the model (not available yet).' },
+    // Compare: the framing now against an issued revision (revisions.mjs). Its second source, observed MWF framing
+    // against this plan, needs a read-only MWF export of the placed members (not available yet); nothing is written to MWF.
+    { id: 'compare', label: 'Compare', hint: 'What changed since an issued revision (observed MWF framing: later)', mwf: { available: false, reason: 'Needs a read-only export of the MWF framing placed in the model (not available yet).' } },
 ];
 export const viewIds = VIEWS.filter(v => v.available !== false).map(v => v.id);
 

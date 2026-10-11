@@ -22,7 +22,8 @@ export function textWidth(s, sizePt, bold) {
 const num = (v) => (Math.abs(v) < 1e-6 ? 0 : Number(v.toFixed(3)));
 const NAMED = { white: '#ffffff', black: '#000000' };
 function rgb(color) {
-    const hex = NAMED[color] || color;
+    // #rgb is #rrggbb (the drawings' default black, '#000', used to be dropped: no stroke at all).
+    const named = NAMED[color] || color, hex = /^#[0-9a-f]{3}$/i.test(named || '') ? `#${[...named.slice(1)].map(ch => ch + ch).join('')}` : named;
     if (!hex || hex === 'none' || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
     return [1, 3, 5].map(i => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
 }
@@ -142,7 +143,8 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
 // Several shop drawing sheets in one file (the Panel Shop Generator's set): pages [{ ops, widthIn, heightIn }], each page
 // its own size; the logo shared by every page. Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, 6 logo (optional), then
 // each page and its content, then the JPEG data URL images.
-export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}) {
+// outline: a bookmark per page (its title; ISO 32000-1 §12.3.3 document outline), shown when the file opens.
+export function toPdfSheets(pages, { logo = null, title = 'Shop drawings', outline = null } = {}) {
     const P = 72, images = [], n = pages.length, first = logo ? 7 : 6, alphas = new Set();
     const streams = pages.map(({ ops, widthIn, heightIn }) => latin1(drawOps(ops, { P, Hpt: heightIn * P, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(heightIn * P) + ' re f', '1 J 1 j'], images, logo, alphas }).join('\n')));
     const xobjects = [...(logo ? ['/Im1 6 0 R'] : []), ...images.map((im, i) => `/${im.name} ${first + 2 * n + i} 0 R`)].join(' ');
@@ -160,7 +162,16 @@ export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}
         objects.push([latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')]);
     });
     for (const im of images) objects.push(imageObject(im));
+    if (outline?.length === n) addOutline(objects, pages.map((_, k) => first + 2 * k), outline);
     return pdfFile(objects, 5);
+}
+// The bookmarks: an outline root and one item per page (in order), each opening its page whole; the catalog (object 1)
+// points to it and asks for it to show.
+function addOutline(objects, pageRefs, titles) {
+    const root = objects.length + 1, first = root + 1, last = root + titles.length;
+    objects.push(latin1(`<< /Type /Outlines /First ${first} 0 R /Last ${last} 0 R /Count ${titles.length} >>`));
+    titles.forEach((t, k) => objects.push(latin1(`<< /Title ${pdfString(String(t))} /Parent ${root} 0 R${k ? ` /Prev ${first + k - 1} 0 R` : ''}${k < titles.length - 1 ? ` /Next ${first + k + 1} 0 R` : ''} /Dest [${pageRefs[k]} 0 R /Fit] >>`)));
+    objects[0] = latin1(`<< /Type /Catalog /Pages 2 0 R /Outlines ${root} 0 R /PageMode /UseOutlines >>`);
 }
 
 // Several pages of the same primitives (a report): pages, one ops list each; JPEG data URL images (photos, plans).

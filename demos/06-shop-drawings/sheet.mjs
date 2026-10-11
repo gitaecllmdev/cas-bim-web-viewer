@@ -6,7 +6,9 @@
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
 // Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
 import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText, openingKind, OPENING_KINDS, webOnRight } from '../common/framing.mjs';
-import { toPdf, toPdfSheets, textWidth } from './pdf.mjs';
+import { toPdf, toPdfSheets, toPdfPages, textWidth } from './pdf.mjs';
+import { coverPages } from './cover.mjs';
+import { labelPages } from './labels.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
 import { prefabState, PREFAB_COLORS } from './prefab.mjs';
@@ -55,6 +57,19 @@ const partOf = (name) => { const r = /^(\d{3,4})([A-Z]{1,3})(\d{3})-\d{2,3}$/.ex
     return r ? { stud: /^(S|CS|CT)$/.test(r[2]), flangeIn: Number(r[3]) / 100, lipIn: LIP_IN[r[3]] ?? 0.5 } : null; };
 const isHeadOrSill = (m) => m.orient === 'h' && (m.role === 'head track' || m.role === 'sill track');
 const inchesText = (v) => { const n = Math.round(v * 16), w = Math.floor(n / 16), f = n % 16; if (!f) return `${w}"`; let a = f, b = 16; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
+const CLOUD = '#c2185b'; // revision clouds
+// A revision cloud: a box's outline in arcs bulging outward (radius r, sheet inches), as points.
+function cloudPts(x0, y0, x1, y1, r) {
+    const pts = [], edge = (ax, ay, bx, by, nx, ny) => {
+        const len = Math.hypot(bx - ax, by - ay), n = Math.max(1, Math.round(len / (2 * r))), step = len / n, ux = (bx - ax) / len, uy = (by - ay) / len;
+        for (let i = 0; i < n; i++) for (let k = 0; k <= 6; k++) {
+            const t = k / 6, along = (i + t) * step, bulge = Math.sin(Math.PI * t) * step * 0.5;
+            pts.push([ax + ux * along + nx * bulge, ay + uy * along + ny * bulge]);
+        }
+    };
+    edge(x0, y0, x1, y0, 0, -1); edge(x1, y0, x1, y1, 1, 0); edge(x1, y1, x0, y1, 0, 1); edge(x0, y1, x0, y0, -1, 0);
+    return pts;
+}
 const H_OPACITY = 0.35; // tracks, headers and sills: see-through (screen and PDF), so the studs seated in them and the jambs they lap show
 export function partLines(m, opening = null) {
     if (!isHeadOrSill(m) || !m.parts?.length) return [];
@@ -197,8 +212,16 @@ export function renderSheetPdf(layout, info, logo = null) {
 }
 
 // Several sheets in one vector PDF, one page each (each its own size): items [{ layout, info }].
-export function renderSheetsPdf(items, logo = null, title = 'Framing shop drawings') {
-    return toPdfSheets(items.map(({ layout, info }) => { const ops = sheetOps(layout, info); return { ops, widthIn: ops.size.W, heightIn: ops.size.H }; }), { logo, title });
+// The set's sheets in one file, a bookmark for each; cover (cover.mjs: the panel index and what to buy): its pages first.
+export function renderSheetsPdf(items, logo = null, title = 'Framing shop drawings', { cover = null } = {}) {
+    const front = cover ? coverPages(cover, fmtFtIn) : [];
+    const pages = [...front, ...items.map(({ layout, info }) => { const ops = sheetOps(layout, info); return { ops, widthIn: ops.size.W, heightIn: ops.size.H }; })];
+    const outline = [...front.map((_, k) => `Cover: panel index and what to buy${front.length > 1 ? ` (${k + 1})` : ''}`), ...items.map(({ info }, k) => `${cover ? `${k + 1}. ` : ''}${info.mark}`)];
+    return toPdfSheets(pages, { logo, title, outline });
+}
+// Member labels (labels.mjs: one per piece, Avery 5160 size) as a PDF.
+export function renderLabelsPdf(pieces, { project = '', title = 'Member labels' } = {}) {
+    return toPdfPages(labelPages(pieces, { fmt: fmtFtIn, project }).map(p => p.ops), { widthIn: 8.5, heightIn: 11, title });
 }
 
 export function sheetOps(layout, info) {
@@ -291,6 +314,16 @@ export function sheetOps(layout, info) {
     // Only the exceptions from the scan (a gap across the wall, lifts, double rows): the rest is on the panel page.
     for (const note of layout.notes) {
         for (const ln of wrap(note.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
+    }
+    // The revisions (info.revisions: newest last), under a heading; the changes not issued yet said so.
+    if (info.revisions?.length) {
+        ly += 0.2; out.push(text(cx, ly, 'REVISIONS', { size: 0.075, weight: 'bold' }));
+        for (const r of info.revisions.slice(-5)) for (const ln of wrap(`${r.n} · ${r.date}${r.note ? ` · ${String(r.note).toUpperCase()}` : ''}`, 0.065, tableW)) { ly += 0.11; out.push(text(cx, ly, ln, { size: 0.065 })); }
+        if (info.clouds?.pending) { ly += 0.12; out.push(text(cx, ly, `CLOUDED: CHANGES SINCE REVISION ${info.clouds.rev}, NOT ISSUED YET`, { size: 0.065, weight: 'bold', fill: CLOUD })); }
+    }
+    // The set's notes for this sheet (info.sheetNotes: a typical's other panels, ...).
+    for (const note of info.sheetNotes || []) {
+        for (const ln of wrap(String(note).toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, weight: 'bold', fill: '#1f3a5f' })); }
     }
     // Fail-safe framing check (framing.mjs checkLayout): a sheet that fails it says so before anything else.
     const issues = layout.issues || [];
@@ -455,6 +488,15 @@ export function sheetOps(layout, info) {
         const w = 1.25, x0 = c.side === 'R' ? c.x : c.x - w;
         out.push(rect(X(x0), Y(c.y + 1.5), w * s, 3 * s, { fill: COLORS.clip, stroke: COLORS.clipStroke, width: 0.005 }));
         out.push(text(c.side === 'R' ? X(x0 + w) + 0.02 : X(x0) - 0.02, Y(c.y) + 0.02, c.mark, { size: 0.055, anchor: c.side === 'R' ? 'start' : 'end', weight: 'bold', fill: COLORS.clipStroke }));
+    }
+    // Revision clouds (info.clouds: { rev, pending, boxes } in side-A wall inches): a scalloped outline around each change,
+    // its revision in a triangle at the corner (pending: not issued yet, the triangle empty).
+    for (const b of info.clouds?.boxes || []) {
+        const x0 = X(layout.flipped ? L - b.x - b.w : b.x), x1 = x0 + b.w * s, y0 = Y(b.y + b.h), y1 = Y(b.y);
+        out.push({ t: 'poly', pts: cloudPts(x0, y0, x1, y1, 0.045), fill: 'none', stroke: CLOUD, width: 0.012 });
+        const tx = x0 - 0.02, ty = y0 - 0.02, ts = 0.14;
+        out.push({ t: 'poly', pts: [[tx, ty - ts * 0.87], [tx - ts / 2, ty], [tx + ts / 2, ty]], fill: '#ffffff', stroke: CLOUD, width: 0.01 });
+        if (!info.clouds.pending) out.push(text(tx, ty - 0.025, String(info.clouds.rev), { size: 0.075, anchor: 'middle', weight: 'bold', fill: CLOUD }));
     }
     // Tags on every member. Verticals: at mid-height, beside the stud (no box over it, so the member reads unbroken):
     // left of it, or right of it when a stud stands right against its left side (a jamb pair); level text when the
@@ -700,6 +742,7 @@ export function sheetOps(layout, info) {
         if (info.qrUrl) out.push(text(W - 2.77, tbY + 1.1, 'QR CODE: BESIDE THE LEGEND', { size: 0.05, fill: '#555' }));
     }
     out.push(text(W - 1.55, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
+    if (info.revisions?.length) out.push(text(W - 0.35, tbY + 0.2, `REV ${info.revisions[info.revisions.length - 1].n}`, { size: 0.08, anchor: 'end', weight: 'bold' }));
     // The mark as large as the cell takes: a long one shrinks, then wraps (up to three lines), never past the border.
     const markW = 1.25;
     let ms = 0.2;

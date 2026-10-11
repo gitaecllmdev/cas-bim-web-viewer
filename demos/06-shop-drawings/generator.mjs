@@ -20,6 +20,7 @@
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, source, grids, levels, panels: [panel] }.
 import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight, relabel, floor8 } from '../common/framing.mjs';
 import { readExchange } from './exchange.mjs';
+import { cleanRevisions } from './revisions.mjs';
 const inchText = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 import { parseDesignator, parseMemberSpec, parseFeetInches } from '../02-takeoff/criteria.mjs';
 
@@ -790,7 +791,7 @@ export function canEdit(panel, path) {
 }
 // A copy that is not the model's wall: no revit block, nothing locked.
 function unlinked(panel) {
-    const { revit, ...rest } = structuredClone(panel);
+    const { revit, revisions, ...rest } = structuredClone(panel);
     return { ...rest, openings: (rest.openings || []).map(({ locked, ...o }) => o) };
 }
 
@@ -810,6 +811,18 @@ export const copyPanel = (panel, marks = []) => {
     return { ...unlinked(panel), id: rid(), mark: nextNumberMark(panel.mark, marks) };
 };
 
+// A panel template: its shape, openings, members, stud layout, clips and edits by hand, to start new panels from. Never
+// the model's link (its openings come unlocked, without their model element), its name, its place in a set or its
+// revisions; its level and grid lines (that panel's) neither.
+export function templateOf(panel) {
+    const { id, mark, provenance, context, revisions, ...rest } = unlinked(cleanPanel(panel));
+    return { ...rest, openings: (rest.openings || []).map(({ insertId, id: oid, ...o }) => o) };
+}
+// A new panel from a template: numbered like New panel (after the set's highest with the open panel's prefix).
+export function fromTemplate(tpl, prevMark, marks = []) {
+    return cleanPanel({ ...structuredClone(tpl), id: rid(), mark: nextNumberMark(prevMark || 'P-100', marks) });
+}
+
 // The members of one panel given to others (the checked panels, or a group).
 export function assignMembers(panels, ids, members) {
     const want = new Set(ids);
@@ -821,7 +834,7 @@ export function assignMembers(panels, ids, members) {
 // Unknown fields (a newer exporter's, or namespaced extensions) ride along untouched: the set's, each panel's and each
 // opening's (extra); the fields this tool knows always win.
 export function exportSet(set, { framing = true } = {}) {
-    const context = Object.fromEntries(['source', 'grids', 'levels'].filter(k => set[k] != null).map(k => [k, structuredClone(set[k])]));
+    const context = Object.fromEntries(['source', 'grids', 'levels', 'typeFraming'].filter(k => set[k] != null).map(k => [k, structuredClone(set[k])]));
     return { ...structuredClone(set.extra || {}), format: FORMAT, version: VERSION, project: set.project || '', drawnBy: set.drawnBy || '', savedAt: new Date().toISOString(), ...context,
         panels: (set.panels || []).map(p => { const c = exportPanel(p); return framing ? { ...c, framing: framingOf(p) } : c; }) };
 }
@@ -845,7 +858,7 @@ export function framingOf(panel) {
 }
 // A cas-panel-shops file (format given) is read strictly: version 1, inches, internal or shared coordinates, else it is
 // refused (nothing half-read). A file without a format (hand-written, or a plain list of walls) is read forgivingly.
-const ROOT_KEYS = new Set(['format', 'version', 'project', 'drawnBy', 'savedAt', 'source', 'grids', 'levels', 'panels', 'walls']);
+const ROOT_KEYS = new Set(['format', 'version', 'project', 'drawnBy', 'savedAt', 'source', 'grids', 'levels', 'typeFraming', 'panels', 'walls']);
 export function importSet(json) {
     const warnings = [];
     const parsed = typeof json === 'string' ? JSON.parse(json) : json;
@@ -871,7 +884,7 @@ export function importSet(json) {
         if (!raw?.shape) { warnings.push(`${name}: no shape or outline; skipped.`); return; }
         panels.push(cleanPanel({ ...raw, provenance: raw.provenance || provenanceOf(raw) }));
     });
-    const context = Object.fromEntries(['source', 'grids', 'levels'].filter(k => data?.[k] != null).map(k => [k, structuredClone(data[k])])); // a model's export: kept for the trip back
+    const context = Object.fromEntries(['source', 'grids', 'levels', 'typeFraming'].filter(k => data?.[k] != null).map(k => [k, structuredClone(data[k])])); // a model's export: kept for the trip back (typeFraming: opening-context.mjs)
     const extra = data && !Array.isArray(data) ? Object.fromEntries(Object.entries(data).filter(([k]) => !ROOT_KEYS.has(k)).map(([k, v]) => [k, structuredClone(v)])) : {};
     return { set: { project: String(data?.project || ''), drawnBy: String(data?.drawnBy || ''), ...context, ...(Object.keys(extra).length ? { extra } : {}), panels }, warnings };
 }
@@ -890,9 +903,9 @@ export function provenanceOf(raw) {
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-const PANEL_KEYS = new Set(['id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+const PANEL_KEYS = new Set(['revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
     'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
-const OPENING_KEYS = new Set(['id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
+const OPENING_KEYS = new Set(['insertId', 'id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
     'headBearing', 'crippleEnds', 'extra']);
 const extrasOf = (obj, known) => ({ ...(obj?.extra && typeof obj.extra === 'object' ? structuredClone(obj.extra) : {}),
     ...Object.fromEntries(Object.entries(obj || {}).filter(([k]) => !known.has(k)).map(([k, v]) => [k, structuredClone(v)])) });
@@ -932,6 +945,7 @@ export function cleanPanel(p = {}) {
         ...(model && Array.isArray(p.outline) ? { outline: p.outline.map(pt => [Number(pt?.[0]), Number(pt?.[1])]) } : {}),
         ...(provenance && Object.keys(provenance).length ? { provenance } : {}), ...(Object.keys(extra).length ? { extra } : {}),
         ...(cleanBinding(p.style) ? { style: cleanBinding(p.style) } : {}), ...(cleanManual(p.manual) ? { manual: cleanManual(p.manual) } : {}),
+        ...(cleanRevisions(p.revisions) ? { revisions: cleanRevisions(p.revisions) } : {}), // issued revisions (revisions.mjs)
         ...(p.context && typeof p.context === 'object' ? { context: structuredClone(p.context) } : {}), // level and grid lines (context-lines.mjs: drawing only)
         ...(p.styleQuery && (str(p.styleQuery.finish) || str(p.styleQuery.depthCode)) ? { styleQuery: { finish: str(p.styleQuery.finish), depthCode: str(p.styleQuery.depthCode, 8) } } : {}),
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
@@ -946,6 +960,7 @@ export function cleanPanel(p = {}) {
                 ...(JAMB_STYLES[o?.jambStyle] ? { jambStyle: o.jambStyle } : {}), ...((o?.headStyle === 'back' || o?.headStyle === 'box') && kind !== 'steel' ? { headStyle: o.headStyle } : {}),
                 ...((o?.sillStyle === 'back' || o?.sillStyle === 'box') && kind !== 'door' ? { sillStyle: o.sillStyle } : {}), ...(o?.headBearing === 'jacks' && kind !== 'steel' ? { headBearing: 'jacks' } : {}), ...(o?.crippleEnds ? { crippleEnds: true } : {}),
                 ...((kind === 'door' || kind === 'window') && cleanBinding(o?.style) ? { style: cleanBinding(o.style) } : {}),
+                ...(str(o?.insertId, 120) ? { insertId: str(o.insertId, 120) } : {}), // added here for the model's element (opening-context.mjs)
                 ...(Object.keys(oe).length ? { extra: oe } : {}) };
         }),
     };
