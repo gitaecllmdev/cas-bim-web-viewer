@@ -4,24 +4,14 @@
 // Member lengths are cut lengths rounded DOWN to 1/8" (so a member never runs long). Shop-drawing labels follow the
 // CAS convention: vertical members C0, C1, … and horizontal members T0, T1, …, one label per member type + length.
 
+import { formatDimension } from './dimensions.mjs';
+
 export const round16 = (inches) => Math.round(inches * 16) / 16;
 export const round8 = (inches) => Math.round(inches * 8) / 8;
 export const floor8 = (inches) => Math.floor(inches * 8 + 1e-6) / 8; // cut-length precision: 1/8", rounded down
 
 // 55 3/8 -> 4'-7 3/8" (to the nearest 1/8")
-export function fmtFtIn(inches) {
-    const total = round8(inches);
-    const sign = total < 0 ? '-' : '';
-    const abs = Math.abs(total);
-    let feet = Math.floor(abs / 12);
-    let rest = abs - feet * 12;
-    if (rest >= 12 - 1e-9) { feet++; rest = 0; }
-    const whole = Math.floor(rest + 1e-9);
-    let n = Math.round((rest - whole) * 8), d = 8;
-    while (n && n % 2 === 0) { n /= 2; d /= 2; }
-    const inch = n ? `${whole} ${n}/${d}` : `${whole}`; // architectural: 11'-0 7/16"
-    return `${sign}${feet}'-${inch}"`;
-}
+export const fmtFtIn = (inches) => formatDimension(inches, { feet: true, leadingZero: true });
 
 // SSMA-style designation: 362S162-33 (3 5/8" stud, 1 5/8" flange, 33 mil), 362T125-33 for track.
 export function memberType(studIn, kind, mils, member = 'stud') {

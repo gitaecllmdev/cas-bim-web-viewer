@@ -9,7 +9,7 @@ export function labelPieces(items) {
     const out = [];
     for (const it of items) {
         for (const c of [...(it.cutList || [])].sort((a, b) => String(a.mark).localeCompare(String(b.mark), undefined, { numeric: true }))) {
-            for (let k = 1; k <= (c.qty || 0); k++) out.push({ panel: it.panel, mark: c.mark, func: c.func || '', type: c.type, lengthIn: c.lengthIn, k, n: c.qty });
+            for (let k = 1; k <= (c.qty || 0); k++) out.push({ panel: it.panel, mark: c.mark, func: c.func || '', type: c.type, lengthIn: c.lengthIn, k, n: c.qty, ...(it.review ? { review: it.review } : {}) });
         }
     }
     return out;
@@ -30,7 +30,8 @@ export function labelPages(pieces, { fmt = (v) => `${v}"`, project = '', layout 
             ops.push(text(x + textWidth(p.mark, 0.22, true) + 0.06, y + 0.5, fit(p.func, 0.085, w - lw - textWidth(p.mark, 0.22, true) - 0.15, false), { size: 0.085, fill: '#444' }));
             ops.push(text(x + w, y + 0.5, len, { size: 0.17, anchor: 'end', weight: 'bold' }));
             ops.push(text(x, y + 0.7, fit(p.type, 0.1, w, false), { size: 0.1 }));
-            if (project) ops.push(text(x, y + 0.87, fit(project, 0.07, w, false), { size: 0.07, fill: '#666' }));
+            if (project) ops.push(text(x, y + (p.review ? 0.82 : 0.87), fit(project, 0.07, w, false), { size: 0.07, fill: '#666' }));
+            if (p.review) ops.push(text(x, y + 0.94, fit(p.review, 0.065, w, true), { size: 0.065, weight: 'bold', fill: '#b00020' }));
         });
         pages.push({ ops, widthIn: L.pageW, heightIn: L.pageH });
     }

@@ -6,9 +6,12 @@
 // The elevation editor: the core members (top track, on-center studs, bottom track) over it; tools to select and move,
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
+import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/shop-output.mjs';
+import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, renderLabelsPdf } from './demos/06-shop-drawings/sheet.mjs';
 import { labelPieces } from './demos/06-shop-drawings/labels.mjs';
+import { projectFromShop, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
 import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
@@ -279,7 +282,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'save-combo': () => saveCombo(p),
         'del-combo': () => deleteCombo(),
         open: () => openPanel(b.dataset.id),
-        'set-pdf': () => downloadPdf(chosen()),
+        'set-pdf': () => downloadPdf(chosen(), { includeCover: true }),
         'set-pdf-typ': () => downloadPdf(chosen(), { perTypical: true }),
         'set-assign': () => assign(p),
         'set-delete': () => { deletePanels(); if (setDialog().open) renderSetDialog(); },
@@ -345,6 +348,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'fs-apply': () => applyFramingSettings(),
         'fs-reset': () => { fsDraft = null; renderSetDialog(); },
         'sd-labels': () => downloadLabels(),
+        'sd-label-maker': () => openLabelMaker(),
         'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
         'sd-rules': () => rulesOnChecked(),
         'set-check-all': () => { set.panels.forEach(x => checked.add(x.id)); renderSet(); },
@@ -1121,6 +1125,7 @@ const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
     if (document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open || setDialog()?.open || helpDialog()?.open) return; // a dialog has the keys
+    if (e.key === 'Escape' && closeQuickMore(true)) { e.preventDefault(); return; }
     if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
     if (e.ctrlKey || e.metaKey) { // undo / redo (in a text box, the box's own undo); a new panel; copy the selection
@@ -1822,8 +1827,7 @@ function sheetRevisions(p) {
 }
 function sheetInfo(p) {
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
-        logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p, legendColors()), openingLegend: openingLegend(p),
+        logoHref, sheet: 'auto', ...sourceInfo(G.isFromModel(p)), ...reviewInfo(framed(p).plan), ...sheetContext(p), openingLooks: OC.openingLooks(p, legendColors()), openingLegend: openingLegend(p),
         sheetNotes: [TY.typicalNote(typicalOfPanel(p))].filter(Boolean), ...sheetRevisions(p) };
 }
 // The panel's resolved plan (framing-plan.mjs: the same calculation the plan export carries) and its drawing for the
@@ -2133,7 +2137,7 @@ function manualBlock(p, memberKey) {
     return `<div class="man-card on"><div class="man-head"><span class="set-state overridden">✎ placed by hand${MAN.isAdded(key) ? ' (a copy)' : ''}</span>
             <button class="link" data-act="man-lock" data-key="${esc(key)}" title="${MAN.isAdded(key) ? 'Remove this copy' : 'Back to where the framing rules put it'}">${MAN.isAdded(key) ? 'Remove the copy' : '🔒 Lock (back to the rules)'}</button></div>
         <div class="man-fields">${f('From left end', 'x', viewX(m, L))}${f('From bottom', 'y', m.y)}${f(m.orient === 'v' ? 'Height' : 'Length', 'len', len)}</div>
-        <div class="man-nudge"><span class="muted small">Nudge by ${esc(DT.inches(manualStep()))}</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}<span class="muted small">(the step is set in the bar over the view)</span></div>
+        <div class="man-nudge"><span class="muted small">Nudge by ${esc(fine(manualStep()))}</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}<span class="muted small">(the step is set in the bar over the view)</span></div>
         <div class="acts"><button class="secondary" data-act="man-copy" data-key="${esc(key)}">Copy</button><button class="secondary" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
             ${MAN.isAdded(key) ? '' : `<button class="secondary danger" data-act="man-remove" data-key="${esc(key)}">Remove</button>`}</div>${typeRow(p, key, m)}</div>`;
 }
@@ -2234,39 +2238,62 @@ function quickBar(host, p, f) {
     bar.className = 'quick-bar'; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Edit the selection');
     bar.innerHTML = html;
     svgBox.append(bar);
-    // Beside a stud at its middle (clear of its arrows: right of it, else left), over anything else (under it when there
-    // is no room above); inside the view.
-    const hb = hit.getBoundingClientRect(), vb = svgBox.getBoundingClientRect(), bw = bar.offsetWidth, bh = bar.offsetHeight, ox = svgBox.scrollLeft - vb.left, oy = svgBox.scrollTop - vb.top;
-    const tall = hb.height > hb.width * 3 && selection.kind === 'member';
-    let top, left;
-    if (tall) {
-        top = hb.top + oy + hb.height / 2 - bh / 2;
-        left = hb.right + ox + 30;
-        if (left + bw > svgBox.scrollLeft + svgBox.clientWidth - 4) left = hb.left + ox - 30 - bw;
-    } else {
-        top = hb.top + oy - bh - 22;
-        if (top < svgBox.scrollTop + 4) top = hb.bottom + oy + 22;
-        left = hb.left + ox + hb.width / 2 - bw / 2;
-    }
-    left = Math.max(svgBox.scrollLeft + 4, Math.min(left, svgBox.scrollLeft + svgBox.clientWidth - bw - 4));
-    top = Math.max(svgBox.scrollTop + 4, top);
-    bar.style.top = `${Math.round(top)}px`; bar.style.left = `${Math.round(left)}px`;
+    const more = bar.querySelector('.qb-more');
+    const moreKey = `${selection.kind}:${selection.key}`;
+    more.open = quickMoreKey === moreKey;
+    if (!more.open) quickMoreKey = null;
+    const place = () => {
+        const hb = hit.getBoundingClientRect(), vb = svgBox.getBoundingClientRect();
+        const bounds = { left: vb.left, right: vb.left + svgBox.clientWidth, top: vb.top, bottom: vb.top + svgBox.clientHeight };
+        const pos = barPosition(hb, bounds, bar.offsetWidth, bar.offsetHeight, hb.height > hb.width * 3 && selection.kind === 'member');
+        bar.style.left = `${Math.round(pos.left - vb.left + svgBox.scrollLeft)}px`;
+        bar.style.top = `${Math.round(pos.top - vb.top + svgBox.scrollTop)}px`;
+        const menu = more.querySelector('.qb-menu'), summary = more.querySelector('summary');
+        summary.setAttribute('aria-expanded', String(more.open));
+        if (!more.open) return;
+        menu.style.width = `${Math.min(360, svgBox.clientWidth - 8)}px`;
+        const roomBelow = bounds.bottom - pos.top - bar.offsetHeight - 8, roomAbove = pos.top - bounds.top - 8;
+        const above = roomAbove > roomBelow;
+        menu.style.maxHeight = `${Math.max(80, above ? roomAbove : roomBelow)}px`;
+        menu.style.top = above ? 'auto' : 'calc(100% + 4px)';
+        menu.style.bottom = above ? 'calc(100% + 4px)' : 'auto';
+        menu.style.left = `${Math.max(bounds.left + 4 - pos.left, Math.min(0, bounds.right - 4 - pos.left - menu.offsetWidth))}px`;
+    };
+    more.addEventListener('toggle', () => { if (!bar.isConnected) return; quickMoreKey = more.open ? moreKey : null; place(); });
+    quickBarResize = () => { if (bar.isConnected) place(); };
+    svgBox.addEventListener('scroll', quickBarResize);
+    place();
 }
+let quickMoreKey = null, quickBarResize = null;
+window.addEventListener('resize', () => quickBarResize?.());
+function closeQuickMore(focus = false) {
+    const more = main.querySelector('.qb-more[open]');
+    if (!more) return false;
+    more.open = false; quickMoreKey = null;
+    if (focus) more.querySelector('summary').focus();
+    return true;
+}
+document.addEventListener('pointerdown', e => { if (!e.target.closest('.quick-bar')) closeQuickMore(); });
+const quickMore = (html) => `<details class="qb-more"><summary title="More selection actions" aria-label="More selection actions" aria-haspopup="true" aria-expanded="false">⋯</summary><div class="qb-menu" role="group" aria-label="More selection actions">${html}</div></details>`;
+const quickIcon = (act, icon, title, attrs = '', danger = false) => `<button class="secondary qb-icon${danger ? ' danger' : ''}" data-act="${act}" ${attrs} title="${title}" aria-label="${title}">${icon}</button>`;
+
 function stepPick() {
-    return `<label class="qb-step small" title="How far each arrow moves it">Step <select data-qb-step aria-label="Move step">${STEPS.map(v => `<option value="${v}" ${Math.abs(manStep - v) < 1e-9 ? 'selected' : ''}>${esc(DT.inches(v))}</option>`).join('')}</select></label>`;
+    return `<label class="qb-step small" title="How far each arrow moves it">Step <select data-qb-step aria-label="Move step">${STEPS.map(v => `<option value="${v}" ${Math.abs(manStep - v) < 1e-9 ? 'selected' : ''}>${esc(fine(v))}</option>`).join('')}</select></label>`;
 }
 function quickMember(p, f) {
     const key = selectedLayoutKey(), lay = layoutA(), m = lay?.members.find(x => x.key === key);
     if (!m) return '';
-    const head = `<b>${esc(m.mark || '?')} ${esc(m.role)}</b><span class="muted small">${esc(m.type)}${MAN.isUnlocked(p, key) ? ' · placed by hand' : ''}</span>`;
-    if (m.parts?.length) return `${head}<span class="secondary small">A built-up member: its parts are its opening's.</span>${m.of ? `<button class="secondary small" data-act="qb-opening" data-key="${esc(m.of)}">Edit its opening</button>` : ''}`;
-    const added = MAN.isAdded(key), by = MAN.isUnlocked(p, key);
-    return `${head}${editMode ? '' : stepPick()}<span class="qb-sep"></span>
-        <button class="secondary small" data-act="man-copy" data-key="${esc(key)}" title="A copy one stud space along (a horizontal: 12&quot; up)">Copy</button>
-        <button class="secondary small" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
+    const head = `<b class="qb-name" title="${esc(`${m.mark || '?'} ${m.role} ${m.type}`)}">${esc(m.mark || '?')}</b>`;
+    const description = `<b>${esc(m.role)}</b><span class="muted small">${esc(m.type)}${MAN.isUnlocked(p, key) ? ' · placed by hand' : ''}</span>`;
+    if (m.parts?.length) return `${head}${quickMore(`${description}<span class="small">A built-up member: its parts are its opening's.</span>${m.of ? `<button class="secondary small" data-act="qb-opening" data-key="${esc(m.of)}">Edit its opening</button>` : ''}`)}`;
+    const added = MAN.isAdded(key), by = MAN.isUnlocked(p, key), attrs = `data-key="${esc(key)}"`;
+    const arrows = [['←', -1, 0, 'Nudge left'], ['→', 1, 0, 'Nudge right'], ['↓', 0, -1, 'Nudge down'], ['↑', 0, 1, 'Nudge up']]
+        .map(([icon, dx, dy, title]) => quickIcon('man-nudge', icon, title, `data-dx="${dx}" data-dy="${dy}"`)).join('');
+    return `${head}${arrows}${quickIcon('man-copy', '⧉', 'Copy', attrs)}${quickIcon(added ? 'man-lock' : 'man-remove', '×', 'Delete', attrs, true)}
+        ${quickMore(`${description}${stepPick()}
+        <button class="secondary small" data-act="man-mirror" ${attrs} title="A copy across the panel's middle, facing the other way">Mirror</button>
         <button class="secondary small" data-act="qb-type" title="Another member type for it, or for every member with its label">Type…</button>
-        ${added ? `<button class="secondary small danger" data-act="man-lock" data-key="${esc(key)}">Delete</button>` : `<button class="secondary small danger" data-act="man-remove" data-key="${esc(key)}" title="Off the panel (Reset brings it back)">Delete</button>`}
-        ${by && !added ? `<button class="link small" data-act="man-lock" data-key="${esc(key)}" title="Back to where the framing rules put it">Reset</button>` : ''}`;
+        ${by && !added ? `<button class="link small" data-act="man-lock" ${attrs} title="Back to where the framing rules put it">Reset</button>` : ''}`)}`;
 }
 function quickOpening(p) {
     const i = G.openingKeys(p).indexOf(selection.key), o = p.openings[i];
@@ -2275,11 +2302,12 @@ function quickOpening(p) {
     const fl = (label, k) => `<label class="qb-f small">${label}<input type="text" class="mini" data-f="openings.${i}.${k}" data-t="len" value="${esc(lenText(o[k]))}" autocomplete="off"></label>`;
     const fields = locked ? '<span class="small muted">🔒 the model\'s: its size and place stay</span>'
         : `${fl('Width', 'widthIn')}${o.kind === 'steel' ? '' : fl('Height', 'heightIn')}${o.kind === 'door' ? '' : fl(o.kind === 'steel' ? 'Bottom' : 'Sill', 'sillIn')}${fl(sideB() ? 'From left (side A)' : 'From left', 'leftIn')}`;
-    return `<b>${esc(G.openingName(p.openings, i))}</b>${ocTag(c)}${profileControl(p, o, i)}<span class="qb-sep"></span>${fields}<span class="qb-sep"></span>
-        <button class="secondary small" data-act="framing" data-i="${i}" title="Jambs, header, sill, offsets, and their drawings">Framing…</button>
+    return `<b class="qb-name" title="${esc(G.openingName(p.openings, i))}">${esc(G.openingName(p.openings, i))}</b>
+        ${quickIcon('framing', '⚙', 'Framing…', `data-i="${i}"`)}
+        ${locked || !(H > 0) ? '' : quickIcon('del-op', '×', 'Delete', `data-i="${i}"`, true)}
+        ${quickMore(`${ocTag(c)}${profileControl(p, o, i)}${fields}
         <button class="secondary small" data-act="qb-members" data-i="${i}" title="Its jambs, header and sill in the Openings schedule">Members</button>
-        ${typeFramingButton(p, c, i)}
-        ${locked || !(H > 0) ? '' : `<button class="secondary small danger" data-act="del-op" data-i="${i}">Delete</button>`}`;
+        ${typeFramingButton(p, c, i)}`)}`;
 }
 // The set's opening profiles and its opening colors (opening-profiles.mjs, opening-context.mjs), read forgivingly.
 function opProfiles() { return OP.cleanProfiles(set.openingProfiles) || []; }
@@ -3102,7 +3130,7 @@ function renderSetDialog() {
 // Each chosen panel's cut list (skipped: panels with inputs to fix).
 function setItems(list) {
     const items = [], skipped = [];
-    for (const p of list) { const { layout } = framed(p); if (layout) items.push({ panel: p.mark, id: p.id, layout, cutList: layout.cutList }); else skipped.push(p.mark); }
+    for (const p of list) { const { layout, plan } = framed(p); if (layout) items.push({ panel: p.mark, id: p.id, layout, cutList: layout.cutList, review: labelReview(plan, layout) }); else skipped.push(p.mark); }
     return { items, skipped };
 }
 // Every panel at a glance: its state, what is open, what is placed by hand, its typical; the checked ones take the bulk
@@ -3171,24 +3199,46 @@ function rulesOnChecked() {
 function floorTab(list) {
     const { items, skipped } = setItems(list), skip = typicalSkips(list);
     if (!items.length) return '<p class="muted">No framed panel to print.</p>';
-    const pieces = labelPieces(items.map(x => ({ panel: x.panel, cutList: x.cutList }))), sheets = Math.ceil(pieces.length / 30);
+    const pieces = labelPieces(items), sheets = Math.ceil(pieces.length / 30);
     return `${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
         <div class="sd-cards">
             <section class="sd-card"><h3>The set PDF</h3><p class="small">A cover sheet (the panel index with each sheet's number, check, typical and revision; what to buy), then each panel's sheet, with a bookmark for each.</p>
                 <div class="acts"><button data-act="set-pdf">Download (${items.length} sheet${items.length === 1 ? '' : 's'} + cover)</button>
                 ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size} + cover)</button>` : ''}</div></section>
             <section class="sd-card"><h3>Member labels</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
-                <div class="acts"><button data-act="sd-labels">Download ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button></div></section>
+                <div class="acts"><button data-act="sd-labels">Download ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button><button class="secondary" data-act="sd-label-maker">Open Label Maker (2 × 4 inch / QR)</button></div></section>
             <section class="sd-card"><h3>Cut lists</h3><p class="small">What to buy, how each bar is cut, the set's cut list: CSV for a spreadsheet or the saw.</p>
                 <div class="acts"><button class="secondary" data-act="sd-tab" data-v="stock">Cut list and stock</button></div></section>
         </div>`;
 }
+function openLabelMaker() {
+    const { items, skipped } = setItems(chosen());
+    if (!items.length) { notice('No drawable panel to make labels from.', true); return; }
+    try {
+        const labels = projectFromShop(items, { project: set.project || '' });
+        localStorage.setItem(LABEL_HANDOFF_KEY, JSON.stringify(labels));
+        let dialog = document.getElementById('shop-label-maker');
+        if (!dialog) {
+            dialog = document.createElement('dialog'); dialog.id = 'shop-label-maker'; dialog.className = 'label-maker-dialog';
+            dialog.innerHTML = '<header><b>Panel Label Maker</b><button type="button" class="secondary small" data-label-close>Back to panel shops</button></header><iframe title="Panel Label Maker" src="about:blank"></iframe>';
+            document.body.append(dialog);
+            dialog.querySelector('[data-label-close]').addEventListener('click', () => dialog.close());
+            dialog.addEventListener('close', () => dialog.querySelector('iframe').src = 'about:blank');
+            window.addEventListener('message', e => {
+                if (e.origin === location.origin && e.source === dialog.querySelector('iframe').contentWindow && e.data?.type === 'cas-label-maker:close') dialog.close();
+            });
+        }
+        dialog.querySelector('iframe').src = 'label-maker.html?from=shop&embedded=1';
+        dialog.showModal();
+        notice(`Label Maker opened for ${items.length} panels.${skipped.length ? ` Left out (inputs to fix): ${skipped.join(', ')}.` : ''} Review status is carried with each row.`);
+    } catch (err) { notice(`Label Maker could not open: ${err.message}`, true); }
+}
 function downloadLabels() {
     const { items } = setItems(chosen());
     if (!items.length) return;
-    const pieces = labelPieces(items.map(x => ({ panel: x.panel, cutList: x.cutList })));
+    const pieces = labelPieces(items);
     download(renderLabelsPdf(pieces, { project: set.project || '', title: `${set.project || 'Panel'} member labels` }), `member-labels-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
-    notice(`${pieces.length} labels downloaded (${Math.ceil(pieces.length / 30)} sheet${pieces.length > 30 ? 's' : ''} of 30): print at actual size.`);
+    notice(`${pieces.length} labels downloaded (${Math.ceil(pieces.length / 30)} sheet${pieces.length > 30 ? 's' : ''} of 30): print at actual size.${items.some(x => x.review) ? ' Preliminary or failed panels have DO NOT FABRICATE on every label.' : ''}`);
 }
 // Framing settings for every panel (universal): the studs' cutback and whether cripples and jacks are seated in the
 // tracks that receive them; how headers and sills end at the jambs (overlap or flush, with a cutback at each flush end).
@@ -3237,9 +3287,9 @@ function profilesCard() {
 function legendCard() {
     const colors = legendColors();
     return `<section class="sd-card fs-wide"><h3>Opening colors</h3>
-        <p class="small">Each opening is drawn in its trade's color, named as the shop drawings' legend names them (a mech opening cyan); each sheet lists the ones it uses.</p>
+        <p class="small">Internal standard: mechanical light cyan, electrical olive, plumbing maroon, fire red and steel teal. Unclassified MEP uses light cyan; each sheet lists the trades it uses.</p>
         <div class="legend-grid">${Object.entries(OC.TRADES).map(([t, x]) => `<label><input type="color" data-legend="${t}" value="${OC.colorOf(t, colors)}" aria-label="${esc(x.legend)} color"> ${esc(x.legend)}${colors?.[t] ? ' <span class="muted small">(this set\'s)</span>' : ''}</label>`).join('')}</div>
-        ${colors ? '<button class="link small" data-act="legend-reset">Back to the legend\'s colors</button>' : ''}</section>`;
+        ${colors ? '<button class="link small" data-act="legend-reset">Use internal standard colors</button>' : ''}</section>`;
 }
 function applyFramingSettings() {
     const d = fsDraft;
@@ -3402,7 +3452,7 @@ function typicalSkips(panels) {
     return skip;
 }
 // The cover sheet: each printed panel's sheet number and state, the set's stock to buy, what was left out.
-function coverOf(items, skipped, perTypical) {
+function coverOf(items, skipped, perTypical, allPanels) {
     const typ = typicals(), byMark = new Map(set.panels.map(p => [p.mark, p]));
     const rows = items.map(({ layout, info }, k) => {
         const p = byMark.get(info.mark), s = p ? panelState(p) : null, t = p ? TY.typicalOf(typ, p.id) : null, r = p?.revisions?.[p.revisions.length - 1];
@@ -3411,12 +3461,13 @@ function coverOf(items, skipped, perTypical) {
             typical: [t ? (t.reference ? `TYP x${t.group.members.length}` : `= ${t.group.members[0].mark}`) : '', r ? `REV ${r.n}` : ''].filter(Boolean).join(' · ') };
     });
     let stock = null;
-    try { stock = ST.nestStock(items.map(({ layout, info }) => ({ panel: info.mark, cutList: layout.cutList })), stockPrefs); } catch { stock = null; }
+    try { stock = ST.nestStock(setItems(allPanels).items, stockPrefs); } catch { stock = null; }
     return { project: set.project || '', date: today(), drawnBy: set.drawnBy || '', rows, stock,
         notes: [skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '', perTypical ? 'One sheet per typical: each typical sheet lists the other panels it frames.' : '',
-            'What to buy covers the printed sheets only' + (perTypical ? ': order each typical for every panel it frames.' : '.')] };
+            'What to buy includes every selected panel with a drawing, including all copies of typical panels. Preliminary quantities are for review only.'] };
 }
-async function downloadPdf(panels, { perTypical = false } = {}) {
+async function downloadPdf(panels, { perTypical = false, includeCover = perTypical } = {}) {
+    const allPanels = panels;
     const items = [], skipped = [];
     if (perTypical) { const skip = typicalSkips(panels); panels = panels.filter(p => !skip.has(p.id)); }
     for (const p of panels) {
@@ -3425,8 +3476,8 @@ async function downloadPdf(panels, { perTypical = false } = {}) {
     }
     if (!items.length) { notice(`Nothing to print: ${skipped.join(', ')} ${skipped.length === 1 ? 'has' : 'have'} inputs to fix.`, true); return; }
     const logo = await logoJpeg();
-    if (items.length === 1) download(renderSheetPdf(items[0].layout, items[0].info, logo), `shop-drawing-${fileName(items[0].info.mark)}.pdf`, 'application/pdf');
-    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`, { cover: coverOf(items, skipped, perTypical) }), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
+    if (items.length === 1 && !includeCover) download(renderSheetPdf(items[0].layout, items[0].info, logo), `shop-drawing-${fileName(items[0].info.mark)}.pdf`, 'application/pdf');
+    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`, { cover: coverOf(items, skipped, perTypical, allPanels) }), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
     const failed = items.filter(x => x.layout.issues.length).map(x => x.info.mark);
     notice([`${items.length} sheet${items.length === 1 ? '' : 's'} downloaded.`, skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '',
         failed.length ? `Framing check failed on ${failed.join(', ')}: marked DO NOT RELEASE.` : ''].filter(Boolean).join(' '), !!(skipped.length || failed.length));
@@ -3584,8 +3635,8 @@ window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p='
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
-const NO_PANEL_ACTS = new Set(['prof-del', 'prof-link', 'legend-reset', 'fs-apply', 'fs-reset', 'sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
-const NOT_EDITS = new Set(['fs-reset', 'sd-labels', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
+const NO_PANEL_ACTS = new Set(['prof-del', 'prof-link', 'legend-reset', 'fs-apply', 'fs-reset', 'sd-labels', 'sd-label-maker', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
+const NOT_EDITS = new Set(['fs-reset', 'sd-labels', 'sd-label-maker', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
 const ACT_LABELS = { 'prof-update': 'updating the opening profile', 'prof-reset': 'back to the opening profile', 'prof-del': 'deleting the opening profile', 'prof-link': 'the opening profile by Revit name', 'legend-reset': 'the legend colors',
     'fs-apply': 'the framing settings on every panel', 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',

@@ -1,0 +1,45 @@
+.lm-body { background:#f3f5f7; }
+.lm-body [hidden] { display:none !important; }
+.lm-bar { position:sticky;top:0;z-index:10;flex-wrap:wrap;gap:8px; }
+.lm-tag { font-size:13px;opacity:.8; }
+.lm-embedded .lm-bar .brand,.lm-embedded .lm-tag { display:none; }
+.lm-workspace { max-width:1540px;margin:0 auto;padding:20px;display:grid;grid-template-columns:minmax(0,1fr) minmax(340px,460px);gap:20px;align-items:start; }
+.lm-edit,.lm-preview { min-width:0; }
+.lm-edit>.card { margin-bottom:18px; }
+.lm-preview { position:sticky;top:78px; }
+.lm-workspace .card { padding:18px;border-radius:9px; }
+.lm-workspace h1 { margin:0;font-size:25px; }.lm-workspace h2 { margin:0 0 12px;font-size:19px; }
+.lm-step { background:#e6edf8;color:#1f5fbf;display:inline-flex;align-items:center;justify-content:center;border-radius:50%;width:26px;height:26px;font-size:14px;margin-right:6px; }
+.lm-fields { display:grid;grid-template-columns:1fr 1fr;gap:12px; }
+.lm-fields label,.lm-preview>.card>.row label { display:flex;flex-direction:column;gap:5px;font-size:13px;font-weight:600; }
+.lm-fields input:not([type=checkbox]),.lm-fields select { width:100%;box-sizing:border-box;flex:none;min-height:34px;border:1px solid #d7dbe0;border-radius:6px;padding:7px 9px; }
+.lm-table-wrap input[type=checkbox] { width:auto;min-width:0; }
+.lm-fields small { font-weight:normal;color:#657080;line-height:1.4; }
+.lm-wide { grid-column:1 / -1; }
+.lm-workspace .lm-check { display:flex;flex-direction:row;align-items:center;gap:7px;font-weight:normal; }
+.lm-workspace details { margin-top:14px;border-top:1px solid #dce1e8;padding-top:12px; }
+.lm-workspace summary { cursor:pointer;font-weight:600;font-size:13px; }
+.lm-design { margin-top:14px; }
+.lm-workspace textarea { box-sizing:border-box;width:100%;margin:10px 0;font-family:Consolas,monospace; }
+.lm-workspace button { min-height:34px; }.lm-workspace .row { flex-wrap:wrap;gap:8px; }
+.lm-table-wrap { overflow:auto;max-height:440px;margin:12px 0; }
+.lm-table-wrap table { width:100%;border-collapse:collapse;font-size:12px; }
+.lm-table-wrap th { background:#edf1f6;position:sticky;top:0;z-index:1;text-align:left; }
+.lm-table-wrap td,.lm-table-wrap th { padding:6px;border-bottom:1px solid #e0e5eb; }
+.lm-table-wrap input { min-width:60px;width:100%;box-sizing:border-box;font-size:12px;padding:6px; }
+.lm-table-wrap input[type=number] { width:64px; }.lm-table-wrap input[data-field=url] { min-width:150px; }
+.lm-table-wrap input[data-field=notes] { min-width:100px; }.lm-row-review { color:#b00020;font-size:11px;display:block;max-width:180px; }
+.lm-table-wrap button { min-width:28px;min-height:28px;padding:3px 6px; }
+.lm-callout { background:#fff8e6;border-left:3px solid #c48613;padding:10px;font-size:13px;margin:10px 0; }
+.lm-callout:empty { display:none; }.lm-count { font-weight:600;color:#1f5fbf; }
+#lm-preview-sheet { margin:14px auto;background:white;box-shadow:0 2px 9px #0002;max-width:370px; }
+#lm-preview-sheet svg { display:block;width:100%; }
+#lm-errors { font-size:12px;margin:10px 0; }#lm-errors .error { color:#b00020; }#lm-errors .warning { color:#855500; }
+#lm-status { position:fixed;bottom:14px;left:50%;transform:translateX(-50%);background:#20354c;color:white;border-radius:6px;padding:10px 16px;max-width:80%;z-index:30; }
+#lm-status:empty { display:none; }#lm-status.error { background:#8b2020; }
+#lm-crop-area { position:relative;max-height:340px;overflow:auto;background:#e7ebf0;margin:10px 0;touch-action:none; }
+#lm-source-canvas { display:block;max-width:100%;cursor:crosshair; }
+#lm-crop-box { position:absolute;border:2px solid #1f5fbf;background:#1f5fbf18;pointer-events:none;box-sizing:border-box; }
+#lm-page,#lm-pdf-page { width:60px; }#lm-ocr-text { white-space:pre-wrap;max-height:180px;overflow:auto;font-size:12px; }
+@media(max-width:1000px) { .lm-workspace { grid-template-columns:minmax(0,1fr);max-width:900px; }.lm-preview { position:static; }#lm-preview-sheet { max-width:460px; } }
+@media(max-width:550px) { .lm-workspace { padding:10px;gap:10px; }.lm-workspace .card { padding:12px; }.lm-fields { grid-template-columns:1fr; }.lm-tag { display:none; }.lm-bar { padding:8px; }.lm-bar .bar-btn { font-size:12px; }.lm-table-wrap { max-height:350px; } }

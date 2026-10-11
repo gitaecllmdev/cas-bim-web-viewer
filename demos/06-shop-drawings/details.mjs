@@ -7,6 +7,7 @@
 // (depth, flange, mils); lips are SSMA nominal, for the drawing. Screws and connections are the engineer's: marked "per the
 // engineer's detail", never counted here. A part the plan leaves unplaced (an arrangement not chosen) is not drawn as
 // framing: sectionOf says so, and the page offers the arrangements to choose from.
+import { formatDimension } from '../common/dimensions.mjs';
 import { parseMember } from './generator.mjs';
 import { profileFromDesignator } from './framing-plan.mjs';
 import { partLines } from './sheet.mjs';
@@ -95,13 +96,7 @@ function arrangementOf(kind, parts, wallIn) {
 }
 
 // Inches as written on a drawing: 3 5/8", 1 5/8", 6", 3/8".
-export function inches(v) {
-    const n = Math.round(Math.abs(v) * 16), w = Math.floor(n / 16), f = n % 16;
-    if (!f) return `${v < 0 ? '-' : ''}${w}"`;
-    let a = f, b = 16;
-    while (a % 2 === 0) { a /= 2; b /= 2; }
-    return `${v < 0 ? '-' : ''}${w ? `${w} ` : ''}${a}/${b}"`;
-}
+export const inches = (v) => formatDimension(v);
 
 const esc = (s) => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const r3 = (v) => Math.round(v * 1000) / 1000;

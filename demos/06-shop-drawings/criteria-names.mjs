@@ -10,6 +10,8 @@
 //   4. identity: a GUID and row revision from the workbook's metadata columns, or none (never derived from a name,
 //      a label or a row's position).
 
+import { formatDimension } from '../common/dimensions.mjs';
+
 // --- Lengths (ImperialLengthParser) ------------------------------------------------------------------------------------
 const FEET_INCHES = /^\s*(-)?\s*(?:(\d+(?:\.\d+)?)\s*')?\s*(?:-?\s*(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|\d+\/\d+)\s*")?\s*$/;
 const unifyQuotes = (s) => String(s).trim().replace(/[’′]/g, "'").replace(/[“”″]/g, '"');
@@ -47,17 +49,9 @@ export function parseSpacingFeet(value) {
     return m ? parseFeet(m[1]) : null;
 }
 
-// --- Display (CriteriaStyleKeyName): to 1/16", fractions reduced; display only, never a stored value ---------------
-const sixteenths = (feet) => Math.round(Math.max(0, feet) * 12 * 16); // half away from zero for these non-negative values
-const gcd = (a, b) => { while (b) [a, b] = [b, a % b]; return Math.abs(a); };
-export function formatLength(feet) {
-    const t = sixteenths(feet), ft = Math.floor(t / 192), rest = t % 192, inches = Math.floor(rest / 16), n = rest % 16, d = gcd(n, 16);
-    return `${ft}'-${inches}${n ? ` ${n / d}/${16 / d}` : ''}"`;
-}
-export function formatInches(feet) {
-    const t = sixteenths(feet), inches = Math.floor(t / 16), n = t % 16, d = gcd(n, 16);
-    return `${inches}${n ? ` ${n / d}/${16 / d}` : ''}"`;
-}
+// --- Display: nearest 1/8", display only, never a stored value -------------------------------------------------
+export const formatLength = (feet) => formatDimension(Math.max(0, feet) * 12, { feet: true, leadingZero: true });
+export const formatInches = (feet) => formatDimension(Math.max(0, feet) * 12, { leadingZero: true });
 
 // --- States: blank, zero, not applicable, varies, TBD and IGNORE are different answers ------------------------------
 const NOT_APPLICABLE = new Set(['-', 'NA', 'N/A', 'NONE', 'NOT APPLICABLE']);

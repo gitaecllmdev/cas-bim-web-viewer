@@ -5,6 +5,7 @@
 // type, length) and a legend top left; the elevation with every member tagged and Revit-style ordinate dimensions to
 // every horizontal member; top and bottom track plans with ordinates to every stud and opening; the title block.
 // Below the cut list: a 3D view of the panel (iso.mjs), every mark labelled, when the column has room for it.
+import { formatDimension } from '../common/dimensions.mjs';
 import { fmtFtIn, FUNCTIONS, isDoor, topAt, pitchText, openingKind, OPENING_KINDS, webOnRight } from '../common/framing.mjs';
 import { toPdf, toPdfSheets, toPdfPages, textWidth } from './pdf.mjs';
 import { coverPages } from './cover.mjs';
@@ -21,15 +22,20 @@ export const SHEETS = {
     'arch-e': { W: 48, H: 36, label: '36 x 48 (ARCH E)' },
 };
 const MIN_AUTO_SCALE = 1 / 48; // 1/4" = 1'-0"
+// Keep names readable when the internal legend uses a pale swatch (mechanical light cyan).
+const openingInk = (color) => {
+    const rgb = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(color || '');
+    return rgb && (parseInt(rgb[1],16)*299 + parseInt(rgb[2],16)*587 + parseInt(rgb[3],16)*114)/1000 > 180 ? '#111111' : color;
+};
 // Drawing area right of the cut list, and the room the elevation gets (the rest: plans, ordinates, view title, title block).
 const areaOf = (W, H) => ({ areaX: 4.6, areaW: W - 5.05, maxH: H - 5.8 });
-export function sheetSize(layout, pref = 'auto') {
-    if (SHEETS[pref]) return { key: pref, ...SHEETS[pref] };
+export function sheetSize(layout, pref = 'auto', minHeight = 0) {
+    if (SHEETS[pref] && SHEETS[pref].H >= minHeight) return { key: pref, ...SHEETS[pref] };
     for (const [key, sheet] of Object.entries(SHEETS)) {
         const a = areaOf(sheet.W, sheet.H);
-        if (pickScale(layout.lengthIn, layout.heightIn, a.areaW - 1.65, a.maxH)[0] >= MIN_AUTO_SCALE) return { key, ...sheet };
+        if (sheet.H >= minHeight && pickScale(layout.lengthIn, layout.heightIn, a.areaW - 1.65, a.maxH)[0] >= MIN_AUTO_SCALE) return { key, ...sheet };
     }
-    const H = 36, W = Math.ceil((layout.lengthIn * MIN_AUTO_SCALE + 5.05 + 1.65 + 0.2) / 6) * 6;
+    const H = Math.max(36, Math.ceil(minHeight / 6) * 6), W = Math.max(48, Math.ceil((layout.lengthIn * MIN_AUTO_SCALE + 5.05 + 1.65 + 0.2) / 6) * 6);
     return { key: 'custom', W, H, label: `${H} x ${W} (custom)` };
 }
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -56,7 +62,7 @@ const LIP_IN = { 125: 0.1875, 137: 0.375, 162: 0.5, 200: 0.625, 250: 0.625, 300:
 const partOf = (name) => { const r = /^(\d{3,4})([A-Z]{1,3})(\d{3})-\d{2,3}$/.exec(String(name || '').trim().toUpperCase());
     return r ? { stud: /^(S|CS|CT)$/.test(r[2]), flangeIn: Number(r[3]) / 100, lipIn: LIP_IN[r[3]] ?? 0.5 } : null; };
 const isHeadOrSill = (m) => m.orient === 'h' && (m.role === 'head track' || m.role === 'sill track');
-const inchesText = (v) => { const n = Math.round(v * 16), w = Math.floor(n / 16), f = n % 16; if (!f) return `${w}"`; let a = f, b = 16; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
+const inchesText = (v) => formatDimension(v);
 const CLOUD = '#c2185b'; // revision clouds
 // A revision cloud: a box's outline in arcs bulging outward (radius r, sheet inches), as points.
 function cloudPts(x0, y0, x1, y1, r) {
@@ -230,7 +236,7 @@ export function renderLabelsPdf(pieces, { project = '', title = 'Member labels' 
 
 export function sheetOps(layout, info) {
     const { lengthIn: L, heightIn: HT, members, cutList, openings } = layout;
-    const size = sheetSize(layout, info.sheet), { W, H } = size;
+    const size = sheetSize(layout, info.sheet, info._contentHeight || 0), { W, H } = size;
     const { areaX, areaW, maxH } = areaOf(W, H);
     const [s, scaleLabel] = pickScale(L, HT, areaW - 1.65, maxH); // leaves 0.8" each side for the elevation ordinates
     const tbY = H - 1.45, tbH = 1.2; // title block
@@ -328,7 +334,7 @@ export function sheetOps(layout, info) {
     // The openings' colors on this sheet (info.openingLegend: the trades' legend names and colors).
     if (info.openingLegend?.length) {
         ly += 0.2; out.push(text(cx, ly, 'OPENINGS', { size: 0.075, weight: 'bold' }));
-        for (const o of info.openingLegend) { ly += 0.13; out.push(rect(cx, ly - 0.08, 0.16, 0.09, { fill: o.color, stroke: o.color, width: 0.006, opacity: 0.35 })); out.push(text(cx + 0.22, ly, String(o.legend), { size: 0.065 })); }
+        for (const o of info.openingLegend) { ly += 0.13; out.push(rect(cx, ly - 0.08, 0.16, 0.09, { fill: o.color, stroke: '#555555', width: 0.006 })); out.push(text(cx + 0.22, ly, String(o.legend), { size: 0.065 })); }
     }
     // The set's notes for this sheet (info.sheetNotes: a typical's other panels, ...).
     for (const note of info.sheetNotes || []) {
@@ -355,6 +361,10 @@ export function sheetOps(layout, info) {
         for (const msg of open.slice(0, 6)) for (const ln of wrap(String(msg).toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#8a4100' })); }
         if (open.length > 6) { ly += 0.12; out.push(text(cx, ly, `+ ${open.length - 6} MORE`, { size: 0.068, weight: 'bold', fill: '#8a4100' })); }
     }
+
+    // A dense cut list and its notes must fit above the title block, too. Retry on a larger sheet without
+    // reducing text or dropping notes; geometry and cut values are unchanged.
+    if (ly > tbY - 0.2) return sheetOps(layout, { ...info, _contentHeight: ly + 1.7 });
 
     // --- 3D view of the panel in the rest of the column, down to the title block (when there is room for it)
     const isoTop = ly + 0.42, isoBottom = tbY - 0.2;
@@ -448,9 +458,9 @@ export function sheetOps(layout, info) {
         }
         // Its size inside it (as typed: the clear opening) and the rough opening as + the framing offset each side.
         {
-            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, r16 = (v) => Math.round(v * 16) / 16;
+            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, r8 = (v) => Math.round(v * 8) / 8;
             // The framing offset each side (R.O. +x when equal; by side when it varies).
-            const sides = o.clear ? { L: r16(o.clear.left - o.left), R: r16(o.right - o.clear.right), T: o.through ? null : r16(o.top - o.clear.top), B: openingKind(o) === 'door' ? null : r16(o.clear.bottom - o.bottom) } : null;
+            const sides = o.clear ? { L: r8(o.clear.left - o.left), R: r8(o.right - o.clear.right), T: o.through ? null : r8(o.top - o.clear.top), B: openingKind(o) === 'door' ? null : r8(o.clear.bottom - o.bottom) } : null;
             const vals = sides ? Object.values(sides).filter(v => v != null) : [], off = vals.length && vals.every(v => v === vals[0]) ? vals[0] : null;
             const roText = !sides ? '' : off != null ? (off > 0 ? `R.O. +${inchesText(off)}` : '') : `R.O. ${Object.entries(sides).filter(([, v]) => v != null).map(([k, v]) => `${k}+${inchesText(v)}`).join(' ')}`;
             const lines = [o.through ? `${fmtFtIn(w)} WIDE` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`, ...(roText ? [roText] : [])];
@@ -462,7 +472,7 @@ export function sheetOps(layout, info) {
                 const bw = Math.max(...lines.map(l => textWidth(l, size, true)), showName ? textWidth(nm, nSize, false) : 0) + 0.04, bh = lines.length * size * 1.25 + 0.02 + (showName ? nSize * 1.3 : 0);
                 out.push(rect(cx - bw / 2, cy - size - 0.01, bw, bh, { fill: '#ffffff', stroke: 'none', width: 0 }));
                 lines.forEach((l, k) => out.push(text(cx, cy + k * size * 1.25, l, { size, anchor: 'middle', weight: k ? 'normal' : 'bold', fill: COLORS.openingDim })));
-                if (showName) out.push(text(cx, cy + (lines.length - 1) * size * 1.25 + nSize * 1.35, nm, { size: nSize, anchor: 'middle', fill: look.color }));
+                if (showName) out.push(text(cx, cy + (lines.length - 1) * size * 1.25 + nSize * 1.35, nm, { size: nSize, anchor: 'middle', fill: openingInk(look.color) }));
                 ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - size - 0.01, y1: cy - size - 0.01 + bh });
             }
         }
@@ -471,7 +481,7 @@ export function sheetOps(layout, info) {
         const kind = openingKind(o), kt = look?.kindText || OPENING_KINDS[kind];
         if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(kt, 0.06, true) + 0.08) { // when the name fits across it
             out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(kt, 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(kt, 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
-            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, { size: 0.06, anchor: 'middle', weight: 'bold', fill: look?.kindText ? look.color : COLORS.openingDim }));
+            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, { size: 0.06, anchor: 'middle', weight: 'bold', fill: look?.kindText ? openingInk(look.color) : COLORS.openingDim }));
             ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, 0.06, 'middle'));
         }
     }
@@ -740,8 +750,8 @@ export function sheetOps(layout, info) {
     out.push(text(W - 4.3, tbY + 0.8, `DATE: ${info.date}`, { size: 0.075 }));
     out.push(text(W - 4.3, tbY + 0.97, `DRAWN: ${info.drawnBy}`, { size: 0.075 }));
     if (layout.issues) {
-        out.push(text(W - 4.3, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : 'CHECK: PASSED',
-            { size: 0.075, weight: 'bold', fill: layout.issues.length ? '#b00020' : '#1e7b34' }));
+        out.push(text(W - 4.3, tbY + 1.12, layout.issues.length ? `CHECK: FAILED (${layout.issues.length})` : open.length ? 'CHECK: PRELIMINARY' : 'CHECK: PASSED',
+            { size: 0.075, weight: 'bold', fill: layout.issues.length ? '#b00020' : open.length ? '#8a4100' : '#1e7b34' }));
     }
     if (info.qrUrl && !qrBig) {
         // No room beside the legend: the QR code to the panel page here (drawing, conditions, links, comments).

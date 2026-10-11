@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Label Maker · CAS BIM</title><link rel="stylesheet" href="panel.css"><link rel="stylesheet" href="label-maker.css"></head>
+<body class="lm-body">
+    <header class="bar lm-bar"><a class="brand" href="home.html">CAS BIM</a><b>Label Maker</b><span class="lm-tag">Panel identification labels</span>
+        <span class="spacer"></span><button id="lm-open" class="bar-btn">Open project</button><button id="lm-save" class="bar-btn">Save project</button>
+        <button id="lm-undo" class="bar-btn" disabled>Undo</button><button id="lm-redo" class="bar-btn" disabled>Redo</button>
+        <input id="lm-project-file" type="file" accept=".json" hidden></header>
+    <main class="lm-workspace">
+        <div class="lm-edit">
+            <section class="card"><h1>Make panel labels</h1><p class="muted">Import a list or extract a cut-list image, check the quantities, then print. Your files stay in this browser.</p>
+                <div class="lm-fields"><label>Project name<input id="lm-project" maxlength="200" placeholder="Project name on every label"></label>
+                    <label>Default panel ID<input id="lm-panel" maxlength="100" placeholder="e.g. P2000"></label>
+                    <label class="lm-wide">Default QR link<input id="lm-url" type="url" placeholder="https://... (optional)"><small>Use a shared drawing link accessible to the person scanning. No link is opened by this tool.</small></label></div>
+                <p id="lm-saved" class="muted small">Saved in this browser as you work. Save project downloads a reusable file.</p>
+                <div id="lm-handoff" class="lm-callout" hidden><b>Labels from Panel Shop Generator</b><p id="lm-handoff-summary"></p><button id="lm-handoff-use">Use these rows</button><button id="lm-handoff-dismiss" class="secondary">Keep current project</button></div></section>
+            <section class="card"><h2><span class="lm-step">1</span> Bring in the list</h2>
+                <div class="row"><button id="lm-import">Import CSV / Excel</button><input id="lm-data-file" type="file" accept=".csv,.tsv,.txt,.xlsx" hidden>
+                    <button id="lm-image" class="secondary">Open image / PDF</button><input id="lm-image-file" type="file" accept="image/png,image/jpeg,image/webp,.pdf" hidden>
+                    <button id="lm-paste-image" class="secondary">Paste screenshot</button><button id="lm-demo" class="link">Try an example</button></div>
+                <details><summary>Paste a table</summary><p class="small muted">Cut list: Mark and Qty. Avery list: Panel, Mark, QR Link, Notes, Project. Headers are optional.</p>
+                    <label class="lm-check"><input type="checkbox" id="lm-cutlist" checked> This is a cut list (Mark, Qty)</label>
+                    <textarea id="lm-paste" rows="4" aria-label="Paste table" placeholder="Mark&#9;Qty&#10;C0&#9;12&#10;T0&#9;2"></textarea><button id="lm-read-paste">Read pasted rows</button></details>
+                <div id="lm-source" hidden><p class="small">Drag around the <b>Mark and Qty columns</b> to crop; drag again to change it. Crop tightly to keep other numbers out.</p>
+                    <div class="row" id="lm-pdf-pages" hidden><label>PDF page <input id="lm-pdf-page" type="number" min="1" value="1"></label><button id="lm-pdf-show" class="secondary small">Show page</button><span id="lm-pdf-count" class="small"></span></div>
+                    <div id="lm-crop-area"><canvas id="lm-source-canvas" aria-label="Source image: drag to crop Mark and Qty columns"></canvas><div id="lm-crop-box" hidden></div></div>
+                    <div class="row"><button id="lm-extract">Extract Table</button><button id="lm-crop-reset" class="secondary">Use whole image</button><button id="lm-source-close" class="link">Close image</button><button id="lm-cancel" class="secondary" hidden>Cancel</button></div>
+                    <p class="muted small">Image extraction downloads an OCR reader and English model on first use, then runs locally. Always compare the proposed quantities with the source.</p></div>
+                <div id="lm-candidates" hidden><h3>Review imported rows</h3><p id="lm-candidate-summary"></p><div id="lm-candidate-table" class="lm-table-wrap"></div>
+                    <label id="lm-ocr-confirm-label" class="lm-check" hidden><input id="lm-ocr-confirm" type="checkbox"> I checked the extracted marks and quantities against the source.</label>
+                    <div id="lm-import-issues" class="lm-callout"></div><details id="lm-ocr-details" hidden><summary>Original extracted text</summary><pre id="lm-ocr-text"></pre></details>
+                    <div class="row"><button id="lm-append">Add to list</button><button id="lm-replace" class="secondary">Replace list</button><button id="lm-discard" class="link">Discard</button></div></div></section>
+            <section class="card"><div class="row"><h2><span class="lm-step">2</span> Check the labels</h2><span class="spacer"></span><button id="lm-add" class="secondary">Add row</button></div>
+                <p class="small muted">One row per member mark. Qty makes that many labels. Blank panel, link or project uses the defaults above.</p>
+                <div id="lm-table" class="lm-table-wrap"></div><p id="lm-count" class="lm-count"></p></section>
+        </div>
+        <aside class="lm-preview">
+            <section class="card"><h2><span class="lm-step">3</span> Preview &amp; print</h2><p><b>Avery 5137 / 5163</b> · 2 × 4 inch · 10 labels · Letter</p>
+                <div class="row"><label>Show panel<select id="lm-filter"><option value="">All panels</option></select></label><label>Sheet <input id="lm-page" type="number" min="1" value="1"></label><span id="lm-pages"></span></div>
+                <div id="lm-preview-sheet" aria-label="Label sheet preview"></div>
+                <div id="lm-errors" role="status" aria-live="polite"></div>
+                <div class="row"><button id="lm-pdf">Download print PDF</button><button id="lm-csv" class="secondary">Export Avery CSV</button></div>
+                <p class="small muted">Print at <b>Actual size / 100%</b> on Letter. Turn off Fit to page. Test on plain paper against a label sheet before printing a batch.</p>
+                <details><summary>Edit all labels / print setup</summary><div class="lm-fields lm-design">
+                    <label>Panel text (pt)<input data-design="panelPt" type="number" min="12" max="48"></label><label>Mark text (pt)<input data-design="markPt" type="number" min="12" max="48"></label>
+                    <label>Project text (pt)<input data-design="projectPt" type="number" min="5" max="12"></label><label>First label slot<input data-design="startSlot" type="number" min="1" max="10"><small>Across, then down; skips used labels on sheet 1.</small></label>
+                    <label>Horizontal shift (mm)<input data-design="offsetXmm" type="number" min="-3" max="3" step="0.5"></label><label>Vertical shift (mm)<input data-design="offsetYmm" type="number" min="-3" max="3" step="0.5"></label>
+                    <label class="lm-check"><input data-design="showQr" type="checkbox"> QR code</label><label class="lm-check"><input data-design="showLogo" type="checkbox"> Logo</label>
+                    <label class="lm-check"><input data-design="showNotes" type="checkbox"> Notes</label><label class="lm-check"><input data-design="numbered" type="checkbox"> Piece number (1/n)</label>
+                    <label class="lm-wide">Logo<input id="lm-logo-file" type="file" accept="image/png,image/jpeg,image/webp"><small>Upload your company logo to match your label standard. It is kept with the saved project.</small></label>
+                    <button id="lm-default-logo" class="secondary">Use CAS logo</button><button id="lm-proof" class="secondary">Download alignment proof</button>
+                    <label class="lm-check lm-wide"><input id="lm-csv-header" type="checkbox"> Include CSV column headings (off matches the local exporter)</label>
+                </div></details></section>
+        </aside>
+    </main><div id="lm-status" role="status" aria-live="polite"></div>
+    <script type="module" src="label-maker.js"></script>
+</body></html>

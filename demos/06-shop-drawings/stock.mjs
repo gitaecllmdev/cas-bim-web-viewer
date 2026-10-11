@@ -68,7 +68,10 @@ export function purchaseCsv(plan) {
 }
 export function cutPlanCsv(plan) {
     const rows = [['Member type', 'Bar', 'Stock length', 'Cut', 'Cut length', 'Cut length (in)', 'Panel', 'Mark', 'Waste on bar (in)']];
-    for (const t of plan.types) t.bars.forEach((b, i) => b.cuts.forEach((c, k) => rows.push([t.type, i + 1, fmtFtIn(b.stockIn), k + 1, fmtFtIn(c.lengthIn), c.lengthIn, c.panel, c.mark, k ? '' : b.wasteIn])));
+    for (const t of plan.types) {
+        t.bars.forEach((b, i) => b.cuts.forEach((c, k) => rows.push([t.type, i + 1, fmtFtIn(b.stockIn), k + 1, fmtFtIn(c.lengthIn), c.lengthIn, c.panel, c.mark, k ? '' : b.wasteIn])));
+        for (const c of t.long) rows.push([t.type, 'CUT TO LENGTH', fmtFtIn(c.lengthIn), 1, fmtFtIn(c.lengthIn), c.lengthIn, c.panel, c.mark, 0]);
+    }
     return csv(rows);
 }
 export function setCutListCsv(rows) {

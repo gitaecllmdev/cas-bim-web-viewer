@@ -4,18 +4,19 @@
 // Context only: nothing here changes a member, the plan or the export (the inserts ride along as they came).
 import { openingKeys, isFromModel, kindOf } from './generator.mjs';
 
-// Trade colors, as the shop drawings' legend names them (legend: its sub-name on the sheet; an MEP or mech opening
-// cyan). Each can be set for the set (set.legendColors, by trade): pass it as colors.
+// Internal shop legend supplied 2026-10-11: mechanical light cyan, electrical olive, plumbing maroon,
+// fire red and steel teal. Unclassified MEP uses mechanical cyan until its trade is known.
+// Each can be set for the set (set.legendColors, by trade): pass it as colors.
 export const TRADES = {
     doors: { label: 'Doors', color: '#a0522d', legend: 'DOOR' },
     windows: { label: 'Windows', color: '#2e86c1', legend: 'WINDOW' },
-    structural: { label: 'Structural steel', color: '#616a6b', short: 'STEEL', legend: 'STEEL OPENING' },
-    mechanical: { label: 'Mechanical (HVAC)', color: '#00acc1', short: 'MECH', legend: 'MECH OPENING' },
-    plumbing: { label: 'Plumbing', color: '#229954', short: 'PLUMBING', legend: 'PLUMBING OPENING' },
-    electrical: { label: 'Electrical', color: '#d68910', short: 'ELECTRICAL', legend: 'ELECTRICAL OPENING' },
-    fire: { label: 'Fire protection', color: '#cb4335', short: 'FIRE PROT.', legend: 'FIRE PROTECTION OPENING' },
+    structural: { label: 'Structural steel', color: '#008080', short: 'STEEL', legend: 'STEEL OPENING' },
+    mechanical: { label: 'Mechanical (HVAC)', color: '#d8ffff', short: 'MECH', legend: 'MECH OPENING' },
+    plumbing: { label: 'Plumbing', color: '#800000', short: 'PLUMBING', legend: 'PLUMBING OPENING' },
+    electrical: { label: 'Electrical', color: '#808000', short: 'ELECTRICAL', legend: 'ELECTRICAL OPENING' },
+    fire: { label: 'Fire protection', color: '#ff0000', short: 'FIRE PROT.', legend: 'FIRE PROTECTION OPENING' },
     openings: { label: 'Wall opening', color: '#5d6d7e', short: 'OPENING', legend: 'WALL OPENING' },
-    mep: { label: 'MEP opening', color: '#00bcd4', legend: 'MEP OPENING' },
+    mep: { label: 'MEP opening', color: '#d8ffff', legend: 'MEP OPENING' },
     other: { label: 'Other', color: '#7f8c8d', legend: 'OTHER OPENING' },
 };
 // A trade's color: the set's own (colors: { trade: '#rrggbb' }), else the legend's.

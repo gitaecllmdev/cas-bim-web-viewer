@@ -9,6 +9,7 @@
 //   the SSMA placeholder tables in samples/takeoff-rules.json ("placeholder": typical values, not engineered);
 //   else the assembly default (flagged "out of range").
 // Pure functions (no Viewer); tests/criteria.test.js checks them.
+import * as N from '../06-shop-drawings/criteria-names.mjs';
 import { memberType } from '../common/framing.mjs';
 
 export const FINISH_CLASSES = ['GYP', 'TILE', 'SHAFT'];
@@ -23,19 +24,18 @@ export const SOURCES = {
 
 // SSMA designator, e.g. 600S162-33, 362SLT250-43, 250CT-22, (2)600S250-68 (two per location).
 // Returns { qty, depthIn, profile, flangeIn, mils, name } or null.
+const memberOf = ({ qty, designator: d }) => ({ qty, depthIn: Number(d.depthCode) / 100, profile: d.profile,
+    flangeIn: d.flangeCode ? Number(d.flangeCode) / 100 : null, mils: d.mils, name: d.normalized });
 export function parseDesignator(text) {
-    const m = /^\s*(?:\((\d+)\)\s*)?(\d{3})\s*([A-Z]{1,3})\s*-?\s*(\d{2,3})?\s*-\s*(\d{2,3})\s*$/i.exec(String(text || '').replace(/\s+WITH[\s\S]*$|\s+OR[\s\S]*$/i, ''));
-    if (!m) return null;
-    const [, qty, depth, profile, flange, mils] = m;
-    const name = `${depth}${profile.toUpperCase()}${flange || ''}-${mils}`;
-    return { qty: Number(qty || 1), depthIn: Number(depth) / 100, profile: profile.toUpperCase(), flangeIn: flange ? Number(flange) / 100 : null, mils: Number(mils), name };
+    const spec = N.parseMemberSpec(text), first = spec.alternatives?.[0]?.[0];
+    return first ? memberOf(first) : null;
 }
 
-// A member spec: parts joined by WITH, each the first of its OR alternatives: "(2) 600S162-33 WITH (2) 600T125-33".
-// Returns { parts: [{ qty, name }], alt: true when an OR alternative was left out } or null.
+// Demo 2 retains its first-alternative preview and alt flag, using the shared parser's grouping.
+// Invalid combined parts fail as a whole instead of silently being dropped.
 export function parseMemberSpec(text) {
-    const parts = String(text || '').split(/\bWITH\b/i).map(p => parseDesignator(p.split(/\bOR\b/i)[0])).filter(Boolean);
-    return parts.length ? { parts: parts.map(d => ({ qty: d.qty, name: d.name })), alt: /\bOR\b/i.test(String(text)) } : null;
+    const spec = N.parseMemberSpec(text), first = spec.alternatives?.[0];
+    return first ? { parts: first.map(i => ({ qty: i.qty, name: i.designator.normalized })), alt: spec.alternatives.length > 1 } : null;
 }
 
 // Studs (S, CS, CT) count as studs; tracks (T, SLT, JR, U, ...) as track.
@@ -43,10 +43,13 @@ export const isStudProfile = (name) => /^\d{3}(S|CS|CT)\d*-/.test(name || '');
 
 // 14' - 0", 18'-6", 12'-11", 16", 3/4" -> inches (null if unreadable).
 export function parseFeetInches(text) {
-    const s = String(text || '').replace(/[″”]/g, '"').replace(/[′’]/g, "'").trim();
-    const m = /^(?:(\d+(?:\.\d+)?)\s*'\s*-?\s*)?(?:(\d+(?:\.\d+)?)?(?:\s*(\d+)\/(\d+))?\s*"?)?$/.exec(s);
-    if (!m || (!m[1] && !m[2] && !m[3])) return null;
-    return Number(m[1] || 0) * 12 + Number(m[2] || 0) + (m[3] ? Number(m[3]) / Number(m[4]) : 0);
+    // This legacy API takes bare numbers in inches; the authored workbook parser takes them in feet.
+    // Add only a missing inch quote, then reuse its fractional/feet grammar without display rounding.
+    let s = String(text ?? '').replace(/[“”″]/g, '"').replace(/[′’]/g, "'").trim();
+    if (!s) return null;
+    if (!/['"]$/.test(s)) s += '"';
+    const feet = N.parseFeet(s);
+    return feet != null && feet >= 0 ? feet * 12 : null;
 }
 
 // "0 TO 3'-6"" -> [0, 42]; " 3'-6" TO 6'-6"" -> [42, 78].

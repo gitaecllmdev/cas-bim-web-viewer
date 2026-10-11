@@ -8,6 +8,7 @@
 // A model's panel (panel.revit, in a set with levels and grids) has defaults from the model: its base level (the panel
 // sits baseOffsetIn above it), the next level up (from the panel's top), and every grid that crosses the wall's location
 // line, measured along it from the panel's left end (revit.leftEnd).
+import { formatDimension } from '../common/dimensions.mjs';
 import { shapeTop } from './generator.mjs';
 
 export const PLACES = ['at', 'above', 'below'];
@@ -75,12 +76,6 @@ export function contextLines(panel, set = null) {
     return { show: !!own?.show, levels, grids: (src.grids || []).map(g => ({ ...g })), fromModel: !own && !!model };
 }
 // Inches as a drawing writes them: 1'-0", 8", 1/2".
-export function fmtIn(v) {
-    const n = Math.round(Math.abs(v) * 16), ft = Math.floor(n / 192), rest = n - ft * 192, inch = Math.floor(rest / 16), f = rest % 16;
-    let frac = '';
-    if (f) { let a = f, b = 16; while (a % 2 === 0) { a /= 2; b /= 2; } frac = `${a}/${b}`; }
-    const ins = `${inch || (!frac && ft) ? inch : ''}${frac ? `${inch ? ' ' : ''}${frac}` : ''}`;
-    return ft ? `${ft}'-${ins || '0'}"` : `${ins || '0'}"`;
-}
+export const fmtIn = (v) => formatDimension(Math.abs(v), { compactFeet: true });
 // The sheet's level lines (sheet.mjs info.elev.levels: { name, y } from the panel's bottom).
 export const sheetLevels = (ctx) => (ctx.show ? ctx.levels.map(l => ({ name: l.name, y: l.yIn })) : []);
