@@ -325,6 +325,11 @@ export function sheetOps(layout, info) {
         for (const r of info.revisions.slice(-5)) for (const ln of wrap(`${r.n} · ${r.date}${r.note ? ` · ${String(r.note).toUpperCase()}` : ''}`, 0.065, tableW)) { ly += 0.11; out.push(text(cx, ly, ln, { size: 0.065 })); }
         if (info.clouds?.pending) { ly += 0.12; out.push(text(cx, ly, `CLOUDED: CHANGES SINCE REVISION ${info.clouds.rev}, NOT ISSUED YET`, { size: 0.065, weight: 'bold', fill: CLOUD })); }
     }
+    // The openings' colors on this sheet (info.openingLegend: the trades' legend names and colors).
+    if (info.openingLegend?.length) {
+        ly += 0.2; out.push(text(cx, ly, 'OPENINGS', { size: 0.075, weight: 'bold' }));
+        for (const o of info.openingLegend) { ly += 0.13; out.push(rect(cx, ly - 0.08, 0.16, 0.09, { fill: o.color, stroke: o.color, width: 0.006, opacity: 0.35 })); out.push(text(cx + 0.22, ly, String(o.legend), { size: 0.065 })); }
+    }
     // The set's notes for this sheet (info.sheetNotes: a typical's other panels, ...).
     for (const note of info.sheetNotes || []) {
         for (const ln of wrap(String(note).toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, weight: 'bold', fill: '#1f3a5f' })); }
@@ -443,8 +448,12 @@ export function sheetOps(layout, info) {
         }
         // Its size inside it (as typed: the clear opening) and the rough opening as + the framing offset each side.
         {
-            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, off = o.clear ? Math.round((o.clear.left - o.left) * 16) / 16 : 0;
-            const lines = [o.through ? `${fmtFtIn(w)} WIDE` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`, ...(off > 0 ? [`R.O. +${inchesText(off)}`] : [])];
+            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, r16 = (v) => Math.round(v * 16) / 16;
+            // The framing offset each side (R.O. +x when equal; by side when it varies).
+            const sides = o.clear ? { L: r16(o.clear.left - o.left), R: r16(o.right - o.clear.right), T: o.through ? null : r16(o.top - o.clear.top), B: openingKind(o) === 'door' ? null : r16(o.clear.bottom - o.bottom) } : null;
+            const vals = sides ? Object.values(sides).filter(v => v != null) : [], off = vals.length && vals.every(v => v === vals[0]) ? vals[0] : null;
+            const roText = !sides ? '' : off != null ? (off > 0 ? `R.O. +${inchesText(off)}` : '') : `R.O. ${Object.entries(sides).filter(([, v]) => v != null).map(([k, v]) => `${k}+${inchesText(v)}`).join(' ')}`;
+            const lines = [o.through ? `${fmtFtIn(w)} WIDE` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`, ...(roText ? [roText] : [])];
             const size = Math.min(0.07, ((o.right - o.left) * s * 0.9) / (Math.max(...lines.map(l => l.length)) * 0.62));
             if (size >= 0.04) {
                 const cx = X((o.left + o.right) / 2), cy = Y(o.bottom + (o.top - o.bottom) * 0.3);

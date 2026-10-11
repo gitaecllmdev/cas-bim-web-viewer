@@ -20,6 +20,7 @@ import * as R from './demos/06-shop-drawings/opening-rules.mjs';
 import * as MAN from './demos/06-shop-drawings/manual.mjs';
 import * as CL from './demos/06-shop-drawings/context-lines.mjs';
 import * as OC from './demos/06-shop-drawings/opening-context.mjs';
+import * as OP from './demos/06-shop-drawings/opening-profiles.mjs';
 import * as ST from './demos/06-shop-drawings/stock.mjs';
 import * as TY from './demos/06-shop-drawings/typical.mjs';
 import * as RV from './demos/06-shop-drawings/revisions.mjs';
@@ -159,6 +160,10 @@ main.addEventListener('change', (e) => {
     if (e.target.closest('[data-style], [data-style-q], [data-style-pick]')) { styleChange(e.target); return; }
     const prof = e.target.closest('[data-op-prof]');
     if (prof) { pickOpeningProfile(prof.dataset.opProf, prof.value); return; }
+    const opProf = e.target.closest('[data-op-profile]');
+    if (opProf) { pickProfile(cur(), Number(opProf.dataset.opProfile), opProf.value); return; }
+    const addProf = e.target.closest('[data-add-profile]');
+    if (addProf) { const v = addProf.value; addProf.value = ''; if (v) addFromProfile(cur(), v); return; }
     const pick = e.target.closest('[data-pick]');
     if (pick) { pickMember(pick.dataset.pick, pick.value); if (pick.closest('#sk-menu')) closeMenu(); return; }
     if (e.target.id === 'combo') { applyCombo(e.target.value); return; }
@@ -309,6 +314,11 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'rev-issue': () => issueRevision(p),
         'view-compare': () => setView('compare'),
         'type-framing': () => typeFraming(p, i),
+        'prof-update': () => updateProfile(p, i),
+        'prof-reset': () => pickProfile(p, i, p.openings[i]?.profile),
+        'prof-del': () => deleteProfile(b.dataset.v),
+        'prof-link': () => linkProfile(b.dataset.v),
+        'legend-reset': () => { delete set.legendColors; changed(); renderAll(); renderSetDialog(); notice('Opening colors: the legend\'s again.'); },
         'qb-type': () => { const el = $('#man-type-in'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); el.select(); } },
         'qb-opening': () => selectTarget({ kind: 'opening', key: b.dataset.key }),
         'qb-members': () => { prefs.bottom = 'openings'; prefs.bottomOpen = true; storePrefs(); renderBottom(current); main.querySelector('.sch-table tr.selected')?.scrollIntoView({ block: 'nearest' }); },
@@ -457,11 +467,12 @@ function addPoint(p) {
 }
 // A new opening of a kind: its usual size, centered when that spot is free, else right of the last one; then the
 // catalogue asks for its members.
-function addOpening(p, kind) {
+// base: the new opening as given (an opening profile's: opening-profiles.mjs), only placed here.
+function addOpening(p, kind, base = null) {
     const { lengthIn: L, heightIn: H } = G.shapeTop(p.shape), type = G.OPENING_TYPES[kind];
     const prev = [...p.openings].reverse().find(o => o.kind === kind), size = type.size;
-    const o = { kind, widthIn: prev?.widthIn ?? size.widthIn, heightIn: kind === 'steel' ? 0 : prev?.heightIn ?? Math.min(size.heightIn, H - 12), head: '', jamb: '', sill: '' };
-    o.sillIn = kind === 'door' ? 0 : kind === 'steel' ? prev?.sillIn ?? Math.max(3, H - 24) : prev?.sillIn ?? Math.min(size.sillIn, Math.max(3, H - o.heightIn - 12));
+    const o = base ? { ...base } : { kind, widthIn: prev?.widthIn ?? size.widthIn, heightIn: kind === 'steel' ? 0 : prev?.heightIn ?? Math.min(size.heightIn, H - 12), head: '', jamb: '', sill: '' };
+    if (!base) o.sillIn = kind === 'door' ? 0 : kind === 'steel' ? prev?.sillIn ?? Math.max(3, H - 24) : prev?.sillIn ?? Math.min(size.sillIn, Math.max(3, H - o.heightIn - 12));
     const free = (left) => p.openings.every(x => left + o.widthIn + 6 <= x.leftIn || left >= x.leftIn + x.widthIn + 6);
     // Centered when free, else the first free spot from the left (6" steps); with no room anywhere, centered (the check
     // then says it overlaps).
@@ -477,6 +488,16 @@ function selectNew(p, i) {
     renderCatalogue(); renderChips(); changed();
     const o = p.openings[i], type = G.OPENING_TYPES[o.kind];
     notice(`${G.openingName(p.openings, i)} (${G.kindWord(o.kind)}) added: pick its ${type.members.map(k => G.MEMBER_LABELS[k].toLowerCase()).join(', ')} beside the elevation. Drag it, or use the arrow keys, to place it.`);
+}
+// An opening from a profile (Draw: + From a profile): its kind, its framing, the profile's first size; placed free.
+function addFromProfile(p, name) {
+    const prof = OP.findProfile(opProfiles(), name);
+    if (!p || !prof) return;
+    historyHint = { label: `the opening from ${prof.name}` };
+    addOpening(p, prof.kind, OP.openingFromProfile(prof));
+    ask = null;
+    const i = p.openings.length - 1, o = p.openings[i];
+    notice(`${G.openingName(p.openings, i)} added from ${prof.name}: ${sizeText(o)}, ${framingWords(prof.framing) || 'the panel defaults'}. Drag it into place; type its width or height where this one differs.`);
 }
 
 // --- Rendering ---------------------------------------------------------------------------------------------------------
@@ -722,7 +743,9 @@ function renderTools() {
                 : '<button class="secondary" disabled title="Locked: the Revit model\'s perimeter">🔒 Perimeter</button>'}
             ${t('opening', '▭ Draw an opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}
             ${t('clip', '◫ Clips', 'Click near a stud to put a clip on it (on its web); click a clip to remove it; or clip every stud at a height')}</div>
-        <span class="add-label">Add</span>${Object.entries(G.OPENING_TYPES).map(([k, ty]) => `<button class="add-op ${k}" data-act="add-op" data-kind="${k}">+ ${esc(ty.name)}</button>`).join('')}`;
+        <span class="add-label">Add</span>${Object.entries(G.OPENING_TYPES).map(([k, ty]) => `<button class="add-op ${k}" data-act="add-op" data-kind="${k}">+ ${esc(ty.name)}</button>`).join('')}
+        ${opProfiles().length ? `<select class="add-prof" data-add-profile aria-label="Add an opening from a profile" title="A new opening of a profile: its framing and its first size"><option value="">+ From a profile…</option>
+            ${opProfiles().map(x => `<option value="${esc(x.name)}">${esc(x.name)} (${esc(G.OPENING_TYPES[x.kind].name)}, ${esc(sizeText(x))})</option>`).join('')}</select>` : ''}`;
     renderHint();
 }
 function renderHint() {
@@ -805,7 +828,7 @@ function renderSketch() {
     // Where the studs will be: their centerlines (side A), cripples as short ones.
     if (tool !== 'perimeter' && valid) parts.push(centerlines(p, H, top));
     // Openings.
-    const boxes = p.openings.map(o => G.openingBox(o, H)), skCtx = OC.openingContexts(p);
+    const boxes = p.openings.map(o => G.openingBox(o, H)), skCtx = OC.openingContexts(p, legendColors());
     if (tool !== 'perimeter') p.openings.forEach((o, i) => {
         const b = boxes[i], w = b.right - b.left, topY = b.through ? Math.max(at(b.left), at(b.right)) + fs * 0.6 : b.top, h = topY - b.bottom;
         if (!(w > 0 && h > 0)) return;
@@ -1479,7 +1502,9 @@ function renderFraming() {
             ${type.members.includes('sill') ? profileRow('sill') : ''}
             <div class="fd-ro-line">Rough opening <b>${esc(kind === 'steel' ? `${fmtFtIn(fr.ro.right - fr.ro.left)} wide` : `${fmtFtIn(fr.ro.right - fr.ro.left)} x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`)}</b>
                 <label>offset <input type="text" class="mini" data-fd="offset" value="${esc(inch(off))}" aria-label="Framing offset"></label>
-                ${d.offsetIn != null && d.offsetIn !== '' ? `<button type="button" class="link small" data-fd="offsetReset">${esc(inch(G.FRAMING_OFFSETS[kind]))} default</button>` : ''}</div>
+                ${d.offsetIn != null && d.offsetIn !== '' ? `<button type="button" class="link small" data-fd="offsetReset">${esc(inch(G.FRAMING_OFFSETS[kind]))} default</button>` : ''}
+                <label class="fd-check fd-vary" title="Equal on every side unless unlocked"><input type="checkbox" data-fd="offsetsVary" ${d.offsets ? 'checked' : ''}> ${d.offsets ? '🔓' : '🔒'} Vary by side</label>
+                ${d.offsets ? `<span class="fd-sides">${offsetSides(d).map(([k, label]) => `<label>${label} <input type="text" class="mini" data-fd="offsetSide" data-k="${k}" value="${esc(fine(G.offsetsOf(d)[k]))}" aria-label="Framing offset, ${label.toLowerCase()}"></label>`).join('')}</span>` : ''}</div>
             <details class="fd-more" ${fd.more ? 'open' : ''}><summary>More options</summary>
                 <label class="fd-check"><input type="checkbox" data-fd="toLayout" ${d.toLayout ? 'checked' : ''}> <span>Jambs on the stud layout (the nearest studs on center are the jambs)<br><small class="muted">${esc(toLayoutNote(panel, fd.i))}</small></span></label>
                 <label class="fd-check"><input type="checkbox" data-fd="crippleEnds" ${d.crippleEnds ? 'checked' : ''}> A cripple at each end of the header and sill, against the jambs</label>
@@ -1657,6 +1682,8 @@ function refreshOpeningRule() {
     rows.innerHTML = memberRows(p, sel) + tail;
 }
 // A profile picked beside the elevation for the selected opening (Custom…: the dialog, its editor open).
+// The sides of a rough opening that take a framing offset: a door none at its bottom, a steel penetration none on top.
+const offsetSides = (o) => [['left', 'Left'], ['right', 'Right'], ...(o.kind === 'steel' ? [] : [['top', 'Top']]), ...(o.kind === 'door' ? [] : [['bottom', 'Bottom']])];
 function pickOpeningProfile(kind, value) {
     const p = cur(), i = sel;
     if (i == null || !p.openings[i]) return;
@@ -1691,15 +1718,22 @@ function framingInput(e) {
     if (k === 'cancel') { frDialog().close(); return; }
     if (k === 'apply') { applyFraming(); return; }
     if (k === 'save-name') { fd.saveAs[kind] = String(v); return; }
+    if (k === 'offsetSide' && e.type === 'input') { // the preview follows as a side is typed
+        const n = G.parseLength(String(v)), box = frDialog().querySelector('.fd-svg');
+        if (n != null && n >= 0) { d.offsets = { ...(d.offsets || {}), [kind]: round16(n) }; if (box) box.innerHTML = framingPreview(draftPanel()).svg; }
+        return;
+    }
     if (k === 'offset' && e.type === 'input') {
         const n = G.parseLength(String(v));
         const box = frDialog().querySelector('.fd-svg');
         if (n != null) { d.offsetIn = round16(n); if (box) box.innerHTML = framingPreview(draftPanel()).svg; }
         return;
     }
-    if (k === 'reset') { const r = { ...d, head: '', jamb: '', sill: '' }; for (const f of ['offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout']) delete r[f]; openFraming(fd.i, r); return; }
+    if (k === 'reset') { const r = { ...d, head: '', jamb: '', sill: '' }; for (const f of ['offsets', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout']) delete r[f]; openFraming(fd.i, r); return; }
     if (k === 'offset') { const n = G.parseLength(String(v)); if (n == null) return; d.offsetIn = round16(n); }
     else if (k === 'offsetReset') delete d.offsetIn;
+    else if (k === 'offsetsVary') { if (v) d.offsets = Object.fromEntries(offsetSides(d).map(([s]) => [s, G.offsetsOf(d)[s]])); else delete d.offsets; }
+    else if (k === 'offsetSide') { const n = G.parseLength(String(v)); if (n == null || n < 0) return; d.offsets = { ...(d.offsets || {}), [kind]: round16(n) }; }
     else if (k === 'toLayout') { if (v) d.toLayout = true; else delete d.toLayout; }
     else if (k === 'crippleEnds') { if (v) d.crippleEnds = true; else delete d.crippleEnds; }
     else if (k === 'spread') fd.spread = !!v;
@@ -1789,7 +1823,7 @@ function sheetRevisions(p) {
 function sheetInfo(p) {
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p),
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p, legendColors()), openingLegend: openingLegend(p),
         sheetNotes: [TY.typicalNote(typicalOfPanel(p))].filter(Boolean), ...sheetRevisions(p) };
 }
 // The panel's resolved plan (framing-plan.mjs: the same calculation the plan export carries) and its drawing for the
@@ -2026,7 +2060,7 @@ function renderInspectorContext(p, f) {
         return;
     }
     // The panel (nothing selected, or an opening: its editor is in Openings below).
-    const L = f.layout, fx = focusOf(box), octx = new Map(OC.openingContexts(p).map(c => [c.key, c])), loose = OC.unframedInserts(p);
+    const L = f.layout, fx = focusOf(box), octx = new Map(OC.openingContexts(p, legendColors()).map(c => [c.key, c])), loose = OC.unframedInserts(p, legendColors());
     box.innerHTML = `<div class="ctx-card"><h3 class="ctx-title"><input class="ctx-mark" type="text" data-f="mark" value="${esc(p.mark)}" placeholder="Panel mark" aria-label="Panel mark (rename this panel)" title="Rename this panel" autocomplete="off" spellcheck="false">${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
         <dl><dt>Geometry</dt><dd>${own.geometry === 'model' ? `<span class="own model" title="${esc(`Revit wall ${p.revit?.uniqueId || ''}`)}">🔒 the Revit wall's: outline and openings locked</span>` : '<span class="own typed">typed or drawn here: editable</span>'}</dd>
             ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${ocTag(octx.get(o.key))}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
@@ -2237,15 +2271,110 @@ function quickMember(p, f) {
 function quickOpening(p) {
     const i = G.openingKeys(p).indexOf(selection.key), o = p.openings[i];
     if (!o) return '';
-    const c = OC.openingContexts(p)[i], locked = G.isLockedOpening(p, o), H = G.shapeTop(p.shape).heightIn;
+    const c = OC.openingContexts(p, legendColors())[i], locked = G.isLockedOpening(p, o), H = G.shapeTop(p.shape).heightIn;
     const fl = (label, k) => `<label class="qb-f small">${label}<input type="text" class="mini" data-f="openings.${i}.${k}" data-t="len" value="${esc(lenText(o[k]))}" autocomplete="off"></label>`;
     const fields = locked ? '<span class="small muted">🔒 the model\'s: its size and place stay</span>'
         : `${fl('Width', 'widthIn')}${o.kind === 'steel' ? '' : fl('Height', 'heightIn')}${o.kind === 'door' ? '' : fl(o.kind === 'steel' ? 'Bottom' : 'Sill', 'sillIn')}${fl(sideB() ? 'From left (side A)' : 'From left', 'leftIn')}`;
-    return `<b>${esc(G.openingName(p.openings, i))}</b>${ocTag(c)}<span class="qb-sep"></span>${fields}<span class="qb-sep"></span>
+    return `<b>${esc(G.openingName(p.openings, i))}</b>${ocTag(c)}${profileControl(p, o, i)}<span class="qb-sep"></span>${fields}<span class="qb-sep"></span>
         <button class="secondary small" data-act="framing" data-i="${i}" title="Jambs, header, sill, offsets, and their drawings">Framing…</button>
         <button class="secondary small" data-act="qb-members" data-i="${i}" title="Its jambs, header and sill in the Openings schedule">Members</button>
         ${typeFramingButton(p, c, i)}
         ${locked || !(H > 0) ? '' : `<button class="secondary small danger" data-act="del-op" data-i="${i}">Delete</button>`}`;
+}
+// The set's opening profiles and its opening colors (opening-profiles.mjs, opening-context.mjs), read forgivingly.
+function opProfiles() { return OP.cleanProfiles(set.openingProfiles) || []; }
+function legendColors() { return OC.cleanColors(set.legendColors); }
+// The sheet's opening legend: the trades of its openings, by the legend's names, in the set's colors.
+function openingLegend(p) { const colors = legendColors(); return OC.tradesOf(OC.openingContexts(p, colors), colors).map(t => ({ legend: t.legend, color: t.color })); }
+function sizeText(o) { return o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}`; }
+// The opening's profile: pick one (its framing; the size stays), save this one as one, or, once its framing is not the
+// profile's, update the profile (every opening that uses it) or go back to it.
+function profileControl(p, o, i) {
+    const list = opProfiles().filter(x => x.kind === G.kindOf(o)), prof = OP.findProfile(list, o.profile), n = prof ? OP.uses(set.panels, prof.name).length : 0;
+    return `<label class="qb-f small qb-prof">Profile<select data-op-profile="${i}" aria-label="Opening profile (its framing, shared by name)">
+            <option value="">${o.profile && !prof ? esc(`${o.profile} (not in the set)`) : 'None'}</option>${list.map(x => `<option value="${esc(x.name)}" ${x.name === o.profile ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}
+            <option value="__new">+ Save as a profile…</option></select></label>
+        ${prof && OP.differs(o, prof) ? `<span class="warning small" title="Its framing is not the profile's now">differs</span>
+            <button class="secondary small" data-act="prof-update" data-i="${i}" title="${esc(`${prof.name} takes this framing, and so ${n === 1 ? 'does the opening' : `do the ${n} openings`} that use it`)}">Update the profile</button>
+            <button class="link small" data-act="prof-reset" data-i="${i}" title="This opening takes the profile's framing again">Back to it</button>` : ''}`;
+}
+const openingWhere = (x, panels = set.panels) => `${x.mark} ${G.openingName(panels.find(q => q.id === x.panelId).openings, x.index)}`;
+function pickProfile(p, i, value) {
+    const o = p?.openings[i];
+    if (!o) return;
+    const name = G.openingName(p.openings, i);
+    if (value === '__new') { saveProfile(p, i); return; }
+    if (!value) {
+        if (!o.profile) return;
+        const was = o.profile;
+        delete o.profile;
+        historyHint = { label: 'leaving the opening profile' }; changed(); renderAll();
+        notice(`${name} no longer uses ${was}: its framing stays as it is.`);
+        return;
+    }
+    const prof = OP.findProfile(opProfiles(), value), q = prof && OP.assign(o, prof);
+    if (!q) { renderAll(); return; }
+    p.openings[i] = q;
+    historyHint = { label: `the profile ${prof.name}` }; changed(); renderAll();
+    notice(`${name} uses ${prof.name}: ${framingWords(prof.framing) || 'the panel defaults'}. Its size and place stay (${sizeText(o)}).`);
+}
+function saveProfile(p, i) {
+    const o = p.openings[i], kind = G.kindOf(o), list = opProfiles(), opening = G.openingName(p.openings, i);
+    const name = String(prompt(`A name for ${opening}'s profile: its framing, shared by the openings that use it (new ones start at ${sizeText(o)}; each keeps its own size). A Revit family : type name gives it to the model's openings of that type.`, OP.suggestName(p, i)) || '').trim().slice(0, 120);
+    if (!name) { renderAll(); return; }
+    const same = list.find(x => x.name.toLowerCase() === name.toLowerCase());
+    if (same) {
+        if (same.kind !== kind) { notice(`${same.name} is a ${G.kindWord(same.kind)} profile: give this one another name.`, true); renderAll(); return; }
+        if (!confirm(`${same.name} is a profile already. Should ${opening} use it (its framing replaces this opening's)?`)) { renderAll(); return; }
+        pickProfile(p, i, same.name);
+        return;
+    }
+    const prof = OP.profileFrom(o, name);
+    set.openingProfiles = [...list, prof];
+    p.openings[i] = { ...o, profile: name };
+    const r = OP.linkByRevitName(set.panels, prof, { only: 'unset' });
+    set.panels = r.panels;
+    historyHint = { label: `the profile ${name}` }; changed(); renderAll();
+    notice(`Profile ${name} saved: ${framingWords(prof.framing) || 'the panel defaults'}; new ones ${sizeText(prof)}.${r.linked.length ? ` ${r.linked.length} of the model's ${name} opening${r.linked.length === 1 ? '' : 's'} with nothing chosen took it: ${r.linked.map(x => openingWhere(x)).join(', ')}.` : ''}`);
+}
+function updateProfile(p, i) {
+    const o = p.openings[i], list = opProfiles(), prof = OP.findProfile(list, o?.profile);
+    if (!prof) return;
+    const next = { ...prof, framing: OC.framingOf(o) }, r = OP.propagate(set.panels, next), names = r.changed.map(x => openingWhere(x));
+    if (names.length && !confirm(`Update ${prof.name} to ${G.openingName(p.openings, i)}'s framing (${framingWords(next.framing) || 'the panel defaults'})?\n\nChanges ${names.length} opening${names.length === 1 ? ' that uses' : 's that use'} it: ${names.join(', ')}.\nSizes and places stay.`)) return;
+    set.openingProfiles = list.map(x => (x.name === prof.name ? next : x));
+    set.panels = r.panels;
+    changed(); renderAll();
+    notice(`${prof.name} updated: ${framingWords(next.framing) || 'the panel defaults'}${names.length ? `; ${names.length} opening${names.length === 1 ? '' : 's'} changed (${names.join(', ')})` : ''}.`);
+}
+function deleteProfile(name) {
+    const n = OP.uses(set.panels, name).length;
+    if (!confirm(`Delete the opening profile ${name}?${n ? `\n\nIts ${n} opening${n === 1 ? '' : 's'} keep their framing, without the profile.` : ''}`)) return;
+    const rest = opProfiles().filter(x => x.name !== name);
+    if (rest.length) set.openingProfiles = rest; else delete set.openingProfiles;
+    set.panels = OP.unlink(set.panels, name);
+    changed(); renderAll(); renderSetDialog();
+    notice(`Profile ${name} deleted${n ? `: its ${n} opening${n === 1 ? '' : 's'} keep their framing` : ''}.`);
+}
+function renameProfile(n, value) {
+    const list = opProfiles(), x = list[n], name = String(value || '').trim().slice(0, 120);
+    if (!x || name === x.name) return;
+    if (!name || list.some((y, m) => m !== n && y.name.toLowerCase() === name.toLowerCase())) { notice(name ? `${name} is another profile's name.` : 'A profile needs a name.', true); renderSetDialog(); return; }
+    const used = OP.uses(set.panels, x.name).length;
+    set.openingProfiles = list.map((y, m) => (m === n ? { ...y, name } : y));
+    set.panels = OP.relink(set.panels, x.name, name);
+    historyHint = { label: 'renaming the opening profile' }; changed(); renderAll(); renderSetDialog();
+    notice(`Profile ${x.name} renamed ${name}${used ? `: its ${used} opening${used === 1 ? '' : 's'} follow` : ''}.`);
+}
+// The model's openings of the Revit family : type the profile is named for, with nothing chosen, take it.
+function linkProfile(name) {
+    const prof = OP.findProfile(opProfiles(), name);
+    if (!prof) return;
+    const r = OP.linkByRevitName(set.panels, prof, { only: 'unset' }), names = r.linked.map(x => openingWhere(x, r.panels));
+    if (!names.length || !confirm(`Give ${name} (${framingWords(prof.framing) || 'the panel defaults'}) to the model's ${name} openings with nothing chosen?\n\n${names.join(', ')}.\nSizes and places stay.`)) return;
+    set.panels = r.panels;
+    changed(); renderAll(); renderSetDialog();
+    notice(`${name}: ${names.length} opening${names.length === 1 ? '' : 's'} took it (${names.join(', ')}).`);
 }
 // Its model type's openings across the set take this one's framing (and panels imported later: the set remembers it).
 function typeFramingButton(p, c, i) {
@@ -2255,9 +2384,10 @@ function typeFramingButton(p, c, i) {
     return `<button class="secondary small" data-act="type-framing" data-i="${i}" title="${esc(`Every ${OC.typeNameOf(key)} in the set (${all.length} in ${panels} panel${panels === 1 ? '' : 's'}) takes this opening's framing, and so do those in panels imported later`)}">Same framing for every ${esc(OC.typeNameOf(key))}${others ? ` (+${others})` : ''}</button>`;
 }
 const framingWords = (f) => [f.jamb ? `jambs ${f.jamb}` : 'jambs: the panel\'s', f.head ? `header ${f.head}` : '', f.sill ? `sill ${f.sill}` : '', f.offsetIn != null ? `framing offset ${DT.inches(f.offsetIn)}` : '',
+    f.offsets ? `offsets ${Object.entries(f.offsets).map(([k, v]) => `${k[0].toUpperCase()} ${DT.inches(v)}`).join(', ')}` : '',
     f.jambStyle ? `jambs ${f.jambStyle}` : '', f.headStyle ? `header ${f.headStyle}` : '', f.headBearing ? 'header on jack studs' : '', f.style ? 'its engineering style' : ''].filter(Boolean).join(', ');
 function typeFraming(p, i) {
-    const c = OC.openingContexts(p)[i], key = OC.typeKeyOf(c), framing = OC.framingOf(p.openings[i]);
+    const c = OC.openingContexts(p)[i], key = OC.typeKeyOf(c), src = p.openings[i], framing = OC.framingOf(src);
     if (!key) return;
     const targets = OC.sameTypeOpenings(set.panels, key).filter(x => !(x.panelId === p.id && x.index === i));
     const list = targets.map(x => `${x.mark} ${G.openingName(set.panels.find(q => q.id === x.panelId).openings, x.index)}`);
@@ -2265,8 +2395,17 @@ function typeFraming(p, i) {
     const res = OC.applyTypeFraming(set.panels, key, framing);
     set.panels = res.panels;
     set.typeFraming = { ...(set.typeFraming || {}), [key]: framing };
+    // Kept as the opening profile of that name too (its first size kept when it is one already); the type's openings use it.
+    const name = OC.typeNameOf(key), profs = opProfiles(), had = profs.find(x => x.name.toLowerCase() === name.toLowerCase());
+    let prof = null;
+    if (!had || had.kind === G.kindOf(src)) {
+        prof = had ? { ...had, name, framing } : OP.profileFrom(src, name);
+        set.openingProfiles = had ? profs.map(x => (x === had ? prof : x)) : [...profs, prof];
+        if (had && had.name !== name) set.panels = OP.relink(set.panels, had.name, name);
+        set.panels = OP.linkByRevitName(set.panels, prof).panels;
+    }
     changed(); renderAll();
-    notice(`${OC.typeNameOf(key)}: ${res.changed.length ? `${res.changed.length} opening${res.changed.length === 1 ? '' : 's'} changed (${res.changed.map(x => `${x.mark} ${G.openingName(set.panels.find(q => q.id === x.panelId).openings, x.index)}`).join(', ')})` : 'every one had it already'}; remembered for panels imported later.`);
+    notice(`${name}: ${res.changed.length ? `${res.changed.length} opening${res.changed.length === 1 ? '' : 's'} changed (${res.changed.map(x => `${x.mark} ${G.openingName(set.panels.find(q => q.id === x.panelId).openings, x.index)}`).join(', ')})` : 'every one had it already'}; remembered for panels imported later${prof ? `, and kept as the opening profile ${name}` : ''}.`);
 }
 // Members placed by hand and a bay now over the stud spacing: said over the view in any mode.
 function bayStrip(p, f) {
@@ -2402,7 +2541,7 @@ function openingSchedule(p) {
         return `<td><button class="sch-cell ${cls}${schPick?.i === i && schPick?.k === k ? ' on' : ''}" data-act="sch-pick" data-i="${i}" data-k="${k}" title="${esc(`${st.label}: ${badge}${st.differs ? ` (rule ${st.rule.code} gives ${giveText(st.rule.gives)})` : ''}`)}">${esc(memberText(st.value))}<small>${badge}${st.differs ? ' ≠ rule' : ''}</small></button>
             ${st.arrangement.needed ? `<span class="sch-arr">${ARRANGE_WORDS[k].map(([v, label]) => `<button class="${st.arrangement.value === v ? 'on' : ''}" data-act="sch-arrange" data-i="${i}" data-k="${k}" data-v="${v}" title="${label}">${label.split(' ')[0]}</button>`).join('')}${st.arrangement.value ? '' : '<b class="arr-open">?</b>'}</span>` : ''}</td>`;
     };
-    const ctx = OC.openingContexts(p);
+    const ctx = OC.openingContexts(p, legendColors());
     const rows = p.openings.map((o, i) => {
         const r = R.ruleFor(eng, p, i), states = Object.fromEntries(R.memberStates(p, i, r.applies ? r : null).map(s => [s.member, s]));
         const rule = !r.applies ? '<span class="muted small">—</span>' : r.bound ? `<span class="sch-rule ok">${esc(r.bound.displayCode)}</span>`
@@ -2439,7 +2578,7 @@ function typLine(p) {
 }
 // An opening for a model element that has none: at its place, sized from its type when it says; selected to check.
 function addOpeningFromInsert(p, uid) {
-    const ins = OC.unframedInserts(p).find(x => x.uniqueId === uid);
+    const ins = OC.unframedInserts(p, legendColors()).find(x => x.uniqueId === uid);
     if (!ins) return;
     const { opening, sizeFrom } = OC.openingFromInsert(ins, Object.fromEntries(Object.entries(G.OPENING_TYPES).map(([k, t]) => [k, t.size])));
     p.openings.push({ id: `e${Date.now().toString(36)}`, ...opening });
@@ -2448,7 +2587,7 @@ function addOpeningFromInsert(p, uid) {
     notice(`${name} added for ${ins.tradeLabel} · ${ins.name || ins.category}: ${fmtFtIn(o.widthIn)}${o.kind === 'steel' ? ' wide' : ` x ${fmtFtIn(o.heightIn)}`} at ${fmtFtIn(o.leftIn)} along${o.kind === 'door' ? '' : `, ${fmtFtIn(o.sillIn)} up`} (side A), ${sizeFrom === 'type' ? 'sized from its type name' : `the usual ${G.OPENING_TYPES[o.kind].name.toLowerCase()} size (its type name gives none)`}: check the size it needs.`);
 }
 function ocLegend(ctx) {
-    const list = OC.tradesOf(ctx);
+    const list = OC.tradesOf(ctx, legendColors());
     return list.length ? `<p class="oc-legend small"><span class="muted">Colors by trade (the drawing's too):</span> ${list.map(t => `<span><i class="oc-dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join(' ')}</p>` : '';
 }
 // The picker for one cell: what this member can be.
@@ -2614,7 +2753,7 @@ let undoHistory = W.newHistory();
 let historyHint = null; // { label, mergeKey } for the next commit
 let lastSnapshot = null;
 // The whole document for undo: the model's grids and levels and the framing by model type too (an undo used to drop them).
-const snapshotOf = () => JSON.stringify({ project: set.project, drawnBy: set.drawnBy, source: set.source, grids: set.grids, levels: set.levels, typeFraming: set.typeFraming, extra: set.extra, panels: set.panels });
+const snapshotOf = () => JSON.stringify({ project: set.project, drawnBy: set.drawnBy, ...Object.fromEntries(G.SET_FIELDS.map(k => [k, set[k]])), extra: set.extra, panels: set.panels });
 function commit(label = null) {
     const snap = snapshotOf();
     if (lastSnapshot != null && snap !== lastSnapshot) {
@@ -3056,7 +3195,7 @@ function downloadLabels() {
 // A draft from the open panel, then Apply to every panel (one undo step).
 let fsDraft = null;
 const FS_KEYS = ['cutbackIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn'];
-const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, seatPieces: !!p.seatPieces, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
+const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, seatPieces: p.seatPieces !== false, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
     sillEnds: p.sillEnds === 'flush' ? 'flush' : 'overlap', sillCutbackIn: Number(p.sillCutbackIn) || 0 });
 const fsSame = (a, b) => FS_KEYS.every(k => (k === 'headCutbackIn' && a.headEnds !== 'flush') || (k === 'sillCutbackIn' && a.sillEnds !== 'flush') ? true : a[k] === b[k]);
 function framingTab() {
@@ -3067,7 +3206,7 @@ function framingTab() {
     return `<p class="small">For every panel in the set: what you set here is given to all ${set.panels.length} of them by <b>Apply</b> (one Undo step), and new panels take it from the open panel. Cut lengths, marks, the cut list and the drawings follow.</p>
         <div class="fs-grid">
             <section class="sd-card"><h3>Studs</h3>${cut('cutbackIn', 'Cutback (each stud\'s top short of the track web)')}
-                <label class="fs-opt"><input type="checkbox" data-fs="seatPieces" ${d.seatPieces ? 'checked' : ''}><span><b>Seat cripples and jacks in the tracks</b><small>They run into each single track that receives them (the bottom and top tracks, a track header under them, a track sill over them) to its web, less the cutback, like full-height studs; drawn through the see-through tracks. Off: cut to the clear span.</small></span></label></section>
+                <label class="fs-opt"><input type="checkbox" data-fs="seatPieces" ${d.seatPieces ? 'checked' : ''}><span><b>Seat cripples and jacks in the tracks</b><small>On (the default): they run into each single track that receives them (the bottom track, a track header under them, a track sill over them) to its web, less the cutback, like full-height studs; drawn through the see-through tracks. Off: cut to the clear span. Either way a cripple's top runs into the top track like the studs (its top matches theirs).</small></span></label></section>
             <section class="sd-card"><h3>Headers</h3>${radio('headEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side: tabs fastened to the jambs (the default)')}
                 ${radio('headEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end; a header on jack studs still bears on them')}${cut('headCutbackIn', 'Cutback at each flush end', d.headEnds === 'flush')}</section>
             <section class="sd-card"><h3>Sills</h3>${radio('sillEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side (the default)')}
@@ -3075,16 +3214,41 @@ function framingTab() {
         </div>
         <div class="acts"><button data-act="fs-apply" ${differ.length ? '' : 'disabled'}>Apply to every panel</button><button class="link small" data-act="fs-reset">Back to the open panel's</button>
             <span class="small ${differ.length ? 'warning' : 'muted'}">${differ.length ? `${differ.length} panel${differ.length === 1 ? '' : 's'} differ from these: ${esc(differ.slice(0, 8).map(p => p.mark).join(', '))}${differ.length > 8 ? '…' : ''}` : 'Every panel has these.'}</span></div>
-        <p class="muted small">Seated pieces and flush ends change cut lengths: the plan asks the Revit side for the features seated-pieces, flush-headers and flush-sills.</p>`;
+        <p class="muted small">Seated pieces and flush ends change cut lengths: the plan asks the Revit side for the features seated-pieces, flush-headers and flush-sills.</p>
+        <p class="small">These two apply at once to the whole set (each one Undo step):</p>
+        <div class="fs-grid">${profilesCard()}${legendCard()}</div>`;
+}
+// The set's opening profiles (opening-profiles.mjs): renamed (their openings follow) or deleted (they keep their
+// framing); one named like a Revit family : type is given to the model's openings of that type with nothing chosen.
+function profilesCard() {
+    const list = opProfiles();
+    const rows = list.map((x, n) => {
+        const used = OP.uses(set.panels, x.name).length, more = OP.linkByRevitName(set.panels, x, { only: 'unset' }).linked.length;
+        return `<tr><td><input type="text" class="mini prof-name" data-prof-name="${n}" value="${esc(x.name)}" aria-label="Profile name (rename)"></td><td>${esc(G.OPENING_TYPES[x.kind].name)}</td><td>${esc(sizeText(x))}</td>
+            <td class="small">${esc(framingWords(x.framing) || 'the panel defaults')}</td>
+            <td>${used}${more ? ` <button class="link small" data-act="prof-link" data-v="${esc(x.name)}" title="${esc(`The model's ${x.name} openings with nothing chosen`)}">+ ${more} by Revit name</button>` : ''}</td>
+            <td><button class="link small danger" data-act="prof-del" data-v="${esc(x.name)}">Delete</button></td></tr>`;
+    }).join('');
+    return `<section class="sd-card fs-wide"><h3>Opening profiles</h3>
+        <p class="small">A named opening type: its kind, its framing (offsets, jambs, header, sill, their arrangements) and the size new ones start at (the first one's; each opening keeps its own width and height). Save one from an opening's bar (Profile, then Save as a profile…); add one with + From a profile beside the Add buttons. Named like a Revit family : type, the model's openings of that type take it.</p>
+        ${list.length ? `<table class="sd-table prof-table"><thead><tr><th>Name</th><th>Kind</th><th>New ones</th><th>Framing</th><th>Openings</th><th></th></tr></thead><tbody>${rows}</tbody></table>` : '<p class="muted small">No profiles yet.</p>'}</section>`;
+}
+// The opening colors (opening-context.mjs TRADES): the shop drawings' legend, each trade's color set for the set.
+function legendCard() {
+    const colors = legendColors();
+    return `<section class="sd-card fs-wide"><h3>Opening colors</h3>
+        <p class="small">Each opening is drawn in its trade's color, named as the shop drawings' legend names them (a mech opening cyan); each sheet lists the ones it uses.</p>
+        <div class="legend-grid">${Object.entries(OC.TRADES).map(([t, x]) => `<label><input type="color" data-legend="${t}" value="${OC.colorOf(t, colors)}" aria-label="${esc(x.legend)} color"> ${esc(x.legend)}${colors?.[t] ? ' <span class="muted small">(this set\'s)</span>' : ''}</label>`).join('')}</div>
+        ${colors ? '<button class="link small" data-act="legend-reset">Back to the legend\'s colors</button>' : ''}</section>`;
 }
 function applyFramingSettings() {
     const d = fsDraft;
     if (!d) return;
     const n = set.panels.filter(p => !fsSame(d, fsOf(p))).length;
     set.panels = set.panels.map(p => {
-        const q = { ...p, cutbackIn: d.cutbackIn, seatPieces: d.seatPieces };
+        const q = { ...p, cutbackIn: d.cutbackIn, seatPieces: d.seatPieces }; // stored only when off (on is the default)
         for (const [k, c] of [['headEnds', 'headCutbackIn'], ['sillEnds', 'sillCutbackIn']]) { if (d[k] === 'flush') { q[k] = 'flush'; q[c] = d[c]; } else { delete q[k]; delete q[c]; } }
-        if (!q.seatPieces) delete q.seatPieces;
+        if (q.seatPieces) delete q.seatPieces;
         return q;
     });
     changed(); renderAll(); renderSetDialog();
@@ -3119,6 +3283,17 @@ function setCsv(kind) {
     download(new TextEncoder().encode(text), `${kind === 'buy' ? 'stock-to-buy' : kind === 'cuts' ? 'cut-plan' : 'set-cut-list'}-${name}-${today()}.csv`, 'text/csv');
 }
 setDialog().addEventListener('change', (e) => {
+    const lg = e.target.closest('[data-legend]');
+    if (lg) { // an opening color for the set: the legend's own is not stored
+        const t = lg.dataset.legend, v = String(lg.value).toLowerCase(), next = { ...(set.legendColors || {}) };
+        if (v === OC.TRADES[t]?.color) delete next[t]; else next[t] = v;
+        const clean = OC.cleanColors(next);
+        if (clean) set.legendColors = clean; else delete set.legendColors;
+        historyHint = { label: `the ${String(OC.TRADES[t]?.legend || t).toLowerCase()} color` }; changed(); renderAll(); renderSetDialog();
+        return;
+    }
+    const pn = e.target.closest('[data-prof-name]');
+    if (pn) { renameProfile(Number(pn.dataset.profName), pn.value); return; }
     const fsEl = e.target.closest('[data-fs]');
     if (fsEl) {
         const k = fsEl.dataset.fs;
@@ -3344,7 +3519,15 @@ async function importJson(file) {
         if (!rep.added.length && !rep.updated.length && !rep.copies.length) { notice(`Nothing imported from ${file.name}: ${rep.skipped.length} skipped.`); return; }
         // The set's framing by model type (and the file's): given to the panels added that have none chosen (reported).
         const typeFr = { ...(set.typeFraming || {}), ...(incoming.typeFraming || {}) };
-        let panels = merged.panels, typed = 0;
+        // The file's opening profiles join the set's (a name the set has already: the set's kept, said when they differ);
+        // the panels added take the one named for their Revit family : type when they have nothing chosen (reported).
+        const mine = opProfiles(), theirs = OP.cleanProfiles(incoming.openingProfiles) || [], has = (x) => mine.find(y => y.name.toLowerCase() === x.name.toLowerCase());
+        const profs = [...mine, ...theirs.filter(x => !has(x))], keptMine = theirs.filter(x => has(x) && JSON.stringify(has(x)) !== JSON.stringify(x)).map(x => has(x).name);
+        let panels = merged.panels, typed = 0, linked = 0;
+        for (const prof of profs) {
+            const fresh = panels.filter(p => !before.has(p.id)), r = OP.linkByRevitName(fresh, prof, { only: 'unset' }), byId = new Map(r.panels.map(p => [p.id, p]));
+            panels = panels.map(p => byId.get(p.id) || p); linked += r.linked.length;
+        }
         for (const [key, fr] of Object.entries(typeFr)) {
             const fresh = panels.filter(p => !before.has(p.id)), r = OC.applyTypeFraming(fresh, key, fr, { only: 'unset' }), byId = new Map(r.panels.map(p => [p.id, p]));
             panels = panels.map(p => byId.get(p.id) || p); typed += r.changed.length;
@@ -3352,6 +3535,9 @@ async function importJson(file) {
         // A model's export: its source, grids and levels kept with the set (written back on Export JSON).
         const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? set[k]]).filter(([, v]) => v != null));
         if (Object.keys(typeFr).length) context.typeFraming = typeFr;
+        if (profs.length) context.openingProfiles = profs;
+        const colors = set.legendColors ?? incoming.legendColors; // the set's opening colors kept; else the file's
+        if (colors != null) context.legendColors = colors;
         // Unknown fields of the file (a newer exporter's) ride along to Export JSON.
         const extra = { ...(incoming.extra || {}), ...(set.extra || {}) };
         const first = panels.find(p => !before.has(p.id)) || panels.find(p => rep.updated.some(u => u.startsWith(p.mark)));
@@ -3359,9 +3545,12 @@ async function importJson(file) {
         checked.clear(); sel = null; ask = null; selection = W.NONE;
         historyHint = { label: `importing ${file.name}` };
         save(); renderAll();
-        notice([`From ${file.name}:`, rep.added.length ? `added ${rep.added.join(', ')}` : '', rep.updated.length ? `updated ${rep.updated.join('; ')}` : '', rep.copies.length ? `study copies ${rep.copies.join(', ')}` : '',
-            rep.skipped.length ? `skipped ${rep.skipped.join(', ')}` : '', rep.renamed.length ? `(marks taken: ${rep.renamed.join(', ')})` : '',
-            typed ? `${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.` : '', ...rep.notes, ...warnings].filter(Boolean).join(' '), !!(rep.notes.length || warnings.length || typed));
+        const what = [rep.added.length ? `added ${rep.added.join(', ')}` : '', rep.updated.length ? `updated ${rep.updated.join('; ')}` : '', rep.copies.length ? `study copies ${rep.copies.join(', ')}` : '',
+            rep.skipped.length ? `skipped ${rep.skipped.join(', ')}` : ''].filter(Boolean).join('; ');
+        notice([`From ${file.name}: ${what}${rep.renamed.length ? ` (marks taken: ${rep.renamed.join(', ')})` : ''}.`,
+            linked ? `${linked} opening${linked === 1 ? '' : 's'} took the profile named for their Revit type.` : '',
+            typed ? `${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.` : '',
+            keptMine.length ? `Opening profiles kept as this set has them (the file's differ): ${keptMine.join(', ')}.` : '', ...rep.notes, ...warnings].filter(Boolean).join(' '), !!(rep.notes.length || warnings.length || typed || linked || keptMine.length));
     } catch (err) { notice(`Could not read ${file.name}: ${err.message} Nothing was changed.`, true); }
 }
 async function copyLink(p) {
@@ -3395,10 +3584,11 @@ window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p='
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
-const NO_PANEL_ACTS = new Set(['fs-apply', 'fs-reset', 'sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
+const NO_PANEL_ACTS = new Set(['prof-del', 'prof-link', 'legend-reset', 'fs-apply', 'fs-reset', 'sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
 const NOT_EDITS = new Set(['fs-reset', 'sd-labels', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
-const ACT_LABELS = { 'fs-apply': 'the framing settings on every panel', 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
+const ACT_LABELS = { 'prof-update': 'updating the opening profile', 'prof-reset': 'back to the opening profile', 'prof-del': 'deleting the opening profile', 'prof-link': 'the opening profile by Revit name', 'legend-reset': 'the legend colors',
+    'fs-apply': 'the framing settings on every panel', 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
     'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
     'clip-here': 'the clip', 'clip-del': 'removing the clip', 'clip-top': 'the clips', 'clip-mid': 'the clips', 'clip-all': 'the clips', 'clip-clear': 'removing the clips',
     'mirror-op': 'mirroring the opening', 'copy-op': 'copying the opening', center: 'centering the opening', 'peri-finish': 'the perimeter', 'set-assign': 'giving the members', 'set-delete': 'deleting panels',

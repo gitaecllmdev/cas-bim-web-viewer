@@ -70,7 +70,7 @@ export function snapshotFingerprint(s) {
         openings: [...(s.openings || [])].sort((a, b) => (a.sourceKey < b.sourceKey ? -1 : a.sourceKey > b.sourceKey ? 1 : 0))
             .map(o => [o.sourceKey, o.kind, o.leftIn, o.widthIn, o.heightIn, o.sillIn, !!o.locked]) }))}`;
 }
-const OPENING_DETAIL = ['head', 'jamb', 'sill', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout'];
+const OPENING_DETAIL = ['offsets', 'head', 'jamb', 'sill', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout'];
 export function detailingFromPanel(panel) {
     const p = G.cleanPanel(panel), keys = G.openingKeys(p);
     return {
@@ -79,7 +79,7 @@ export function detailingFromPanel(panel) {
             header: p.members.header, jamb: p.members.jamb, sill: p.members.sill },
         provenance: p.provenance ? { ...p.provenance } : null,
         layout: { startIn: p.layoutStartIn ?? null, fromRight: !!p.layoutFromRight, optimize: !!p.optimizeOpenings },
-        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), ...(p.seatPieces ? { seatPieces: true } : {}) },
+        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), seatPieces: p.seatPieces !== false, seatTop: p.seatTop !== false },
         ...(p.headEnds === 'flush' ? { heads: { ends: 'flush', cutbackIn: p.headCutbackIn ?? 0 } } : {}), ...(p.sillEnds === 'flush' ? { sills: { ends: 'flush', cutbackIn: p.sillCutbackIn ?? 0 } } : {}),
         openings: Object.fromEntries(p.openings.map((o, i) => [keys[i], Object.fromEntries(OPENING_DETAIL.filter(k => o[k] !== undefined && o[k] !== '').map(k => [k, o[k]]))])),
         clips: (p.clips || []).map(c => ({ ...c })),
@@ -182,7 +182,8 @@ function panelFrom(snapshot, detailing) {
         layoutFromRight: !!detailing.layout?.fromRight, optimizeOpenings: !!detailing.layout?.optimize,
         flipStuds: !!detailing.studs?.flipAll, studFlips: [...(detailing.studs?.flips || [])], clips: (detailing.clips || []).map(c => ({ ...c })), sideB: false,
         ...(finite(detailing.studs?.cutbackIn) ? { cutbackIn: detailing.studs.cutbackIn } : {}),
-        ...(detailing.studs?.seatPieces ? { seatPieces: true } : {}),
+        // Seating as the detailing says; absent (the contract's fixtures): clear span, tops too.
+        seatPieces: detailing.studs?.seatPieces === true, seatTop: detailing.studs?.seatTop === true,
         ...(detailing.heads?.ends === 'flush' ? { headEnds: 'flush', headCutbackIn: finite(detailing.heads.cutbackIn) ? detailing.heads.cutbackIn : 0 } : {}),
         ...(detailing.sills?.ends === 'flush' ? { sillEnds: 'flush', sillCutbackIn: finite(detailing.sills.cutbackIn) ? detailing.sills.cutbackIn : 0 } : {}),
         ...(detailing.manual ? { manual: structuredClone(detailing.manual) } : {}),
@@ -296,7 +297,7 @@ function intentOf(panel, snapshot, detailing) {
         openings[o.sourceKey] = { head: member('head'), jamb: member('jamb'), sill: member('sill'), plies: fr.plies,
             arrangement: { jamb: { value: fr.jambStyle, chosen: fr.jambStyleSet }, head: fr.head ? { value: fr.head.style, chosen: fr.head.style === 'track' || fr.head.styleSet } : null,
                 sill: fr.sill ? { value: fr.sill.style, chosen: fr.sill.style === 'track' || fr.sill.styleSet } : null },
-            bearing: fr.bearing, crippleEnds: fr.crippleEnds, offsetIn: G.offsetOf(go), offsetSource: go.offsetIn != null && go.offsetIn !== '' ? 'detailing' : go.locked ? 'model-opening-default-0' : `default:${go.kind}`, toLayout: !!go.toLayout };
+            bearing: fr.bearing, crippleEnds: fr.crippleEnds, offsetIn: G.offsetOf(go), ...(G.offsetsVary(go) ? { offsets: G.offsetsOf(go) } : {}), offsetSource: go.offsetIn != null && go.offsetIn !== '' ? 'detailing' : go.locked ? 'model-opening-default-0' : `default:${go.kind}`, toLayout: !!go.toLayout };
     });
     return {
         members: { stud: { setting: m.stud, value: stud, source: src('stud', m.stud, 'missing') }, track: { setting: m.track, value: track, source: src('track', m.track, 'inherit:stud') },
@@ -453,6 +454,7 @@ function featuresOf(panel, inputs, layout, members, plan) {
     if (inputs.openings.some(o => o.clear)) f.add('framing-offset');
     if (members.some(m => m.manual) || layout.manual?.deleted) f.add('manual-members');
     if (layout.members.some(m => m.seat)) f.add('seated-pieces');
+    if (panel.openings.some(o => G.offsetsVary(o))) f.add('framing-offset-sides');
     if (panel.headEnds === 'flush' && layout.members.some(m => m.role === 'head track')) f.add('flush-headers');
     if (panel.sillEnds === 'flush' && layout.members.some(m => m.role === 'sill track')) f.add('flush-sills');
     if (plan.source.openings.some(o => o.status === 'unsupported:small-penetration')) f.add('small-penetration-unframed');

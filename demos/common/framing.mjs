@@ -266,6 +266,8 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 //   header under it, legs up; the top track and a track sill over it, legs down): cut to the track webs less the
 //   cutback, as a full-height stud is (m.seat: [down, up], how far it runs into each). Off: its clear span (the default,
 //   as the plan contract's fixtures have it).
+// seatTop: a piece's top always runs into the top track like the on-center studs (to its web less the cutback), even
+//   with seatPieces off (the web's panels: always; the contract's fixtures: off).
 // top: a sloped top (wallTop), H its highest point. Members under it carry their outline as pts ([x, y] corners,
 // counter-clockwise) beside their bounding box (x, y, w, h): the top track's sloped runs, and the verticals that reach
 // the track (atTop), their tops cut to the slope.
@@ -273,7 +275,7 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 const trackOnly = (m) => (m.parts?.length ? m.parts.reduce((n, p) => n + (p.qty || 1), 0) === 1 && /^\d{3,4}T/i.test(m.parts[0].name || '') : /^\d{3,4}T/i.test(m.type || '') || /track/.test(m.role) && !m.parts);
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
     member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false, studFlips = [],
-    headEnds = 'overlap', headCutbackIn = 0, sillEnds = 'overlap', sillCutbackIn = 0, seatPieces = false }) {
+    headEnds = 'overlap', headCutbackIn = 0, sillEnds = 'overlap', sillCutbackIn = 0, seatPieces = false, seatTop = false }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn, T = top;
     const ops = clipOpenings(openings, L, H, LEG, T);
     const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
@@ -383,11 +385,11 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
             }
             // A piece seated in the single tracks that receive it (seatPieces): to their webs, less the cutback.
             let seat = null;
-            if (seatPieces && !full) {
+            if ((seatPieces || seatTop) && !full) {
                 const over = (h) => h.orient === 'h' && h.x < x + flangeIn - 1e-6 && h.x + h.w > x + 1e-6, track = (h) => trackOnly(h);
                 const below = members.find(h => over(h) && Math.abs(h.y + h.h - a) < 1e-6), above = geo.atTop ? null : members.find(h => over(h) && Math.abs(h.y - b) < 1e-6);
-                const down = below && track(below) && (below.role === 'bottom track' || below.role === 'head track') ? below.h : 0;
-                const up = above && !above.pts && track(above) && (above.role === 'top track' || above.role === 'sill track') ? above.h : 0;
+                const down = seatPieces && below && track(below) && (below.role === 'bottom track' || below.role === 'head track') ? below.h : 0;
+                const up = above && !above.pts && track(above) && (above.role === 'top track' || (seatPieces && above.role === 'sill track')) ? above.h : 0;
                 if (down || up) { len += down + up; seat = [down, up]; }
             }
             add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}), ...tag, ...(full ? { full: true } : {}), ...(seat ? { seat } : {}) });
@@ -465,6 +467,8 @@ export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
         if (!(m.lengthIn > 0) || !(m.w > 0) || !(m.h > 0)) issues.push({ code: 'size', message: `${name(m)} has no length` });
         if (outside(m)) issues.push({ code: 'bounds', message: `${name(m)} is outside the wall` });
         for (const o of openings) {
+            // A bottom track across a door is by nature (run through, cut out on site): not a finding.
+            if (m.role === 'bottom track' && isDoor(o)) continue;
             if (overlap(m, { x: o.left, y: o.bottom, w: o.right - o.left, h: o.top - o.bottom })) issues.push({ code: 'through-opening', ...(o.key ? { opening: o.key } : {}), message: `${name(m)} runs through the ${what(o)}` });
         }
     }

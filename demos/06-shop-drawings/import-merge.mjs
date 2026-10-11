@@ -1,5 +1,6 @@
 // Reading a cas-panel-shops file into a workspace that has panels (pure; the page asks, this decides).
-// - Replace: the file as it is (its project, drawnBy, source, grids, levels, typeFraming, unknown fields, panels with
+// - Replace: the file as it is (its project, drawnBy, set fields: source, grids, levels, typeFraming, openingProfiles,
+//   legendColors; unknown fields, panels with
 //   their revisions); nothing of the old set kept; nothing re-detailed. What reading changed is reported (a fresh Revit
 //   export's outlines become shapes; a hand-written file is normalized), so the set is not called "as exported".
 // - Add: the file's panels beside these. A model panel is matched to the panels here by the contract's identity
@@ -8,7 +9,7 @@
 //   identity.displayNumber), which tells several panels of one wall apart. Never by mark or the local id. A match is
 //   skipped, its detailing updated, or added as an unlinked study copy; a panel that cannot be told apart is never
 //   guessed into one (skip or a study copy). A typed-in panel has no identity: added as before.
-import { cleanPanel, isFromModel, copyPanel, nextMark, openingKeys, exportSet } from './generator.mjs';
+import { cleanPanel, isFromModel, copyPanel, nextMark, openingKeys, exportSet, SET_FIELDS } from './generator.mjs';
 
 const str = (v) => (v == null ? '' : String(v).trim());
 // A model panel's identity, or null for a panel typed here.
@@ -141,7 +142,7 @@ const portable = (file) => { // what a re-export must give back: not the save ti
 export function replaceSet(incoming, file, warnings = [], newId) {
     const seen = new Set();
     const panels = (incoming.panels || []).map(p => { const id = str(p.id); const keep = id && !seen.has(id); seen.add(id); return keep ? p : { ...p, id: newId() }; });
-    const set = { project: incoming.project || '', drawnBy: incoming.drawnBy || '', ...Object.fromEntries(['source', 'grids', 'levels', 'typeFraming', 'extra'].filter(k => incoming[k] != null).map(k => [k, structuredClone(incoming[k])])), panels };
+    const set = { project: incoming.project || '', drawnBy: incoming.drawnBy || '', ...Object.fromEntries([...SET_FIELDS, 'extra'].filter(k => incoming[k] != null).map(k => [k, structuredClone(incoming[k])])), panels };
     const transformed = [...warnings];
     if (file && typeof file === 'object' && !Array.isArray(file)) {
         const back = portable(exportSet(set, { framing: false })), was = portable(file);
