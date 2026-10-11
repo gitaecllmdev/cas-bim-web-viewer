@@ -79,5 +79,26 @@ export function remove(panel, key) {
     else man.members[key] = { deleted: true };
     return withManual(panel, man);
 }
+// Another member type for these members (unlocked where they are: nothing moves). -> { panel, changed: [{ key, from, to }] }
+export function setType(panel, layout, keys, type) {
+    const man = manualOf(panel), changed = [];
+    for (const key of keys) {
+        const m = find(layout, key);
+        if (!m || m.parts?.length || m.type === type) continue;
+        if (isAdded(key)) man.added = man.added.map(a => (`manual:${a.id}` === key ? { ...a, type } : a));
+        else man.members[key] = { ...(man.members[key] && !man.members[key].deleted ? man.members[key] : boxOf(m)), type };
+        changed.push({ key, from: m.type, to: type });
+    }
+    return { panel: withManual(panel, man), changed };
+}
+// A stud in a bay wider than the spacing (layout.wide_bay): like the stud at its left (else its right), one spacing from
+// it (or in the middle when the bay is under two spacings). -> { panel, key, x }
+export function fillBay(panel, layout, leftKey, rightKey, spacingIn) {
+    const a = find(layout, leftKey), b = find(layout, rightKey), src = [a, b].find(m => m && (m.role === 'stud' || m.role === 'end stud' || m.role === 'jamb stud'));
+    if (!a || !b || !src) return { panel, key: null, x: null };
+    const ac = a.x + a.w / 2, bc = b.x + b.w / 2, c = bc - ac < 2 * spacingIn ? (ac + bc) / 2 : ac + spacingIn;
+    const r = copy(panel, layout, src.key, r16(c - src.w / 2) - src.x, 0);
+    return { ...r, x: r16(c - src.w / 2) };
+}
 // Members removed by hand (to bring back: lock).
 export const removedKeys = (panel) => Object.entries(panel.manual?.members || {}).filter(([, e]) => e.deleted).map(([k]) => k);

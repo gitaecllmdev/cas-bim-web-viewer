@@ -622,23 +622,29 @@ export function memberKeysOf(members) {
 const MANUAL_ID = /^[a-z0-9-]{1,24}$/i;
 const box16 = (b) => Object.fromEntries(['x', 'y', 'w', 'h'].map(k => [k, round16(Number(b[k]))]));
 const okBox = (b) => !!b && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(Number(b[k]))) && Number(b.w) > 0 && Number(b.h) > 0;
+const typeOf = (v) => { const d = parseMember(v?.type); return d && d.qty === 1 ? { type: d.name } : {}; };
 export function cleanManual(m) {
     if (!m || typeof m !== 'object') return null;
     const members = {};
     for (const [k, v] of Object.entries(m.members || {})) {
         if (!k || k.length > 120) continue;
         if (v?.deleted === true) members[k] = { deleted: true };
-        else if (okBox(v)) members[k] = box16(v);
+        else if (okBox(v)) members[k] = { ...box16(v), ...typeOf(v) };
     }
     const added = (Array.isArray(m.added) ? m.added : []).filter(a => MANUAL_ID.test(String(a?.id || '')) && typeof a.from === 'string' && a.from && okBox(a))
-        .map(a => ({ id: String(a.id), from: a.from, ...box16(a), ...(a.mirrored ? { mirrored: true } : {}) }));
+        .map(a => ({ id: String(a.id), from: a.from, ...box16(a), ...(a.mirrored ? { mirrored: true } : {}), ...typeOf(a) }));
     return Object.keys(members).length || added.length ? { members, ...(added.length ? { added } : {}) } : null;
 }
 // A member at another place and size: its outline (a sloped piece's points) moved with it, its cut length changed by
 // what its length changed (the engine's own allowance kept).
 function placed(m, b) {
     const dx = b.x - m.x, dy = b.y - m.y, grow = m.orient === 'v' ? b.h - m.h : b.w - m.w;
-    return { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
+    const out = { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
+    // Another member type (one piece only; a built-up member's parts are its opening's): its name, and its flange the
+    // vertical's width (a track's leg its height), from where it is.
+    const d = b.type && !m.parts?.length ? parseMember(b.type) : null;
+    if (d) { out.type = d.name; out.retyped = true; if (d.flangeIn) { if (m.orient === 'v') out.w = d.flangeIn; else if (/track/.test(m.role)) out.h = d.flangeIn; } }
+    return out;
 }
 export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
     const keys = memberKeysOf(layout.members);
@@ -649,7 +655,7 @@ export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
     for (const m of layout.members) {
         const e = edits.members[m.key];
         if (!e) members.push(m);
-        else if (!e.deleted) members.push({ ...placed(m, e), manual: 'moved' });
+        else if (!e.deleted) members.push({ ...placed(m, e), manual: e.type && e.x === round16(m.x) && e.y === round16(m.y) && e.w === round16(m.w) && e.h === round16(m.h) ? 'retyped' : 'moved' });
     }
     for (const k of Object.keys(edits.members)) if (!byKey.has(k)) stale.push({ key: k, message: `${k} was edited by hand but is no longer in the framing (the panel changed): the edit is not applied.` });
     for (const a of edits.added || []) {
@@ -752,6 +758,20 @@ export function nextMark(mark) {
     return `${m[1]}${String(Number(m[2]) + 1).padStart(m[2].length, '0')}${m[3]}`;
 }
 
+// A new panel's mark: the open panel's prefix (its text before the number) and one past the highest number of any panel
+// with that prefix, so it is the last one (WS-02 in a set up to WS-06: WS-07). Text after the number (a description) is
+// not carried. A mark without a number: nextMark's rule.
+const reEsc = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, (c) => `\\${c}`);
+export function nextNumberMark(mark, marks = []) {
+    const m = /^(.*?)(\d+)(\D*)$/.exec(String(mark || '').trim());
+    if (!m) { let out = nextMark(mark); while (marks.includes(out)) out = nextMark(out); return out; }
+    // The number is the last one (P2-03: 03); after it, punctuation stays (a closing bracket), words do not.
+    const [, prefix, digits, after] = m, tail = /^[^\sA-Za-z]*$/.test(after) ? after : '', re = new RegExp(`^${reEsc(prefix)}(\\d+)`);
+    let n = Math.max(Number(digits), ...marks.map(x => re.exec(String(x || '').trim())).filter(Boolean).map(x => Number(x[1]))) + 1, out;
+    while (marks.includes(out = `${prefix}${String(n).padStart(digits.length, '0')}${tail}`)) n++;
+    return out;
+}
+
 // --- Panels from the model: their perimeter and openings locked ---------------------------------------------------
 // A panel exported from Revit (it has a revit block) keeps the model's geometry: its shape, and every opening that came
 // with it (locked), stay exactly as they came, so the trip back finds each wall, door, window and penetration where the
@@ -780,17 +800,14 @@ function unlinked(panel) {
 export const NEW_CUTBACK_IN = 1 / 32;
 export const cutbackOf = (panel) => (Number.isFinite(Number(panel?.cutbackIn)) && Number(panel.cutbackIn) >= 0 && Number(panel.cutbackIn) <= 1 ? Number(panel.cutbackIn) : null);
 export function newPanel(prev = null, marks = []) {
-    let mark = prev ? nextMark(prev.mark) : 'P-101';
-    while (marks.includes(mark)) mark = nextMark(mark);
+    const mark = prev ? nextNumberMark(prev.mark, marks) : nextNumberMark('P-100', marks);
     if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, cutbackIn: NEW_CUTBACK_IN, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
     const { layoutStartIn, ...rest } = unlinked(prev);
     return { ...rest, id: rid(), mark, openings: [] };
 }
 // A copy (a free panel even when the original is the model's: one wall, one panel).
 export const copyPanel = (panel, marks = []) => {
-    let mark = nextMark(panel.mark);
-    while (marks.includes(mark)) mark = nextMark(mark);
-    return { ...unlinked(panel), id: rid(), mark };
+    return { ...unlinked(panel), id: rid(), mark: nextNumberMark(panel.mark, marks) };
 };
 
 // The members of one panel given to others (the checked panels, or a group).

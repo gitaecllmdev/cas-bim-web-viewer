@@ -18,6 +18,7 @@ import * as DT from './demos/06-shop-drawings/details.mjs';
 import * as R from './demos/06-shop-drawings/opening-rules.mjs';
 import * as MAN from './demos/06-shop-drawings/manual.mjs';
 import * as CL from './demos/06-shop-drawings/context-lines.mjs';
+import * as OC from './demos/06-shop-drawings/opening-context.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 
@@ -89,6 +90,7 @@ main.addEventListener('input', (e) => {
     const el = e.target.closest('[data-f]');
     if (!el) return;
     const p = cur(), path = el.dataset.f, onSet = path.startsWith('set.');
+    if (path === 'mark' && p && markBefore?.id !== p.id) markBefore = { id: p.id, mark: p.mark }; // the mark before this rename
     if (!onSet && !p) return;
     if (!onSet && !G.canEdit(p, path)) { lockedNotice(); return; }
     let v = el.type === 'checkbox' ? el.checked : el.value;
@@ -127,7 +129,24 @@ main.addEventListener('input', (e) => {
 });
 // On leaving a field: the length as feet-inches, the value remembered for the next time, a new stud followed.
 let studBefore = null;
+let markBefore = null;
 main.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-f="members.stud"]')) studBefore = cur().members.stud; });
+// The panel's mark: the box at the top of its card (or the mark on the elevation, clicked) selected to type over.
+function renameFocus() {
+    const el = $('#insp-context .ctx-mark');
+    if (!el) return;
+    el.focus(); el.select();
+}
+// A mark stays unique and never empty: else the one before comes back.
+function markCheck(el) {
+    const p = cur(), v = el.value.trim(), was = markBefore?.id === p?.id ? markBefore.mark : null;
+    markBefore = null;
+    if (!p || was == null) return;
+    const taken = set.panels.some(x => x.id !== p.id && String(x.mark).trim().toLowerCase() === v.toLowerCase());
+    if (v && !taken) { if (v !== p.mark) { p.mark = v; changed(); } if (v !== was) notice(`Renamed ${was} to ${v}.`); return; }
+    p.mark = was; el.value = was; changed();
+    notice(taken ? `${v} is another panel's mark: each panel keeps its own (${was} kept).` : 'A panel needs a mark: the one before is kept.', true);
+}
 main.addEventListener('change', (e) => {
     if (e.target.closest('[data-style], [data-style-q], [data-style-pick]')) { styleChange(e.target); return; }
     const prof = e.target.closest('[data-op-prof]');
@@ -135,6 +154,7 @@ main.addEventListener('change', (e) => {
     const pick = e.target.closest('[data-pick]');
     if (pick) { pickMember(pick.dataset.pick, pick.value); if (pick.closest('#sk-menu')) closeMenu(); return; }
     if (e.target.id === 'combo') { applyCombo(e.target.value); return; }
+    if (e.target.matches('[data-qb-step]')) { manStep = Number(e.target.value) || 0.5; renderWorkspace(); return; }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSetActions(); return; }
     if (e.target.id === 'check-group') { for (const x of set.panels) if ((x.group || '') === e.target.value) checked.add(x.id); e.target.value = '__'; renderSet(); return; }
     const el = e.target.closest('[data-f]');
@@ -149,7 +169,8 @@ main.addEventListener('change', (e) => {
     store(KEYS.recent, recent);
     renderDatalists();
     if (typing.has(el.dataset.f)) { typing.delete(el.dataset.f); renderMemberCards(); }
-    if (el.dataset.f === 'mark' || el.dataset.f === 'group') renderSet();
+    if (el.dataset.f === 'mark') markCheck(el);
+    if (el.dataset.f === 'mark' || el.dataset.f === 'group') { renderSet(); renderWorkspace(); }
     if (/^openings\.\d+\.offsetIn$/.test(el.dataset.f)) renderCatalogue(); // its rough opening in the strip
 });
 document.getElementById('import-file').addEventListener('change', (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importJson(f); });
@@ -261,6 +282,11 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'ctx-grid-del': () => contextEdit(c => { c.grids.splice(i, 1); }),
         'ctx-model': () => { const m = CL.modelContext(set, p); if (!m) return; p.context = { show: true, levels: { bottom: m.levels.bottom, top: m.levels.top }, grids: m.grids }; renderContextSec(); fit(); changed(); notice('Levels and grids from the model.'); },
         'ctx-toggle': () => contextEdit(c => { c.show = !c.show; }),
+        'man-step': () => { manStep = Number(b.dataset.v); renderWorkspace(); },
+        'man-type-preview': () => typePreview(b.dataset.key),
+        'man-type-apply': () => typeApply(),
+        'man-type-cancel': () => { manPreview = null; renderWorkspace(); },
+        'man-fill': () => fillBay(b.dataset.a, b.dataset.b),
         'man-mode': () => { editMode = !editMode; if (editMode && prefs.view !== 'elevation') setView('elevation'); renderSidePick(p); renderWorkspace(); notice(editMode ? 'Edit members: drag a member to move it (it unlocks), or select one and use its card. Arrow keys nudge it (Shift: 1").' : 'Edit members off.'); },
         'man-unlock': () => manualEdit((q, lay) => MAN.unlock(q, lay, b.dataset.key), 'Unlocked: it stays where you put it and no longer follows the framing rules.'),
         'man-lock': () => manualEdit((q) => MAN.lock(q, b.dataset.key), 'Locked: it follows the framing rules again.', { keep: !MAN.isAdded(b.dataset.key) }),
@@ -268,6 +294,9 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'man-lock-all': () => { if (confirm('Lock every member? Everything placed by hand goes back to the framing rules, and the copies are removed.')) manualEdit((q) => MAN.lockAll(q), 'Every member follows the framing rules again.'); },
         'man-nudge': () => manualNudge(Number(b.dataset.dx) * manualStep(), Number(b.dataset.dy) * manualStep()),
         'man-copy': () => manualCopy(b.dataset.key),
+        'qb-type': () => { const el = $('#man-type-in'); if (el) { el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus(); el.select(); } },
+        'qb-opening': () => selectTarget({ kind: 'opening', key: b.dataset.key }),
+        'qb-members': () => { prefs.bottom = 'openings'; prefs.bottomOpen = true; storePrefs(); renderBottom(current); main.querySelector('.sch-table tr.selected')?.scrollIntoView({ block: 'nearest' }); },
         'man-mirror': () => manualMirror(b.dataset.key),
         'man-remove': () => manualEdit((q) => MAN.remove(q, b.dataset.key), 'Removed (Lock brings it back).', { keep: false }),
         'op-alt': () => { if (setFromRule(p, i, b.dataset.k, b.dataset.v)) { renderMemberCards(); renderChips(); changed(); } },
@@ -286,9 +315,11 @@ function addPanel(panel) {
     set.panels.push(panel);
     set.current = panel.id;
     sel = null; ask = null;
+    selection = W.NONE;
     renderAll();
-    notice(`${panel.mark} added. Its shape and members follow the panel before it: change what differs.`);
-    $('#panel-card input[data-f="mark"]')?.focus();
+    notice(`${panel.mark} added at the end of the list. Its shape and members follow the panel before it: type a name over its mark, change what differs.`);
+    $('#set-card .nav-item.on')?.scrollIntoView({ block: 'nearest' });
+    renameFocus();
 }
 function addPoint(p) {
     const pts = p.shape.points;
@@ -647,7 +678,7 @@ function renderSketch() {
     // Where the studs will be: their centerlines (side A), cripples as short ones.
     if (tool !== 'perimeter' && valid) parts.push(centerlines(p, H, top));
     // Openings.
-    const boxes = p.openings.map(o => G.openingBox(o, H));
+    const boxes = p.openings.map(o => G.openingBox(o, H)), skCtx = OC.openingContexts(p);
     if (tool !== 'perimeter') p.openings.forEach((o, i) => {
         const b = boxes[i], w = b.right - b.left, topY = b.through ? Math.max(at(b.left), at(b.right)) + fs * 0.6 : b.top, h = topY - b.bottom;
         if (!(w > 0 && h > 0)) return;
@@ -656,8 +687,8 @@ function renderSketch() {
         if (G.offsetOf(o) > 0) { const r = G.roughOpening(o, H), rt = b.through ? topY : r.top; parts.push(`<rect x="${r.left}" y="${Y(rt)}" width="${r.right - r.left}" height="${rt - r.bottom}" class="sk-ro"><title>${esc(`${name}'s rough opening: ${roText(p, i)}`)}</title></rect>`); }
         const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - G.roughOpening(o, H).left) < 1e-6 && Math.abs(x.bottom - G.roughOpening(o, H).bottom) < 1e-6);
         if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${fmtFtIn(fb.right - fb.left)} between jambs`)}</title></rect>`);
-        const tiny = G.isSmallPenetration(p, o); // a model's penetration under 6": not framed (the resolved plan reports it)
-        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}${tiny ? ' small' : ''}" data-drag="op:${i}"><title>${esc(tiny ? `${name}: a ${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)} penetration, under 6": not framed here (decide its framing)` : `${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
+        const tiny = G.isSmallPenetration(p, o), oc = skCtx[i]; // tiny: a model's penetration under 6": not framed (the resolved plan reports it)
+        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}${tiny ? ' small' : ''}" data-drag="op:${i}"${oc ? ` style="--oc:${oc.color}"` : ''}><title>${esc(`${tiny ? `${name}: a ${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)} penetration, under 6": not framed here (decide its framing)` : `${name}: ${G.OPENING_TYPES[o.kind].name}${G.isLockedOpening(p, o) ? '' : ', drag to move it'}`}${oc ? `\n${oc.title}` : ''}`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
     // Placing clips: the align line (bold while the aim snaps to it) and where the next clip goes.
@@ -1620,7 +1651,7 @@ function renderChips() {
 function sheetInfo(p) {
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p) };
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p), openingLooks: OC.openingLooks(p) };
 }
 // The panel's resolved plan (framing-plan.mjs: the same calculation the plan export carries) and its drawing for the
 // sheet's side (side B mirrors the drawing only). errors: what stops it being drawn; notes: what to know (warnings, and
@@ -1702,7 +1733,7 @@ function renderStatus(p, f) {
 const linksNow = () => W.selectionLinks(current.plan, selection);
 function sheetInfoFor(p, f, { hits = false } = {}) {
     const links = linksNow();
-    return { ...sheetInfo(p), highlight: links.marks.size ? links.marks : null, memberHits: hits, unresolved: openChoices(f.plan).map(i => i.message) };
+    return { ...sheetInfo(p), highlight: editMode && selection.kind === 'member' ? null : links.marks.size ? links.marks : null, memberHits: hits, unresolved: openChoices(f.plan).map(i => i.message) };
 }
 const svgFit = (svg) => svg.replace(/width="([\d.]+)in" height="([\d.]+)in"/, (m, w, h) => `width="${Math.round(w * 96)}" height="${Math.round(h * 96)}"`);
 function notFramed(f) {
@@ -1740,8 +1771,9 @@ function renderActiveView(p, f) {
     }
     if (!layout) { host.innerHTML = notFramed(f); return; }
     const info = sheetInfoFor(p, f, { hits: true });
-    if (id === 'elevation') host.innerHTML = `${editMode ? editBar(p, f) : ''}<div class="view-svg${editMode ? ' editing' : ''}">${pre}${svgFit(renderSheetRegion(layout, info, 'elevation'))}</div>
-        <p class="view-caption">Click a member to select it (or pick a row in the cut list). ${open.length ? 'Members whose arrangement is still open are hatched orange.' : ''} ${selCaption(f)}</p>`;
+    const fx = id === 'elevation' ? focusOf(host) : null;
+    if (id === 'elevation') host.innerHTML = `${editMode ? editBar(p, f) : bayStrip(p, f)}<div class="view-svg${editMode ? ' editing' : ''}">${pre}${svgFit(renderSheetRegion(layout, info, 'elevation'))}</div>
+        <p class="view-caption">Click a member or an opening to edit it (its actions show over it), or pick a row in the cut list. ${open.length ? 'Members whose arrangement is still open are hatched orange.' : ''} ${selCaption(f)}</p>`;
     // The plans are long and thin: drawn at least 8 px to the inch (scroll sideways along a long panel) so the ticks read.
     else if (id === 'plan') { const wide = `style="--plan-min:${Math.round(layout.lengthIn * 8)}px"`;
         host.innerHTML = `<p class="view-caption">Top track plan (looking down): the studs at the top, and which way each faces.</p><div class="view-svg plan" ${wide}>${pre}${svgFit(renderSheetRegion(layout, info, 'planTop'))}</div>
@@ -1749,6 +1781,7 @@ function renderActiveView(p, f) {
     else if (id === '3d') host.innerHTML = `<div class="view-svg">${pre}${svgFit(renderIsoView(layout, { widthIn: 10, heightIn: 6.5, highlight: info.highlight }))}</div>
         <p class="view-caption">3D view, side ${p.sideB ? 'B' : 'A'}, not to scale. Select in the elevation, plan or cut list: the selection is colored here.</p>`;
     decorateHits(host, f);
+    if (id === 'elevation') { drawHandles(host, f); quickBar(host, p, f); restoreFocus(host, fx); }
 }
 // What the colors say while a member is selected: it is filled, the others with its cut list label only outlined.
 function selCaption(f) {
@@ -1765,6 +1798,7 @@ function decorateHits(host, f) {
         r.classList.toggle('selected', keys.some(k => links.memberKeys.has(k)));
         r.classList.toggle('manual', keys.some(k => !!byKey.get(k)?.manual));
     }
+    for (const r of host.querySelectorAll('.op-hit')) r.classList.toggle('selected', selection.kind === 'opening' && selection.key === r.dataset.key);
 }
 // Cut list and issues, under the views.
 function renderBottom(f) {
@@ -1827,11 +1861,13 @@ function renderInspectorContext(p, f) {
         return;
     }
     // The panel (nothing selected, or an opening: its editor is in Openings below).
-    const L = f.layout;
-    box.innerHTML = `<div class="ctx-card"><h3 title="${esc(p.mark)}">${esc(p.mark || 'Panel')}${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
+    const L = f.layout, fx = focusOf(box), octx = new Map(OC.openingContexts(p).map(c => [c.key, c])), loose = OC.unframedInserts(p);
+    box.innerHTML = `<div class="ctx-card"><h3 class="ctx-title"><input class="ctx-mark" type="text" data-f="mark" value="${esc(p.mark)}" placeholder="Panel mark" aria-label="Panel mark (rename this panel)" title="Rename this panel" autocomplete="off" spellcheck="false">${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
         <dl><dt>Geometry</dt><dd>${own.geometry === 'model' ? `<span class="own model" title="${esc(`Revit wall ${p.revit?.uniqueId || ''}`)}">🔒 the Revit wall's: outline and openings locked</span>` : '<span class="own typed">typed or drawn here: editable</span>'}</dd>
-            ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
+            ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${ocTag(octx.get(o.key))}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
+        ${loose.length ? `<div class="oc-loose small" role="note"><b>In the model, with no opening here</b> (not framed; add an opening if it needs one):<ul>${loose.map(x => `<li title="${esc(`${x.category}${x.uniqueId ? ` (UniqueId ${x.uniqueId})` : ''}`)}"><i class="oc-dot" style="background:${x.color}"></i>${esc(x.tradeLabel)}${x.name ? ` · ${esc(x.name)}` : ''} <span class="muted">at ${esc(fmtFtIn(x.at[0]))} along, ${esc(fmtFtIn(x.at[1]))} up (side A)</span></li>`).join('')}</ul></div>` : ''}
         ${manualSummary(p, f)}<div class="acts"><button class="secondary" data-act="copy" title="${esc(own.duplicate.explain)}">${esc(own.duplicate.label)}</button></div></div>`;
+    restoreFocus(box, fx);
 }
 // --- Manual edit mode: members unlocked and placed by hand (manual.mjs) -----------------------------------------------
 // Edits are side A (the plan's layout); the views may be side B (mirrored): what is typed or dragged is turned to side A.
@@ -1852,13 +1888,24 @@ function manualEdit(fn, say = '', { keep = true } = {}) {
     changed(); renderWorkspace();
     if (say) notice(say);
 }
-function manualStep() { const v = G.parseLength(main.querySelector('#man-step')?.value || ''); return v > 0 ? v : 1 / 16; }
+let manStep = 0.5, manPreview = null, manLast = ''; // the move step; a type change being previewed; what the last edit did
+const STEPS = [1 / 16, 1 / 8, 1 / 4, 1 / 2, 1, 6];
+function manualStep() { return manStep > 0 ? manStep : 1 / 16; }
+// A member in words: its label, role and place (side as drawn).
+function memberWords(key) {
+    const lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    return m ? `${m.mark || '?'} (${m.role}${MAN.isAdded(key) ? ', a copy' : ''}) at ${fmtFtIn(sideB() ? lay.lengthIn - m.x - m.w : m.x)}` : key;
+}
 function selectedLayoutKey() { return selection.kind === 'member' ? layoutKeyOf(selection.key) : null; }
 function manualNudge(dx, dy) {
     const key = selectedLayoutKey();
     if (!key || !(dx || dy)) return;
     historyHint = { label: 'the move', mergeKey: `man-move:${key}` };
+    const was = MAN.isUnlocked(cur(), key);
     manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, key), lay, key, sideB() ? -dx : dx, dy));
+    const what = [dx ? `${DT.inches(Math.abs(dx))} ${dx > 0 ? 'right' : 'left'}` : '', dy ? `${DT.inches(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(', ');
+    manLast = `Moved ${memberWords(key)}${was ? '' : ' (unlocked: placed by hand now)'}: ${what}.`;
+    notice(manLast); renderWorkspace();
 }
 // Copies keep the selection on the new member: one stud space along (a vertical), or 12" up (a horizontal).
 function manualCopy(key) {
@@ -1880,16 +1927,15 @@ function manualBlock(p, memberKey) {
     const key = layoutKeyOf(memberKey), lay = layoutA(), m = lay?.members.find(x => x.key === key);
     if (!m) return '';
     if (!MAN.isUnlocked(p, key)) return `<div class="man-card"><span class="set-state inherited">follows the framing rules</span>
-        <button class="secondary" data-act="man-unlock" data-key="${esc(key)}" title="It stays where it is and no longer follows the framing rules; then move, copy, mirror or remove it">✎ Unlock to place by hand</button></div>`;
+        <button class="secondary" data-act="man-unlock" data-key="${esc(key)}" title="It stays where it is and no longer follows the framing rules; then move, copy, mirror or remove it">✎ Unlock to place by hand</button>${typeRow(p, key, m)}</div>`;
     const L = lay.lengthIn, len = m.orient === 'v' ? m.h : m.w, f = (label, k, v) => `<label>${label}<input type="text" class="mini" data-man-f="${k}" data-key="${esc(key)}" value="${esc(lenText(v))}" autocomplete="off"></label>`;
     const nb = (t, dx, dy, title) => `<button class="secondary" data-act="man-nudge" data-dx="${dx}" data-dy="${dy}" title="${title}">${t}</button>`;
     return `<div class="man-card on"><div class="man-head"><span class="set-state overridden">✎ placed by hand${MAN.isAdded(key) ? ' (a copy)' : ''}</span>
             <button class="link" data-act="man-lock" data-key="${esc(key)}" title="${MAN.isAdded(key) ? 'Remove this copy' : 'Back to where the framing rules put it'}">${MAN.isAdded(key) ? 'Remove the copy' : '🔒 Lock (back to the rules)'}</button></div>
         <div class="man-fields">${f('From left end', 'x', viewX(m, L))}${f('From bottom', 'y', m.y)}${f(m.orient === 'v' ? 'Height' : 'Length', 'len', len)}</div>
-        <div class="man-nudge"><span class="muted small">Nudge</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}
-            <select id="man-step" aria-label="Nudge step">${['1/16"', '1/8"', '1/2"', '1"', '6"'].map(v => `<option>${v}</option>`).join('')}</select></div>
+        <div class="man-nudge"><span class="muted small">Nudge by ${esc(DT.inches(manualStep()))}</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}<span class="muted small">(the step is set in the bar over the view)</span></div>
         <div class="acts"><button class="secondary" data-act="man-copy" data-key="${esc(key)}">Copy</button><button class="secondary" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
-            ${MAN.isAdded(key) ? '' : `<button class="secondary danger" data-act="man-remove" data-key="${esc(key)}">Remove</button>`}</div></div>`;
+            ${MAN.isAdded(key) ? '' : `<button class="secondary danger" data-act="man-remove" data-key="${esc(key)}">Remove</button>`}</div>${typeRow(p, key, m)}</div>`;
 }
 // The panel card: how much is placed by hand, and the edits that no longer apply.
 function manualSummary(p, f) {
@@ -1899,11 +1945,157 @@ function manualSummary(p, f) {
         <span class="acts"><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n || gone ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}</span>
         ${stale.length ? `<ul class="plan-notes">${stale.map(x => `<li class="warning">${esc(x.message)}</li>`).join('')}</ul>` : ''}</div>`;
 }
+// A member's type: for it, for every member with its label, or (on-center studs) the panel's stud. Previewed first:
+// what changes, what moves (nothing), what is placed by hand from then on.
+function typeRow(p, key, m) {
+    if (m.parts?.length) return '<p class="muted small">A built-up member: its parts are its opening\'s (Openings tab).</p>';
+    const lay = layoutA(), same = lay.members.filter(x => x.mark && x.mark === m.mark && !x.parts?.length), onCenter = m.role === 'stud' && !m.manual;
+    const list = m.orient === 'v' ? 'dl-stud' : 'dl-track';
+    return `<div class="man-type"><label>Member type <input type="text" class="mini wide" id="man-type-in" list="${list}" value="${esc(m.type)}" aria-label="Member type"></label>
+        <label>for <select id="man-type-scope" aria-label="Which members">
+            <option value="one">this member only</option>
+            ${same.length > 1 ? `<option value="mark">every ${esc(m.mark)} (${same.length} members)</option>` : ''}
+            ${onCenter ? '<option value="panel">every stud on center (the panel\'s stud)</option>' : ''}</select></label>
+        <button class="secondary small" data-act="man-type-preview" data-key="${esc(key)}">Preview</button></div>
+        ${manPreview && manPreview.from === key ? `<div class="man-preview" role="status"><p>${esc(manPreview.text)}</p><div class="acts"><button class="small" data-act="man-type-apply">Apply</button><button class="link small" data-act="man-type-cancel">Cancel</button></div></div>` : ''}`;
+}
+function typePreview(key) {
+    const p = cur(), lay = layoutA(), m = lay?.members.find(x => x.key === key), type = (main.querySelector('#man-type-in')?.value || '').trim(), scope = main.querySelector('#man-type-scope')?.value || 'one';
+    const d = G.parseMember(type);
+    if (!m || !d || d.qty !== 1) { notice('Type one member this tool reads, like 362S162-43.', true); return; }
+    if (d.name === m.type) { notice(`It is ${m.type} already.`); return; }
+    if (scope === 'panel') {
+        manPreview = { from: key, scope, type: d.name, text: `Changes the panel's on-center stud from ${p.members.stud} to ${d.name}. Every stud on center changes (they keep following the framing rules; nothing moves); the bottom track and members in ${p.members.stud}'s size follow it, as when the stud is picked under Members.` };
+    } else {
+        const keys = scope === 'mark' ? lay.members.filter(x => x.mark === m.mark && !x.parts?.length).map(x => x.key) : [key];
+        const locked = keys.filter(k => !MAN.isUnlocked(p, k)).length;
+        manPreview = { from: key, scope, type: d.name, keys, text: `Changes ${keys.length} member${keys.length === 1 ? '' : 's'} from ${m.type} to ${d.name}: ${keys.map(memberWords).join('; ')}. Nothing moves${d.flangeIn && m.orient === 'v' && Math.abs(d.flangeIn - m.w) > 1e-6 ? ` (each is drawn ${inch(d.flangeIn)} wide from its left face)` : ''}.${locked ? ` ${locked} of them will be placed by hand from now on (no longer following the framing rules); Lock puts any back.` : ''}` };
+    }
+    renderWorkspace();
+}
+function typeApply() {
+    const pv = manPreview, p = cur();
+    if (!pv) return;
+    manPreview = null;
+    if (pv.scope === 'panel') { const old = p.members.stud; followStud(old, pv.type); changed(); manLast = `The panel's on-center stud: ${old} to ${pv.type}.`; notice(manLast); renderWorkspace(); return; }
+    let res;
+    manualEdit((q, lay) => { res = MAN.setType(q, lay, pv.keys, pv.type); return res.panel; });
+    manLast = `Member type ${pv.type} on ${res.changed.length} member${res.changed.length === 1 ? '' : 's'}: ${res.changed.map(c => `${memberWords(c.key)} (was ${c.from})`).join('; ')}. Nothing moved.`;
+    notice(manLast); renderWorkspace();
+}
+// A stud in a bay wider than the spacing.
+function fillBay(a, b) {
+    const p = cur(), lay = layoutA(), sp = Number(p.members.spacingIn) || 16;
+    const r = MAN.fillBay(p, lay, a, b, sp);
+    if (!r.key) { notice('No stud to copy beside that bay.', true); return; }
+    replacePanel(r.panel); changed();
+    manLast = `Added a stud (a copy of ${memberWords(a)}) at ${fmtFtIn(sideB() ? lay.lengthIn - r.x - 1.625 : r.x)} from the left end, in the bay that was over ${sp}" o.c.`;
+    selectAdded(r.key); notice(manLast);
+}
+// Arrows beside the selected member in the elevation: each moves it one step that way.
+function drawHandles(host, f) {
+    if (selection.kind !== 'member') return;
+    const svg = host.querySelector('svg'), i = (f.plan?.graphics || []).findIndex(g => g.memberKeys.includes(selection.key));
+    const hit = i >= 0 ? host.querySelector(`.member-hit[data-i="${i}"]`) : null;
+    if (!svg || !hit) return;
+    const x = Number(hit.getAttribute('x')), y = Number(hit.getAttribute('y')), w = Number(hit.getAttribute('width')), h = Number(hit.getAttribute('height'));
+    const r = 0.075, cx = x + w / 2, cy = y + h / 2, ns = 'http://www.w3.org/2000/svg', g = document.createElementNS(ns, 'g');
+    g.setAttribute('class', 'man-handles');
+    const arrow = (px, py, dx, dy, label) => {
+        const a = document.createElementNS(ns, 'g'), c = document.createElementNS(ns, 'circle'), t = document.createElementNS(ns, 'path'), ti = document.createElementNS(ns, 'title');
+        a.setAttribute('class', 'man-handle'); a.dataset.act = 'man-nudge'; a.dataset.dx = String(dx); a.dataset.dy = String(dy);
+        c.setAttribute('cx', px); c.setAttribute('cy', py); c.setAttribute('r', r);
+        const k = r * 0.55, pts = dx ? [[px + dx * k, py], [px - dx * k * 0.6, py - k], [px - dx * k * 0.6, py + k]] : [[px, py - dy * k], [px - k, py + dy * k * 0.6], [px + k, py + dy * k * 0.6]];
+        t.setAttribute('d', `M${pts.map(q => q.join(' ')).join(' L')} Z`);
+        ti.textContent = `${label} ${DT.inches(manualStep())}`;
+        a.append(c, t, ti); g.append(a);
+    };
+    arrow(x - r * 1.8, cy, -1, 0, 'Move left'); arrow(x + w + r * 1.8, cy, 1, 0, 'Move right');
+    arrow(cx, y - r * 1.8, 0, 1, 'Move up'); arrow(cx, y + h + r * 1.8, 0, -1, 'Move down');
+    svg.append(g);
+}
+// A wide bay in words: its two members, and how far apart they are (center to center) against the spacing.
+function bayWords(keys, sp) {
+    const lay = layoutA(), [a, b] = keys.map(k => lay?.members.find(x => x.key === k));
+    const gap = a && b ? Math.abs((b.x + b.w / 2) - (a.x + a.w / 2)) : null;
+    const [l, r] = sideB() ? [keys[1], keys[0]] : keys;
+    return `Over ${sp}" o.c.: ${memberWords(l)} to ${memberWords(r)}${gap != null ? ` are ${DT.inches(gap)} apart, center to center` : ''}.`;
+}
+// The bar of actions at the selected member or opening (any mode): what it is and the edits it takes, one click each.
+// A member: Copy, Mirror, Delete, its type, Reset (back to the rules); the arrows around it move it a step. An opening:
+// its size and place typed here (the model's are locked), its framing details, its members in the schedule, Delete.
+function quickBar(host, p, f) {
+    const gi = selection.kind === 'member' ? (f.plan?.graphics || []).findIndex(g => g.memberKeys.includes(selection.key)) : -1;
+    const svgBox = host.querySelector('.view-svg'), hit = selection.kind === 'member' ? host.querySelector(`.member-hit[data-i="${gi}"]`)
+        : selection.kind === 'opening' ? host.querySelector(`.op-hit[data-key="${CSS.escape(selection.key)}"]`) : null;
+    const html = !hit ? '' : selection.kind === 'member' ? quickMember(p, f) : quickOpening(p);
+    if (!svgBox || !html) return;
+    const bar = document.createElement('div');
+    bar.className = 'quick-bar'; bar.setAttribute('role', 'toolbar'); bar.setAttribute('aria-label', 'Edit the selection');
+    bar.innerHTML = html;
+    svgBox.append(bar);
+    // Beside a stud at its middle (clear of its arrows: right of it, else left), over anything else (under it when there
+    // is no room above); inside the view.
+    const hb = hit.getBoundingClientRect(), vb = svgBox.getBoundingClientRect(), bw = bar.offsetWidth, bh = bar.offsetHeight, ox = svgBox.scrollLeft - vb.left, oy = svgBox.scrollTop - vb.top;
+    const tall = hb.height > hb.width * 3 && selection.kind === 'member';
+    let top, left;
+    if (tall) {
+        top = hb.top + oy + hb.height / 2 - bh / 2;
+        left = hb.right + ox + 30;
+        if (left + bw > svgBox.scrollLeft + svgBox.clientWidth - 4) left = hb.left + ox - 30 - bw;
+    } else {
+        top = hb.top + oy - bh - 22;
+        if (top < svgBox.scrollTop + 4) top = hb.bottom + oy + 22;
+        left = hb.left + ox + hb.width / 2 - bw / 2;
+    }
+    left = Math.max(svgBox.scrollLeft + 4, Math.min(left, svgBox.scrollLeft + svgBox.clientWidth - bw - 4));
+    top = Math.max(svgBox.scrollTop + 4, top);
+    bar.style.top = `${Math.round(top)}px`; bar.style.left = `${Math.round(left)}px`;
+}
+function stepPick() {
+    return `<label class="qb-step small" title="How far each arrow moves it">Step <select data-qb-step aria-label="Move step">${STEPS.map(v => `<option value="${v}" ${Math.abs(manStep - v) < 1e-9 ? 'selected' : ''}>${esc(DT.inches(v))}</option>`).join('')}</select></label>`;
+}
+function quickMember(p, f) {
+    const key = selectedLayoutKey(), lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    if (!m) return '';
+    const head = `<b>${esc(m.mark || '?')} ${esc(m.role)}</b><span class="muted small">${esc(m.type)}${MAN.isUnlocked(p, key) ? ' · placed by hand' : ''}</span>`;
+    if (m.parts?.length) return `${head}<span class="secondary small">A built-up member: its parts are its opening's.</span>${m.of ? `<button class="secondary small" data-act="qb-opening" data-key="${esc(m.of)}">Edit its opening</button>` : ''}`;
+    const added = MAN.isAdded(key), by = MAN.isUnlocked(p, key);
+    return `${head}${editMode ? '' : stepPick()}<span class="qb-sep"></span>
+        <button class="secondary small" data-act="man-copy" data-key="${esc(key)}" title="A copy one stud space along (a horizontal: 12&quot; up)">Copy</button>
+        <button class="secondary small" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
+        <button class="secondary small" data-act="qb-type" title="Another member type for it, or for every member with its label">Type…</button>
+        ${added ? `<button class="secondary small danger" data-act="man-lock" data-key="${esc(key)}">Delete</button>` : `<button class="secondary small danger" data-act="man-remove" data-key="${esc(key)}" title="Off the panel (Reset brings it back)">Delete</button>`}
+        ${by && !added ? `<button class="link small" data-act="man-lock" data-key="${esc(key)}" title="Back to where the framing rules put it">Reset</button>` : ''}`;
+}
+function quickOpening(p) {
+    const i = G.openingKeys(p).indexOf(selection.key), o = p.openings[i];
+    if (!o) return '';
+    const c = OC.openingContexts(p)[i], locked = G.isLockedOpening(p, o), H = G.shapeTop(p.shape).heightIn;
+    const fl = (label, k) => `<label class="qb-f small">${label}<input type="text" class="mini" data-f="openings.${i}.${k}" data-t="len" value="${esc(lenText(o[k]))}" autocomplete="off"></label>`;
+    const fields = locked ? '<span class="small muted">🔒 the model\'s: its size and place stay</span>'
+        : `${fl('Width', 'widthIn')}${o.kind === 'steel' ? '' : fl('Height', 'heightIn')}${o.kind === 'door' ? '' : fl(o.kind === 'steel' ? 'Bottom' : 'Sill', 'sillIn')}${fl(sideB() ? 'From left (side A)' : 'From left', 'leftIn')}`;
+    return `<b>${esc(G.openingName(p.openings, i))}</b>${ocTag(c)}<span class="qb-sep"></span>${fields}<span class="qb-sep"></span>
+        <button class="secondary small" data-act="framing" data-i="${i}" title="Jambs, header, sill, offsets, and their drawings">Framing…</button>
+        <button class="secondary small" data-act="qb-members" data-i="${i}" title="Its jambs, header and sill in the Openings schedule">Members</button>
+        ${locked || !(H > 0) ? '' : `<button class="secondary small danger" data-act="del-op" data-i="${i}">Delete</button>`}`;
+}
+// Members placed by hand and a bay now over the stud spacing: said over the view in any mode.
+function bayStrip(p, f) {
+    if (!MAN.unlockedCount(p) && !MAN.removedKeys(p).length) return '';
+    const sp = Number(p.members.spacingIn) || 16, bays = wideBays(f);
+    return bays.length ? `<div class="edit-bar slim">${bayRows(bays, sp)}</div>` : '';
+}
+const wideBays = (f) => (f?.plan?.issues || []).filter(i => i.code === 'layout.wide_bay').map(i => ({ i, keys: (i.memberKeys || String(i.subjectKey).split('|')).map(layoutKeyOf) })).filter(b => b.keys.every(Boolean));
+const bayRows = (bays, sp) => `<div class="man-bays" role="alert">${bays.map(b => `<span>⚠ ${esc(bayWords(b.keys, sp))} <button class="small" data-act="man-fill" data-a="${esc(b.keys[0])}" data-b="${esc(b.keys[1])}">Add a stud in the gap</button></span>`).join('')}</div>`;
 // Over the elevation in edit mode.
-function editBar(p) {
-    const n = MAN.unlockedCount(p);
-    return `<div class="edit-bar" role="toolbar" aria-label="Edit members"><b>✎ Edit members</b><span class="muted small">Drag a member to move it (it unlocks) · select one for its card · arrows nudge it (Shift: 1")</span>
-        <span class="spacer"></span><span class="small">${n} by hand</span><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}<button class="small" data-act="man-mode">Done</button></div>`;
+function editBar(p, f) {
+    const n = MAN.unlockedCount(p), sp = Number(p.members.spacingIn) || 16;
+    const bays = wideBays(f);
+    const stepRow = `<span class="man-steps" role="group" aria-label="Move step"><span class="small">Step</span>${STEPS.map(v => `<button class="${Math.abs(manStep - v) < 1e-9 ? 'on' : ''}" data-act="man-step" data-v="${v}" aria-pressed="${Math.abs(manStep - v) < 1e-9}">${esc(DT.inches(v))}</button>`).join('')}</span>`;
+    return `<div class="edit-bar" role="toolbar" aria-label="Edit members"><b>✎ Edit members</b><span class="muted small">Drag a member to move it · click one for its actions · the arrows around it (or the arrow keys, Shift: 1") move it a step</span>
+        <span class="spacer"></span>${stepRow}<span class="small">${n} by hand</span><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}<button class="small" data-act="man-mode">Done</button>
+        ${manLast ? `<div class="man-last small">${esc(manLast)}</div>` : ''}${bays.length ? bayRows(bays, sp) : ''}</div>`;
 }
 // Typed place and length (side A once typed).
 function manualField(el) {
@@ -2022,6 +2214,7 @@ function openingSchedule(p) {
         return `<td><button class="sch-cell ${cls}${schPick?.i === i && schPick?.k === k ? ' on' : ''}" data-act="sch-pick" data-i="${i}" data-k="${k}" title="${esc(`${st.label}: ${badge}${st.differs ? ` (rule ${st.rule.code} gives ${giveText(st.rule.gives)})` : ''}`)}">${esc(memberText(st.value))}<small>${badge}${st.differs ? ' ≠ rule' : ''}</small></button>
             ${st.arrangement.needed ? `<span class="sch-arr">${ARRANGE_WORDS[k].map(([v, label]) => `<button class="${st.arrangement.value === v ? 'on' : ''}" data-act="sch-arrange" data-i="${i}" data-k="${k}" data-v="${v}" title="${label}">${label.split(' ')[0]}</button>`).join('')}${st.arrangement.value ? '' : '<b class="arr-open">?</b>'}</span>` : ''}</td>`;
     };
+    const ctx = OC.openingContexts(p);
     const rows = p.openings.map((o, i) => {
         const r = R.ruleFor(eng, p, i), states = Object.fromEntries(R.memberStates(p, i, r.applies ? r : null).map(s => [s.member, s]));
         const rule = !r.applies ? '<span class="muted small">—</span>' : r.bound ? `<span class="sch-rule ok">${esc(r.bound.displayCode)}</span>`
@@ -2029,14 +2222,25 @@ function openingSchedule(p) {
         const b = G.openingBox(o, G.shapeTop(p.shape).heightIn);
         return `<tr class="${sel === i ? 'selected' : ''}"><td><input type="checkbox" data-sch-check="${i}" ${schChecked.has(i) ? 'checked' : ''} aria-label="Check ${esc(G.openingName(p.openings, i))}"></td>
             <td><button class="link" data-ctx="select-opening" data-v="${esc(G.openingKeys(p)[i])}"><b class="op-name ${o.kind}">${esc(G.openingName(p.openings, i))}</b></button></td>
-            <td class="small">${esc(G.OPENING_TYPES[o.kind].name)}<br>${esc(`${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? '' : ` x ${fmtFtIn(b.top - b.bottom)}`}`)}</td><td>${rule}</td>
+            <td class="small">${esc(G.OPENING_TYPES[o.kind].name)}<br>${esc(`${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? '' : ` x ${fmtFtIn(b.top - b.bottom)}`}`)}${ocTag(ctx[i], true)}</td><td>${rule}</td>
             ${cell(i, 'jamb', states.jamb)}${cell(i, 'head', states.head)}${cell(i, 'sill', states.sill)}</tr>`;
     }).join('');
     const n = schChecked.size;
     return `<div class="sch-bar"><span class="small">${n ? `<b>${n} checked</b>: a pick applies to all of them` : 'Click a member to change it; check rows to change several at once.'}</span>
             <span class="spacer"></span>${anyRule ? '<button class="secondary small" data-act="sch-rules" title="Every door and window takes the rule that covers it">Use the rules for all</button>' : '<button class="link small" data-act="eng-open">Open the engineering catalog for rules</button>'}</div>
         <table class="sch-table" aria-label="Openings: jambs, header and sill"><thead><tr><th><button class="link small" data-act="sch-check-all" aria-label="Check all">☐</button></th><th>Opening</th><th>Kind, size</th><th>Rule</th><th>Jambs</th><th>Header</th><th>Sill</th></tr></thead>
-        <tbody>${rows}</tbody></table>${schPick ? pickerHtml(p) : ''}`;
+        <tbody>${rows}</tbody></table>${ocLegend(ctx)}${schPick ? pickerHtml(p) : ''}`;
+}
+// Where an opening came from, in its trade's color: the model's (its category, family and type; the UniqueId on hover),
+// the model's outline, or typed here. long: the family and type on a line of their own.
+function ocTag(c, long = false) {
+    if (!c) return '';
+    const what = c.source === 'model' ? c.tradeLabel : c.source === 'model-geometry' ? 'the model\'s outline' : 'typed here';
+    return `<span class="oc" title="${esc(c.title)}"><i class="oc-dot" style="background:${c.color}"></i>${esc(what)}${c.name ? (long ? `<br><span class="oc-name">${esc(c.name)}</span>` : ` · <span class="oc-name">${esc(c.name)}</span>`) : ''}</span>`;
+}
+function ocLegend(ctx) {
+    const list = OC.tradesOf(ctx);
+    return list.length ? `<p class="oc-legend small"><span class="muted">Colors by trade (the drawing's too):</span> ${list.map(t => `<span><i class="oc-dot" style="background:${t.color}"></i>${esc(t.label)}</span>`).join(' ')}</p>` : '';
 }
 // The picker for one cell: what this member can be.
 function pickerHtml(p) {
@@ -2466,8 +2670,10 @@ function renderSet() {
                 <span class="muted">${layout ? `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')} · ${esc(G.openingsSummary(p.openings))}</span>
                 <span class="nav-state">${state}</span></button></li>`;
     };
+    const fx = focusOf(box);
     box.innerHTML = `<div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
-            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div>
+            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}
+            ${cur() ? field('Panel (open)', 'mark', cur().mark, { ph: 'P-101', cls: 'f-mark' }) : ''}</div>
         ${set.panels.length ? `<input type="search" class="nav-search" data-nav-search placeholder="Find a panel (mark, group, wall type)" value="${esc(navQuery)}" aria-label="Find a panel">
         <div class="nav-actions"><button class="link" data-act="set-check-all">Check all</button><button class="link" data-act="set-check-none">Check none</button>
             ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}</div>
@@ -2475,6 +2681,20 @@ function renderSet() {
         <div id="set-actions" class="nav-actions"></div>
         <div class="nav-actions"><button class="secondary" data-act="set-export-plan" title="The resolved framing plans: every physical member, the cut list and what is still to decide (for the native CAS_FRAMING editor)">Export framing plan</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
     renderSetActions();
+    restoreFocus(box, fx);
+}
+// A field being typed in keeps its place (and the caret) when its card is drawn again under it.
+function focusOf(box) {
+    const a = document.activeElement;
+    if (!a || !box?.contains(a) || !a.matches('input, select, textarea')) return null;
+    const sel = a.dataset.f ? `[data-f="${a.dataset.f}"]` : a.matches('[data-nav-search]') ? '[data-nav-search]' : a.id ? `#${a.id}` : null;
+    return sel ? { sel, start: a.selectionStart, end: a.selectionEnd } : null;
+}
+function restoreFocus(box, fx) {
+    const el = fx && box.querySelector(fx.sel);
+    if (!el) return;
+    el.focus({ preventScroll: true });
+    try { el.setSelectionRange(fx.start, fx.end); } catch { /* not a text field */ }
 }
 function renderSetActions() {
     const el = main.querySelector('#set-actions');
@@ -2658,7 +2878,7 @@ fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(r
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
 const NO_PANEL_ACTS = new Set(['new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
-const NOT_EDITS = new Set(['open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'sch-pick', 'sch-check-all',
+const NOT_EDITS = new Set(['qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
 const ACT_LABELS = { 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
     'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
@@ -2666,7 +2886,7 @@ const ACT_LABELS = { 'sch-apply': 'the openings\' members', 'sch-rules': 'the ru
     'mirror-op': 'mirroring the opening', 'copy-op': 'copying the opening', center: 'centering the opening', 'peri-finish': 'the perimeter', 'set-assign': 'giving the members', 'set-delete': 'deleting panels',
     'rule-use': 'the opening rule', 'op-alt': 'the rule alternative', 'op-rule-member': 'back to the rule', 'op-arrange': 'the arrangement',
     'man-unlock': 'unlocking the member', 'man-lock': 'locking the member', 'man-unlock-all': 'unlocking every member', 'man-lock-all': 'locking every member',
-    'man-nudge': 'the move', 'man-copy': 'the copy', 'man-mirror': 'the mirrored copy', 'man-remove': 'removing the member' };
+    'man-nudge': 'the move', 'man-type-apply': 'the member type', 'man-fill': 'the stud added in a wide bay', 'man-copy': 'the copy', 'man-mirror': 'the mirrored copy', 'man-remove': 'removing the member' };
 main.addEventListener('click', (e) => {
     const vt = e.target.closest('[data-view-tab]');
     if (vt) { setView(vt.dataset.viewTab); return; }
@@ -2680,6 +2900,9 @@ main.addEventListener('click', (e) => {
     if (row) { selectTarget({ kind: 'mark', key: row.dataset.mark }); return; }
     const iss = e.target.closest('[data-issue]');
     if (iss && !e.target.closest('button')) { selectTarget({ kind: 'issue', key: Number(iss.dataset.issue) }); return; }
+    if (e.target.closest('.mark-hit')) { selection = W.NONE; renderWorkspace(); renameFocus(); return; }
+    const oh = e.target.closest('.op-hit[data-key]');
+    if (oh) { selectTarget({ kind: 'opening', key: oh.dataset.key }); return; }
     const hit = e.target.closest('.member-hit[data-i]');
     if (hit) { const keys = current.plan?.graphics?.[Number(hit.dataset.i)]?.memberKeys || []; if (keys.length) selectTarget({ kind: 'member', key: keys[0] }); }
 });

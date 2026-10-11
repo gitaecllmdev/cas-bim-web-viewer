@@ -55,7 +55,7 @@ const partOf = (name) => { const r = /^(\d{3,4})([A-Z]{1,3})(\d{3})-\d{2,3}$/.ex
     return r ? { stud: /^(S|CS|CT)$/.test(r[2]), flangeIn: Number(r[3]) / 100, lipIn: LIP_IN[r[3]] ?? 0.5 } : null; };
 const isHeadOrSill = (m) => m.orient === 'h' && (m.role === 'head track' || m.role === 'sill track');
 const inchesText = (v) => { const n = Math.round(v * 16), w = Math.floor(n / 16), f = n % 16; if (!f) return `${w}"`; let a = f, b = 16; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
-const H_OPACITY = 0.6; // tracks, headers and sills: a little see-through, so the studs and jambs they run over show
+const H_OPACITY = 0.35; // tracks, headers and sills: see-through (screen and PDF), so the studs seated in them and the jambs they lap show
 export function partLines(m, opening = null) {
     if (!isHeadOrSill(m) || !m.parts?.length) return [];
     const parts = m.parts.map(p => ({ qty: p.qty || 1, ...partOf(p.name) })).filter(p => p.flangeIn != null);
@@ -82,6 +82,19 @@ export function lapLines(m, members) {
     return out;
 }
 
+// A full-height stud sits in its tracks (the plan's track seats): on the bottom track's web, its cut length up into the top
+// track (its cutback short of the web). -> { y0, y1 } (its drawn bottom and top, wall inches) or null (a piece, cut to
+// its clear span, stays as its box). Under a sloped top only its bottom is seated (its top follows the track's underside).
+const over = (t, m) => t.orient === 'h' && t.x < m.x + m.w - 1e-6 && t.x + t.w > m.x + 1e-6;
+export function seatOf(m, members) {
+    if (m.orient !== 'v' || !m.full || !(m.lengthIn > 0)) return null;
+    const below = members.find(t => over(t, m) && t.role === 'bottom track' && Math.abs(t.y + t.h - m.y) < 1e-3);
+    const above = m.pts ? null : members.find(t => over(t, m) && t.role === 'top track' && Math.abs(t.y - (m.y + m.h)) < 1e-3);
+    if (!below && !above) return null;
+    const y0 = below ? below.y : m.y + m.h + above.h - m.lengthIn, top = above ? above.y + above.h : m.y + m.h;
+    return { y0, y1: m.pts ? m.y + m.h : Math.min(top, y0 + m.lengthIn) };
+}
+
 export function pickScale(lengthIn, heightIn, maxW = 10.4, maxH = 5.2) {
     const fit = Math.min(maxW / lengthIn, maxH / heightIn);
     return SCALES.find(([s]) => s <= fit) || SCALES[SCALES.length - 1];
@@ -91,7 +104,7 @@ export function pickScale(lengthIn, heightIn, maxW = 10.4, maxH = 5.2) {
 const text = (x, y, s, { size = 0.09, anchor = 'start', weight = 'normal', rotate = 0, fill = COLORS.text } = {}) =>
     ({ t: 'text', x, y, s: String(s ?? ''), size, anchor, weight, rotate, fill });
 const line = (x1, y1, x2, y2, { stroke = '#000', width = 0.008, dash } = {}) => ({ t: 'line', x1, y1, x2, y2, stroke, width, dash });
-const rect = (x, y, w, h, { fill = 'none', stroke = '#000', width = 0.008 } = {}) => ({ t: 'rect', x, y, w, h, fill, stroke, width });
+const rect = (x, y, w, h, { fill = 'none', stroke = '#000', width = 0.008, opacity } = {}) => ({ t: 'rect', x, y, w, h, fill, stroke, width, ...(opacity != null ? { opacity } : {}) });
 
 // Dimension line with architectural tick marks and the value above (horizontal) or left of it (vertical).
 function dim(x1, y1, x2, y2, label, { vertical = false, size = 0.09 } = {}) {
@@ -136,6 +149,8 @@ function toSvg(ops, box = null) {
         if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}"${op} stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
         if (o.t === 'circle') return `<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${o.r}" fill="none" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
         if (o.t === 'hit') return `<rect class="prefab-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="#1f5fbf" fill-opacity="0" style="cursor:pointer" data-prefab-step="${esc(o.step)}"><title>${esc(o.title)}</title></rect>`;
+        if (o.t === 'markhit') return `<rect class="mark-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="#1f5fbf" fill-opacity="0" style="cursor:text"><title>Rename this panel</title></rect>`;
+        if (o.t === 'ohit') return `<rect class="op-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" data-key="${esc(o.key)}"><title>Select this opening</title></rect>`;
         if (o.t === 'mhit') return `<rect class="member-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" data-i="${o.i}"><title>${esc(o.title)}</title></rect>`;
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
@@ -376,9 +391,12 @@ export function sheetOps(layout, info) {
         out.push(text(at.x, y, name, { size: 0.06, anchor: 'middle', fill: COLORS.contextText }));
     }
 
-    // Openings: outline with an X (sizes come from the ordinates)
+    // Openings: outline with an X (sizes come from the ordinates). With info.openingLooks (opening-context.mjs): the
+    // outline and a light tint in its trade's color, and the model's family and type under its size.
     for (const o of openings) {
-        out.push(rect(X(o.left), Y(o.top), (o.right - o.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.opening, width: 0.008 }));
+        const look = info.openingLooks?.[o.key];
+        if (info.memberHits && o.key) hits.push({ t: 'ohit', key: o.key, x: X(o.left), y: Y(o.top), w: (o.right - o.left) * s, h: (o.top - o.bottom) * s });
+        out.push(rect(X(o.left), Y(o.top), (o.right - o.left) * s, (o.top - o.bottom) * s, look ? { stroke: look.color, width: 0.012, fill: look.color, opacity: 0.07 } : { stroke: COLORS.opening, width: 0.008 }));
         out.push(line(X(o.left), Y(o.top), X(o.right), Y(o.bottom), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
         out.push(line(X(o.left), Y(o.bottom), X(o.right), Y(o.top), { stroke: COLORS.opening, width: 0.005, dash: '0.04 0.03' }));
         if (o.requested) { // framed out to the stud layout: the rough opening as asked for, inside
@@ -393,18 +411,22 @@ export function sheetOps(layout, info) {
             const size = Math.min(0.07, ((o.right - o.left) * s * 0.9) / (Math.max(...lines.map(l => l.length)) * 0.62));
             if (size >= 0.04) {
                 const cx = X((o.left + o.right) / 2), cy = Y(o.bottom + (o.top - o.bottom) * 0.3);
-                const bw = Math.max(...lines.map(l => textWidth(l, size, true))) + 0.04, bh = lines.length * size * 1.25 + 0.02;
+                // The model's name for it (family : type), smaller, in its trade's color, when it fits across.
+                const nm = look?.name || '', nSize = nm ? Math.min(size * 0.85, ((o.right - o.left) * s * 0.9) / (nm.length * 0.58)) : 0, showName = nSize >= 0.035;
+                const bw = Math.max(...lines.map(l => textWidth(l, size, true)), showName ? textWidth(nm, nSize, false) : 0) + 0.04, bh = lines.length * size * 1.25 + 0.02 + (showName ? nSize * 1.3 : 0);
                 out.push(rect(cx - bw / 2, cy - size - 0.01, bw, bh, { fill: '#ffffff', stroke: 'none', width: 0 }));
                 lines.forEach((l, k) => out.push(text(cx, cy + k * size * 1.25, l, { size, anchor: 'middle', weight: k ? 'normal' : 'bold', fill: COLORS.openingDim })));
+                if (showName) out.push(text(cx, cy + (lines.length - 1) * size * 1.25 + nSize * 1.35, nm, { size: nSize, anchor: 'middle', fill: look.color }));
                 ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - size - 0.01, y1: cy - size - 0.01 + bh });
             }
         }
         // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
-        const kind = openingKind(o);
-        if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(OPENING_KINDS[kind], 0.06, true) + 0.08) { // when the name fits across it
-            out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(OPENING_KINDS[kind], 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(OPENING_KINDS[kind], 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
-            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), OPENING_KINDS[kind], { size: 0.06, anchor: 'middle', weight: 'bold', fill: COLORS.openingDim }));
-            ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), OPENING_KINDS[kind], 0.06, 'middle'));
+        // (The model's trade for it, when it says: PLUMBING, ELECTRICAL, ...)
+        const kind = openingKind(o), kt = look?.kindText || OPENING_KINDS[kind];
+        if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(kt, 0.06, true) + 0.08) { // when the name fits across it
+            out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(kt, 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(kt, 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
+            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, { size: 0.06, anchor: 'middle', weight: 'bold', fill: look?.kindText ? look.color : COLORS.openingDim }));
+            ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, 0.06, 'middle'));
         }
     }
     // Members, colored by function like the CAS legend (on screen, info.prefabMembers: a mark with a prefab length in
@@ -418,8 +440,10 @@ export function sheetOps(layout, info) {
         const look = hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
             : st ? { fill: PREFAB_COLORS[`${st}Member`], stroke: PREFAB_COLORS[st], width: 0.012 }
                 : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006, ...(m.orient === 'h' ? { opacity: H_OPACITY } : {}) };
-        // Under a sloped top: the member's outline (its top cut to the slope).
-        out.push(m.pts ? { t: 'poly', pts: m.pts.map(([x, y]) => [X(x), Y(y)]), ...look } : rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, look));
+        // Under a sloped top: the member's outline (its top cut to the slope). A full-height stud: seated in its tracks.
+        const seat = seatOf(m, members);
+        if (m.pts) out.push({ t: 'poly', pts: m.pts.map(([x, y]) => [X(x), Y(seat && Math.abs(y - m.y) < 1e-6 ? seat.y0 : y)]), ...look });
+        else out.push(seat ? rect(X(m.x), Y(seat.y1), m.w * s, (seat.y1 - seat.y0) * s, look) : rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, look));
         for (const l of lapLines(m, members)) out.push(line(X(l.x1), Y(l.y1), X(l.x2), Y(l.y2), { stroke: COLORS.studStroke, width: 0.004, dash: '0.025 0.015' }));
         for (const l of partLines(m, openings.find(o => o.key && o.key === m.of))) out.push(line(X(l.x1), Y(l.y1), X(l.x2), Y(l.y2), { stroke: look.stroke, width: l.hidden ? 0.004 : 0.005, ...(l.hidden ? { dash: '0.02 0.012' } : {}) }));
         if (info.memberHits) {
@@ -546,6 +570,7 @@ export function sheetOps(layout, info) {
             || { cx: prefX, cy: prefY, w: textWidth(info.mark, 0.13, true) + 0.1, h: 0.22, size: 0.13 };
         out.push(rect(at.cx - at.w / 2, at.cy - at.h / 2, at.w, at.h, { fill: 'white', stroke: '#000', width: 0.008 }));
         out.push(text(at.cx, at.cy + at.size * 0.36, info.mark, { size: at.size, anchor: 'middle', weight: 'bold' }));
+        if (info.memberHits) hits.push({ t: 'markhit', x: at.cx - at.w / 2, y: at.cy - at.h / 2, w: at.w, h: at.h });
     }
 
     // --- Track plans above and below the elevation, with ordinates from the left end to every stud (and, on the

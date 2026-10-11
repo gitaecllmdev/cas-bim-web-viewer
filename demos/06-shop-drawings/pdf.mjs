@@ -26,12 +26,10 @@ function rgb(color) {
     if (!hex || hex === 'none' || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
     return [1, 3, 5].map(i => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
 }
-// A fill with an opacity (the screen's see-through members), blended with white paper: the PDF draws it solid.
-function paper(color, opacity) {
-    const hex = NAMED[color] || color;
-    if (opacity == null || !/^#[0-9a-f]{6}$/i.test(hex || '')) return color;
-    return `#${[1, 3, 5].map(i => Math.round(255 - (255 - parseInt(hex.slice(i, i + 2), 16)) * opacity).toString(16).padStart(2, '0')).join('')}`;
-}
+// A fill with an opacity (the see-through tracks, headers and sills): drawn see-through in the PDF too, by a graphics
+// state with that fill alpha (ISO 32000-1 §11.6.4.4 /ca; PDF 1.4 transparency). Its outline stays solid.
+const alphaName = (opacity) => `GA${Math.round(Math.min(1, Math.max(0, opacity)) * 100)}`;
+const extGStates = (alphas) => (alphas.size ? ` /ExtGState << ${[...alphas].sort().map(n => `/${n} << /Type /ExtGState /ca ${num(Number(n.slice(2)) / 100)} >>`).join(' ')} >>` : '');
 // PDF string literal in WinAnsi (Latin-1 range); other characters become '?'.
 const pdfString = (s) => `(${[...s].map(ch => (ch.charCodeAt(0) > 255 ? '?' : ch)).join('').replace(/([\\()])/g, '\\$1')})`;
 const latin1 = (str) => { const b = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) b[i] = str.charCodeAt(i) & 0xff; return b; };
@@ -41,7 +39,7 @@ const fitBox = (o, pw, ph) => { const k = Math.min(o.w / pw, o.h / ph), w = pw *
 
 // A page's content stream from the primitives: c, the page's operators so far; images, the JPEG data URL images of the
 // whole file so far ({ name, bytes, width, height }; Im1 is the logo).
-function drawOps(ops, { P, Hpt, c, images, logo }) {
+function drawOps(ops, { P, Hpt, c, images, logo, alphas = new Set() }) {
     const X = (x) => num(x * P), Y = (y) => num(Hpt - y * P);
     for (const o of ops) {
         if (o.t === 'line') {
@@ -49,15 +47,15 @@ function drawOps(ops, { P, Hpt, c, images, logo }) {
             const dash = o.dash ? `[${o.dash.split(/[\s,]+/).map(v => num(Number(v) * P)).join(' ')}] 0 d` : '[] 0 d';
             c.push(`${col} RG ${num(o.width * P)} w ${dash} ${X(o.x1)} ${Y(o.y1)} m ${X(o.x2)} ${Y(o.y2)} l S`);
         } else if (o.t === 'rect') {
-            const fill = rgb(paper(o.fill, o.opacity)), stroke = o.width > 0 ? rgb(o.stroke) : null;
+            const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
             if (!fill && !stroke) continue;
             const path = `${X(o.x)} ${num(Hpt - (o.y + o.h) * P)} ${num(o.w * P)} ${num(o.h * P)} re`;
-            c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+            c.push(seeThrough(o, fill, alphas, `${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`));
         } else if (o.t === 'poly') {
-            const fill = rgb(paper(o.fill, o.opacity)), stroke = o.width > 0 ? rgb(o.stroke) : null;
+            const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
             if ((!fill && !stroke) || o.pts.length < 3) continue;
             const path = o.pts.map((p, k) => `${X(p[0])} ${Y(p[1])} ${k ? 'l' : 'm'}`).join(' ') + ' h';
-            c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
+            c.push(seeThrough(o, fill, alphas, `${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`));
         } else if (o.t === 'circle') {
             const k = 0.5523 * o.r * P, cx = X(o.cx), cy = Y(o.cy), r = o.r * P;
             c.push(`${rgb(o.stroke) || '0 0 0'} RG ${num(o.width * P)} w [] 0 d ${num(cx + r)} ${cy} m `
@@ -84,6 +82,14 @@ function drawOps(ops, { P, Hpt, c, images, logo }) {
         }
     }
     return c;
+}
+
+// A filled shape with an opacity: in its own graphics state with that fill alpha.
+function seeThrough(o, fill, alphas, ops) {
+    if (o.opacity == null || o.opacity >= 1 || !fill) return ops;
+    const name = alphaName(o.opacity);
+    alphas.add(name);
+    return `q /${name} gs ${ops} Q`;
 }
 
 const imageObject = (im) => [latin1(`<< /Type /XObject /Subtype /Image /Width ${im.width} /Height ${im.height} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${im.bytes.length} >>\nstream\n`),
@@ -113,7 +119,8 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
     const P = 72, Hpt = heightIn * P;
     const images = []; // JPEG data URL images: { name, bytes, width, height }
     const imageBase = logo ? 9 : 8; // their object numbers follow the fonts, the info and the logo
-    const c = drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo });
+    const alphas = new Set();
+    const c = drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo, alphas });
     const content = latin1(c.join('\n'));
 
     // Objects: 1 catalog, 2 pages, 3 page, 4 content, 5-6 fonts, 7 info, 8 logo (optional), then the other images.
@@ -121,7 +128,7 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
     const objects = [
         latin1('<< /Type /Catalog /Pages 2 0 R >>'),
         latin1('<< /Type /Pages /Kids [3 0 R] /Count 1 >>'),
-        latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjects.length ? ` /XObject << ${xobjects.join(' ')} >>` : ''} >> /Contents 4 0 R >>`),
+        latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 5 0 R /F2 6 0 R >>${xobjects.length ? ` /XObject << ${xobjects.join(' ')} >>` : ''}${extGStates(alphas)} >> /Contents 4 0 R >>`),
         [latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')],
         latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>'),
         latin1('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>'),
@@ -136,8 +143,8 @@ export function toPdf(ops, { widthIn = 17, heightIn = 11, logo = null, title = '
 // its own size; the logo shared by every page. Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, 6 logo (optional), then
 // each page and its content, then the JPEG data URL images.
 export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}) {
-    const P = 72, images = [], n = pages.length, first = logo ? 7 : 6;
-    const streams = pages.map(({ ops, widthIn, heightIn }) => latin1(drawOps(ops, { P, Hpt: heightIn * P, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(heightIn * P) + ' re f', '1 J 1 j'], images, logo }).join('\n')));
+    const P = 72, images = [], n = pages.length, first = logo ? 7 : 6, alphas = new Set();
+    const streams = pages.map(({ ops, widthIn, heightIn }) => latin1(drawOps(ops, { P, Hpt: heightIn * P, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(heightIn * P) + ' re f', '1 J 1 j'], images, logo, alphas }).join('\n')));
     const xobjects = [...(logo ? ['/Im1 6 0 R'] : []), ...images.map((im, i) => `/${im.name} ${first + 2 * n + i} 0 R`)].join(' ');
     const objects = [
         latin1('<< /Type /Catalog /Pages 2 0 R >>'),
@@ -149,7 +156,7 @@ export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}
     if (logo) objects.push(imageObject({ width: logo.width, height: logo.height, bytes: logo.jpeg }));
     streams.forEach((content, k) => {
         const { widthIn, heightIn } = pages[k];
-        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(heightIn * P)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''} >> /Contents ${first + 2 * k + 1} 0 R >>`));
+        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(heightIn * P)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''}${extGStates(alphas)} >> /Contents ${first + 2 * k + 1} 0 R >>`));
         objects.push([latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')]);
     });
     for (const im of images) objects.push(imageObject(im));
@@ -159,8 +166,8 @@ export function toPdfSheets(pages, { logo = null, title = 'Shop drawings' } = {}
 // Several pages of the same primitives (a report): pages, one ops list each; JPEG data URL images (photos, plans).
 // Objects: 1 catalog, 2 pages, 3-4 fonts, 5 info, then each page and its content, then the images.
 export function toPdfPages(pages, { widthIn = 8.5, heightIn = 11, title = 'Report' } = {}) {
-    const P = 72, Hpt = heightIn * P, images = [], n = pages.length;
-    const streams = pages.map(ops => latin1(drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo: null }).join('\n')));
+    const P = 72, Hpt = heightIn * P, images = [], n = pages.length, alphas = new Set();
+    const streams = pages.map(ops => latin1(drawOps(ops, { P, Hpt, c: ['1 1 1 rg 0 0 ' + num(widthIn * P) + ' ' + num(Hpt) + ' re f', '1 J 1 j'], images, logo: null, alphas }).join('\n')));
     const xobjects = images.map((im, i) => `/${im.name} ${6 + 2 * n + i} 0 R`).join(' ');
     const objects = [
         latin1('<< /Type /Catalog /Pages 2 0 R >>'),
@@ -170,7 +177,7 @@ export function toPdfPages(pages, { widthIn = 8.5, heightIn = 11, title = 'Repor
         latin1(`<< /Title ${pdfString(title)} /Producer (CAS BIM Web Viewer) >>`),
     ];
     streams.forEach((content, k) => {
-        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''} >> /Contents ${7 + 2 * k} 0 R >>`));
+        objects.push(latin1(`<< /Type /Page /Parent 2 0 R /MediaBox [0 0 ${num(widthIn * P)} ${num(Hpt)}] /Resources << /Font << /F1 3 0 R /F2 4 0 R >>${xobjects ? ` /XObject << ${xobjects} >>` : ''}${extGStates(alphas)} >> /Contents ${7 + 2 * k} 0 R >>`));
         objects.push([latin1(`<< /Length ${content.length} >>\nstream\n`), content, latin1('\nendstream')]);
     });
     for (const im of images) objects.push(imageObject(im));
