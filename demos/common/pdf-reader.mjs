@@ -44,17 +44,34 @@ export async function readSchedulePdf(file, { signal, onProgress = () => {} } = 
 // One page of a PDF drawn on a canvas, for showing the source of an imported schedule (Demo 3): bytes (Uint8Array),
 // the page number (1-based), the canvas, and the scale (1 = PDF points). Returns { pages, width, height } in points.
 // PDFPageProxy.render: https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFPageProxy.html#render
-export async function renderPdfPage(bytes, number, canvas, { scale = 1.5 } = {}) {
+export async function renderPdfPage(bytes, number, canvas, { scale = 1.5, maxPixels = Infinity, includeText = false } = {}) {
     library ||= import(`${base}build/pdf.min.mjs`).catch(err => { library = null; throw new Error(`PDF reader could not load. Check your connection to jsDelivr. ${err.message}`); });
     const pdfjs = await library;
     pdfjs.GlobalWorkerOptions.workerSrc = `${base}build/pdf.worker.min.mjs`;
     const task = pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false, cMapUrl: `${base}cmaps/`, cMapPacked: true, standardFontDataUrl: `${base}standard_fonts/` });
     try {
         const pdf = await task.promise, page = await pdf.getPage(Math.min(Math.max(1, number), pdf.numPages));
-        const at1 = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale });
+        const at1 = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.min(scale, Math.sqrt(maxPixels / (at1.width * at1.height))) });
         canvas.width = Math.round(viewport.width);
         canvas.height = Math.round(viewport.height);
         await page.render({ canvasContext: canvas.getContext('2d'), viewport }).promise;
-        return { pages: pdf.numPages, width: at1.width, height: at1.height };
+        let items=[];
+        if(includeText){const content=await page.getTextContent();items=content.items.filter(i=>i.str?.trim()).map(i=>{
+            const t=pdfjs.Util.transform(viewport.transform,i.transform);
+            return {str:i.str,x:t[4],y:t[5],w:i.width*viewport.scale,h:Math.hypot(t[2],t[3])};
+        });}
+        return { pages: pdf.numPages, width: at1.width, height: at1.height, items };
     } finally { await task.destroy(); }
+}
+
+// Render only a selected window at reading resolution; avoid allocating a full large-format page at 300 DPI.
+export async function renderPdfRegion(bytes,number,rect,{scale=4,maxPixels=8000000}={}){
+    library ||= import(`${base}build/pdf.min.mjs`);const pdfjs=await library;
+    pdfjs.GlobalWorkerOptions.workerSrc=`${base}build/pdf.worker.min.mjs`;
+    const task=pdfjs.getDocument({data:bytes.slice(),isEvalSupported:false,standardFontDataUrl:`${base}standard_fonts/`});
+    try{const pdf=await task.promise,page=await pdf.getPage(number),at1=page.getViewport({scale:1});
+        const s=Math.min(scale,Math.sqrt(maxPixels/(rect.w*at1.width*rect.h*at1.height))),v=page.getViewport({scale:s}),canvas=document.createElement('canvas');
+        canvas.width=Math.max(1,Math.round(rect.w*v.width));canvas.height=Math.max(1,Math.round(rect.h*v.height));
+        await page.render({canvasContext:canvas.getContext('2d'),viewport:v,transform:[1,0,0,1,-rect.x*v.width,-rect.y*v.height],background:'white'}).promise;return canvas;
+    }finally{await task.destroy();}
 }
