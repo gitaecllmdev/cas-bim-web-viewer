@@ -102,7 +102,11 @@ export function lapLines(m, members) {
 // its clear span, stays as its box). Under a sloped top only its bottom is seated (its top follows the track's underside).
 const over = (t, m) => t.orient === 'h' && t.x < m.x + m.w - 1e-6 && t.x + t.w > m.x + 1e-6;
 export function seatOf(m, members) {
-    if (m.orient !== 'v' || !m.full || !(m.lengthIn > 0)) return null;
+    if (m.orient !== 'v' || !(m.lengthIn > 0)) return null;
+    // A piece seated by the engine (m.seat: how far into the track under it and over it): down into the one, its cut
+    // length up from there (the cutback short of the other's web).
+    if (!m.full && m.seat) { const [down, up] = m.seat, y0 = m.y - down; return down || up ? { y0, y1: m.pts ? m.y + m.h : Math.min(m.y + m.h + up, y0 + m.lengthIn) } : null; }
+    if (!m.full) return null;
     const below = members.find(t => over(t, m) && t.role === 'bottom track' && Math.abs(t.y + t.h - m.y) < 1e-3);
     const above = m.pts ? null : members.find(t => over(t, m) && t.role === 'top track' && Math.abs(t.y - (m.y + m.h)) < 1e-3);
     if (!below && !above) return null;

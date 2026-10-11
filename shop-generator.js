@@ -23,8 +23,10 @@ import * as OC from './demos/06-shop-drawings/opening-context.mjs';
 import * as ST from './demos/06-shop-drawings/stock.mjs';
 import * as TY from './demos/06-shop-drawings/typical.mjs';
 import * as RV from './demos/06-shop-drawings/revisions.mjs';
+import * as IM from './demos/06-shop-drawings/import-merge.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
+import { siteHits, mountHits } from './hits.js';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos', profiles: 'cas-shopgen:profiles', engineering: 'cas-shopgen:engineering', reviewer: 'cas-shopgen:reviewer',
@@ -36,6 +38,7 @@ const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(k
 const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked: this visit only */ } };
 const today = () => new Date().toLocaleDateString('en-CA');
 const lenText = (v) => (Number.isFinite(v) ? fmtFtIn(v) : '');
+const fine = (v) => { const n = Math.round(Number(v) * 64), w = Math.floor(n / 64); let a = n % 64, b = 64; if (!a) return `${w}"`; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
 const inch = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 
 // A first visit starts with one panel; a set emptied here stays empty (the empty project's page offers what to do).
@@ -99,7 +102,7 @@ main.addEventListener('input', (e) => {
     if (!onSet && !p) return;
     if (!onSet && !G.canEdit(p, path)) { lockedNotice(); return; }
     let v = el.type === 'checkbox' ? el.checked : el.value;
-    if (el.dataset.t === 'len') {
+    if (el.dataset.t === 'len' || el.dataset.t === 'cut') {
         const n = G.parseLength(v);
         hint(el, n);
         if (n == null) return;
@@ -171,6 +174,7 @@ main.addEventListener('change', (e) => {
         const n = G.parseLength(el.value);
         if (n != null) { el.value = lenText(n); hint(el, n, true); recent.len = G.remember(recent.len, lenText(n), 12); }
     }
+    if (el.dataset.t === 'cut') { const n = G.parseLength(el.value); if (n != null) { el.value = fine(n); hint(el, n, true); } }
     if (el.dataset.r) recent[el.dataset.r] = G.remember(recent[el.dataset.r], el.value);
     store(KEYS.recent, recent);
     renderDatalists();
@@ -215,7 +219,7 @@ function setKind(p, i, kind) {
 
 const field = (label, path, value, { t = 'text', list = '', r = '', ph = '', cls = '', i = '', locked = false } = {}) => `<label class="field ${cls}${locked ? ' locked' : ''}"><span>${esc(label)}${locked ? ' 🔒' : ''}</span>
     <input type="text" data-f="${esc(path)}" data-t="${t}" ${r ? `data-r="${r}"` : ''} ${i !== '' ? `data-i="${i}"` : ''} ${list ? `list="dl-${list}"` : ''}
-        value="${esc(t === 'len' ? lenText(value) : value ?? '')}" placeholder="${esc(ph)}" autocomplete="off"${locked ? ' disabled title="Locked: the Revit model\'s"' : ''}>
+        value="${esc(t === 'len' ? lenText(value) : t === 'cut' ? (value === '' || value == null ? '' : fine(value)) : value ?? '')}" placeholder="${esc(ph)}" autocomplete="off"${locked ? ' disabled title="Locked: the Revit model\'s"' : ''}>
     <em class="hint"></em></label>`;
 
 // --- Actions (data-act) -----------------------------------------------------------------------------------------------
@@ -283,7 +287,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'sch-rules': () => schRulesAll(),
         'sch-arrange': () => { p.openings[i] = { ...p.openings[i], [`${b.dataset.k}Style`]: b.dataset.v }; changed(); renderBottom(current); renderMemberCards(); },
         'sch-check-all': () => { const all = p.openings.length && schChecked.size === p.openings.length; schChecked = new Set(all ? [] : p.openings.map((_, j) => j)); renderBottom(current); },
-        'cutback-all': () => { const v = G.cutbackOf(p); set.panels.forEach(x => { if (v == null) delete x.cutbackIn; else x.cutbackIn = v; }); changed(); renderSet(); notice(`Every panel's studs cut back ${v == null ? 'by the engine\'s 1/16"' : inch(v)}.`); },
+        'cutback-all': () => { const v = G.cutbackOf(p); set.panels.forEach(x => { if (v == null) delete x.cutbackIn; else x.cutbackIn = v; }); changed(); renderSet(); notice(`Every panel's studs cut back ${v == null ? 'by the engine\'s 1/16"' : fine(v)}.`); },
         'ctx-place': () => contextEdit(c => { const l = c.levels[b.dataset.k] || { name: '', place: 'at', offsetIn: 0 }; c.levels[b.dataset.k] = { ...l, place: b.dataset.v, offsetIn: b.dataset.v === 'at' ? 0 : l.offsetIn || 1 }; }),
         'ctx-grid-add': () => contextEdit(c => { const L = G.shapeTop(p.shape).lengthIn, used = c.grids.map(g => g.xIn); c.grids.push({ name: String(c.grids.length + 1), xIn: [0, L, L / 2].find(x => !used.includes(x)) ?? L / 2 }); }),
         'ctx-grid-del': () => contextEdit(c => { c.grids.splice(i, 1); }),
@@ -323,11 +327,13 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'new-tpl': () => { toggleNewMenu(false); const t = templates[Number(b.dataset.v)]; if (!t) return; addPanel(G.fromTemplate(t.panel, cur()?.mark, set.panels.map(x => x.mark))); notice(`${cur().mark} added from the template "${t.name}": type a name over its mark.`); },
         'tpl-del': () => { const t = templates[Number(b.dataset.v)]; if (!t || !confirm(`Forget the template "${t.name}"? (Panels made from it stay.)`)) return; templates = templates.filter(x => x !== t); store(KEYS.templates, templates); toggleNewMenu(true); },
         'tpl-save': () => saveTemplate(p),
-        'set-open': () => openSetDialog(b.dataset.v),
+        'set-open': () => { fsDraft = null; openSetDialog(b.dataset.v); },
         'sd-close': () => setDialog().close(),
         'sd-tab': () => { setTab = b.dataset.v; renderSetDialog(); setDialog().querySelector('[role=tab][aria-selected=true]')?.focus(); },
         'sd-csv': () => setCsv(b.dataset.v),
         'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); },
+        'fs-apply': () => applyFramingSettings(),
+        'fs-reset': () => { fsDraft = null; renderSetDialog(); },
         'sd-labels': () => downloadLabels(),
         'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
         'sd-rules': () => rulesOnChecked(),
@@ -2592,9 +2598,11 @@ function renderLayoutSec() {
             <label class="fd-check"><input type="checkbox" data-f="flipStuds" ${p.flipStuds ? 'checked' : ''}> Flip every stud on center (end studs and jambs still close their side)</label>
             <p class="muted">${flips ? `${flips} stud${flips === 1 ? '' : 's'} flipped one by one <button class="link" data-act="flips-clear">Clear them</button>` : 'No stud flipped one by one.'} Select a stud (elevation, plan or cut list) to flip just that one.</p></div>
         <div class="layout-group"><h4>Stud cutback <span class="muted">where studs meet the tracks, headers and sills</span></h4>
-            <div class="row">${field('Cut back', 'cutbackIn', G.cutbackOf(p) ?? '', { t: 'len', ph: '1/16" (the engine\'s seat)' })}
+            <div class="row">${field('Cut back', 'cutbackIn', G.cutbackOf(p) ?? '', { t: 'cut', ph: '1/16" (the engine\'s seat)' })}
                 ${set.panels.length > 1 ? '<button class="link" data-act="cutback-all" title="The same cutback on every panel in the set">Every panel</button>' : ''}</div>
-            <p class="muted small">Every stud's cut length is its length less this (rounded down to 1/8"). New panels start at 1/32"; a panel without one (an older file, a model's) uses the engine's 1/16".</p></div>
+            <p class="muted small">Every stud's cut length is its length less this (rounded down to 1/8"). New panels start at 1/32"; a panel without one (an older file, a model's) uses the engine's 1/16".</p>
+            <p class="small">${(() => { const f = fsOf(p); return `Cripples and jacks: <b>${f.seatPieces ? 'seated in the tracks' : 'clear span'}</b> · headers: <b>${f.headEnds === 'flush' ? `flush (${fine(f.headCutbackIn)} each end)` : 'overlap the jambs'}</b> · sills: <b>${f.sillEnds === 'flush' ? `flush (${fine(f.sillCutbackIn)} each end)` : 'overlap the jambs'}</b>`; })()}
+                <button class="link small" data-act="set-open" data-v="framing">Change for every panel</button></p></div>
         <p class="muted small">The viewing side (A or B, over the views) changes the drawing only: never a member.</p>`;
     renderLayoutInfo();
 }
@@ -2935,7 +2943,7 @@ const typicalOfPanel = (p) => TY.typicalOf(typicals(), p.id);
 const setDialog = () => document.getElementById('set-dialog');
 let setTab = 'overview', sdFilter = 'all';
 let stockPrefs = load(KEYS.stock, { stockIn: ST.DEFAULT_STOCK_IN, kerfIn: ST.DEFAULT_KERF_IN });
-const SET_TABS = [['overview', 'Overview'], ['stock', 'Cut list and stock'], ['floor', 'Shop floor']];
+const SET_TABS = [['overview', 'Overview'], ['framing', 'Framing settings'], ['stock', 'Cut list and stock'], ['floor', 'Shop floor']];
 const lf = (inches) => `${(inches / 12).toLocaleString(undefined, { maximumFractionDigits: 1 })} LF`;
 function openSetDialog(tab) {
     if (tab) setTab = tab;
@@ -2946,7 +2954,7 @@ function openSetDialog(tab) {
 }
 function renderSetDialog() {
     const d = setDialog(), list = chosen(), scope = checked.size ? `the ${list.length} checked panel${list.length === 1 ? '' : 's'}` : `all ${list.length} panel${list.length === 1 ? '' : 's'}`;
-    const body = setTab === 'stock' ? stockTab(list) : setTab === 'overview' ? overviewTab() : setTab === 'floor' ? floorTab(list) : '';
+    const body = setTab === 'stock' ? stockTab(list) : setTab === 'overview' ? overviewTab() : setTab === 'floor' ? floorTab(list) : setTab === 'framing' ? framingTab() : '';
     d.innerHTML = `<div class="sd"><header class="sd-head"><h2 id="sd-title">${esc(set.project || 'The set')}</h2><span class="muted small">Over ${esc(scope)} (check panels in the list to narrow it)</span><span class="spacer"></span>
             <button class="link" data-act="sd-close">Close</button></header>
         <div class="sd-tabs" role="tablist">${SET_TABS.map(([k, label]) => `<button role="tab" data-act="sd-tab" data-v="${k}" aria-selected="${setTab === k}" class="${setTab === k ? 'on' : ''}">${esc(label)}</button>`).join('')}</div>
@@ -3043,6 +3051,45 @@ function downloadLabels() {
     download(renderLabelsPdf(pieces, { project: set.project || '', title: `${set.project || 'Panel'} member labels` }), `member-labels-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
     notice(`${pieces.length} labels downloaded (${Math.ceil(pieces.length / 30)} sheet${pieces.length > 30 ? 's' : ''} of 30): print at actual size.`);
 }
+// Framing settings for every panel (universal): the studs' cutback and whether cripples and jacks are seated in the
+// tracks that receive them; how headers and sills end at the jambs (overlap or flush, with a cutback at each flush end).
+// A draft from the open panel, then Apply to every panel (one undo step).
+let fsDraft = null;
+const FS_KEYS = ['cutbackIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn'];
+const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, seatPieces: !!p.seatPieces, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
+    sillEnds: p.sillEnds === 'flush' ? 'flush' : 'overlap', sillCutbackIn: Number(p.sillCutbackIn) || 0 });
+const fsSame = (a, b) => FS_KEYS.every(k => (k === 'headCutbackIn' && a.headEnds !== 'flush') || (k === 'sillCutbackIn' && a.sillEnds !== 'flush') ? true : a[k] === b[k]);
+function framingTab() {
+    if (!fsDraft) fsDraft = fsOf(cur() || G.newPanel());
+    const d = fsDraft, differ = set.panels.filter(p => !fsSame(d, fsOf(p)));
+    const radio = (name, v, label, sub) => `<label class="fs-opt"><input type="radio" name="${name}" data-fs="${name}" value="${v}" ${d[name] === v ? 'checked' : ''}><span><b>${label}</b><small>${sub}</small></span></label>`;
+    const cut = (k, label, on = true) => `<label class="field mini-field"><span>${label}</span><input type="text" class="mini" data-fs="${k}" value="${esc(fine(d[k]))}" ${on ? '' : 'disabled'} aria-label="${label}"></label>`;
+    return `<p class="small">For every panel in the set: what you set here is given to all ${set.panels.length} of them by <b>Apply</b> (one Undo step), and new panels take it from the open panel. Cut lengths, marks, the cut list and the drawings follow.</p>
+        <div class="fs-grid">
+            <section class="sd-card"><h3>Studs</h3>${cut('cutbackIn', 'Cutback (each stud\'s top short of the track web)')}
+                <label class="fs-opt"><input type="checkbox" data-fs="seatPieces" ${d.seatPieces ? 'checked' : ''}><span><b>Seat cripples and jacks in the tracks</b><small>They run into each single track that receives them (the bottom and top tracks, a track header under them, a track sill over them) to its web, less the cutback, like full-height studs; drawn through the see-through tracks. Off: cut to the clear span.</small></span></label></section>
+            <section class="sd-card"><h3>Headers</h3>${radio('headEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side: tabs fastened to the jambs (the default)')}
+                ${radio('headEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end; a header on jack studs still bears on them')}${cut('headCutbackIn', 'Cutback at each flush end', d.headEnds === 'flush')}</section>
+            <section class="sd-card"><h3>Sills</h3>${radio('sillEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side (the default)')}
+                ${radio('sillEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end')}${cut('sillCutbackIn', 'Cutback at each flush end', d.sillEnds === 'flush')}</section>
+        </div>
+        <div class="acts"><button data-act="fs-apply" ${differ.length ? '' : 'disabled'}>Apply to every panel</button><button class="link small" data-act="fs-reset">Back to the open panel's</button>
+            <span class="small ${differ.length ? 'warning' : 'muted'}">${differ.length ? `${differ.length} panel${differ.length === 1 ? '' : 's'} differ from these: ${esc(differ.slice(0, 8).map(p => p.mark).join(', '))}${differ.length > 8 ? '…' : ''}` : 'Every panel has these.'}</span></div>
+        <p class="muted small">Seated pieces and flush ends change cut lengths: the plan asks the Revit side for the features seated-pieces, flush-headers and flush-sills.</p>`;
+}
+function applyFramingSettings() {
+    const d = fsDraft;
+    if (!d) return;
+    const n = set.panels.filter(p => !fsSame(d, fsOf(p))).length;
+    set.panels = set.panels.map(p => {
+        const q = { ...p, cutbackIn: d.cutbackIn, seatPieces: d.seatPieces };
+        for (const [k, c] of [['headEnds', 'headCutbackIn'], ['sillEnds', 'sillCutbackIn']]) { if (d[k] === 'flush') { q[k] = 'flush'; q[c] = d[c]; } else { delete q[k]; delete q[c]; } }
+        if (!q.seatPieces) delete q.seatPieces;
+        return q;
+    });
+    changed(); renderAll(); renderSetDialog();
+    notice(`Framing settings given to ${n} panel${n === 1 ? '' : 's'}: studs cut back ${fine(d.cutbackIn)}${d.seatPieces ? ', cripples and jacks seated in the tracks' : ''}; headers ${d.headEnds === 'flush' ? `flush (${fine(d.headCutbackIn)} each end)` : 'overlapping the jambs'}; sills ${d.sillEnds === 'flush' ? `flush (${fine(d.sillCutbackIn)} each end)` : 'overlapping the jambs'}.`);
+}
 function stockTab(list) {
     const { items, skipped } = setItems(list);
     if (!items.length) return '<p class="muted">No framed panel to take the cut list from.</p>';
@@ -3072,6 +3119,14 @@ function setCsv(kind) {
     download(new TextEncoder().encode(text), `${kind === 'buy' ? 'stock-to-buy' : kind === 'cuts' ? 'cut-plan' : 'set-cut-list'}-${name}-${today()}.csv`, 'text/csv');
 }
 setDialog().addEventListener('change', (e) => {
+    const fsEl = e.target.closest('[data-fs]');
+    if (fsEl) {
+        const k = fsEl.dataset.fs;
+        if (k === 'seatPieces') fsDraft = { ...fsDraft, seatPieces: fsEl.checked };
+        else if (k === 'headEnds' || k === 'sillEnds') fsDraft = { ...fsDraft, [k]: fsEl.value };
+        else { const v = G.parseLength(fsEl.value); if (v == null || v < 0 || v > 1) { notice('A cutback between 0" and 1".', true); renderSetDialog(); return; } fsDraft = { ...fsDraft, [k]: Math.round(v * 64) / 64 }; }
+        renderSetDialog(); return;
+    }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSet(); renderSetDialog(); return; }
     if (e.target.matches('[data-sd-all]')) {
         const ids = [...setDialog().querySelectorAll('[data-check]')].map(x => x.dataset.check);
@@ -3224,9 +3279,43 @@ function chooseImport(name, count, reason) {
         d.showModal();
     });
 }
+// Add: the panels of the file that are already here, or cannot be told apart (import-merge.mjs matchIncoming), one row
+// each with what to do; Skip unless chosen. -> { index: 'skip' | 'update' | 'copy' } or null (Cancel: nothing imported).
+function chooseConflicts(name, rows) {
+    const list = rows.filter(r => r.status === 'match' || r.status === 'ambiguous'), others = rows.length - list.length;
+    const here = (id) => set.panels.find(p => p.id === id)?.mark || '?';
+    return new Promise(resolve => {
+        const d = document.createElement('dialog');
+        d.className = 'import-dialog conflict-dialog';
+        d.innerHTML = `<form method="dialog"><h3>${esc(name)}</h3>
+            <p>${list.length} of its panels ${list.length === 1 ? 'is' : 'are'} the model's panels already here, or cannot be told apart from them: choose for each. ${others ? `The other ${others} ${others === 1 ? 'is' : 'are'} added.` : ''}
+                Nothing here is overwritten without your choice, and a panel's locked model geometry never is.</p>
+            <table class="sd-table"><thead><tr><th>In the file</th><th>Here</th><th>What to do</th></tr></thead><tbody>
+            ${list.map(r => `<tr><td><b>${esc(r.panel.mark)}</b></td><td>${r.status === 'match' ? `<b>${esc(here(r.match))}</b> (the same model panel)` : `<span class="warning small">${esc(r.reason)}</span>`}</td>
+                <td><select data-conflict="${r.index}" aria-label="What to do with ${esc(r.panel.mark)}"><option value="skip">Skip it</option>
+                ${r.status === 'match' ? `<option value="update">Update ${esc(here(r.match))}'s detailing (members, layout, opening framing, clips, edits by hand)</option>` : ''}
+                <option value="copy">Add an unlinked study copy</option></select></td></tr>`).join('')}</tbody></table>
+            <div class="row"><span class="small muted">All:</span><button type="button" class="link small" data-all="skip">Skip</button>${list.some(r => r.status === 'match') ? '<button type="button" class="link small" data-all="update">Update the matches</button>' : ''}<button type="button" class="link small" data-all="copy">Study copies</button>
+                <span class="spacer"></span><button value="ok">Import</button><button value="" class="link">Cancel</button></div></form>`;
+        d.addEventListener('click', (e) => {
+            const all = e.target.closest('[data-all]');
+            if (all) for (const sel of d.querySelectorAll('[data-conflict]')) sel.value = [...sel.options].some(o => o.value === all.dataset.all) ? all.dataset.all : sel.value;
+        });
+        document.body.append(d);
+        d.addEventListener('close', () => { resolve(d.returnValue === 'ok' ? Object.fromEntries([...d.querySelectorAll('[data-conflict]')].map(x => [x.dataset.conflict, x.value])) : null); d.remove(); });
+        d.showModal();
+    });
+}
+const newPanelId = () => `p-${Math.random().toString(36).slice(2, 10)}`;
+// Import a set file. Replace: the file faithfully (import-merge.mjs replaceSet: nothing of the old set kept, nothing
+// re-detailed; "Exported" only when the set is exactly the file). Add: the file's panels beside these, the model's
+// matched by identity (never duplicated as a second linked panel). Cancel, or a file that cannot be read, changes nothing;
+// every import is one Undo step.
 async function importJson(file) {
     try {
-        const { set: incoming, warnings } = G.importSet(await file.text());
+        const text = await file.text(), { set: incoming, warnings } = G.importSet(text);
+        let parsed = null;
+        try { parsed = JSON.parse(text); } catch { parsed = null; }
         if (!incoming.panels.length) { notice(`No panels read from ${file.name}. ${warnings.join(' ')}`, true); return; }
         // One model per set: panels from another model's export are never added under this set's source.
         const here = set.source?.documentId ?? null, there = incoming.source?.documentId ?? null;
@@ -3234,32 +3323,46 @@ async function importJson(file) {
         const choice = await chooseImport(file.name, incoming.panels.length, !otherModel ? '' : !here ? 'These panels are from a model; the panels here are not: replace them, or keep the model\'s panels in a set of their own.'
             : !there ? 'These panels are not from a model; the panels here are: replace them, or keep them in a set of their own.' : 'These panels are from another model than the panels here: replace them, or keep each model in its own set.');
         if (!choice) { notice(`Nothing imported from ${file.name}.`); return; }
-        const replace = choice === 'replace';
-        const marks = replace ? [] : set.panels.map(p => p.mark);
-        const added = incoming.panels.map(p => {
-            let mark = p.mark;
-            while (marks.includes(mark)) mark = G.nextMark(mark);
-            marks.push(mark);
-            return { ...p, id: `p-${Math.random().toString(36).slice(2, 10)}`, mark };
-        });
+        if (choice === 'replace') {
+            const r = IM.replaceSet(incoming, parsed, warnings, newPanelId);
+            set = { ...r.set, current: r.set.panels[0]?.id ?? null };
+            checked.clear(); sel = null; ask = null; selection = W.NONE;
+            historyHint = { label: `replacing with ${file.name}` };
+            save(); renderAll();
+            if (!r.transformed.length) markExported(); // what is here now is that file
+            notice(r.transformed.length ? `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}. ${r.transformed.join(' ')} Not the file as it was: export to keep it as read.`
+                : `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}, as the file has them.`, r.transformed.length > 0);
+            return;
+        }
+        const rows = IM.matchIncoming(set, incoming);
+        let choices = {};
+        if (rows.some(r => r.status === 'match' || r.status === 'ambiguous')) {
+            choices = await chooseConflicts(file.name, rows);
+            if (!choices) { notice(`Nothing imported from ${file.name}.`); return; }
+        }
+        const before = new Set(set.panels.map(p => p.id)), merged = IM.mergeAdd(set, rows, choices, newPanelId), rep = merged.report;
+        if (!rep.added.length && !rep.updated.length && !rep.copies.length) { notice(`Nothing imported from ${file.name}: ${rep.skipped.length} skipped.`); return; }
+        // The set's framing by model type (and the file's): given to the panels added that have none chosen (reported).
+        const typeFr = { ...(set.typeFraming || {}), ...(incoming.typeFraming || {}) };
+        let panels = merged.panels, typed = 0;
+        for (const [key, fr] of Object.entries(typeFr)) {
+            const fresh = panels.filter(p => !before.has(p.id)), r = OC.applyTypeFraming(fresh, key, fr, { only: 'unset' }), byId = new Map(r.panels.map(p => [p.id, p]));
+            panels = panels.map(p => byId.get(p.id) || p); typed += r.changed.length;
+        }
         // A model's export: its source, grids and levels kept with the set (written back on Export JSON).
-        const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? (replace ? undefined : set[k])]).filter(([, v]) => v != null));
-        const typeFr = { ...(replace ? {} : set.typeFraming || {}), ...(incoming.typeFraming || {}) };
+        const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? set[k]]).filter(([, v]) => v != null));
         if (Object.keys(typeFr).length) context.typeFraming = typeFr;
-        // Openings of a model type the set has framing for (and none chosen yet) take it.
-        let typed = 0;
-        for (const [key, fr] of Object.entries(typeFr)) { const r = OC.applyTypeFraming(added, key, fr, { only: 'unset' }); added.splice(0, added.length, ...r.panels); typed += r.changed.length; }
-        if (typed) warnings.push(`${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.`);
         // Unknown fields of the file (a newer exporter's) ride along to Export JSON.
-        const extra = replace ? incoming.extra : { ...(incoming.extra || {}), ...(set.extra || {}) };
-        set = { project: (replace ? incoming.project : set.project) || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, ...(extra && Object.keys(extra).length ? { extra } : {}),
-            panels: replace ? added : [...set.panels, ...added], current: added[0].id };
+        const extra = { ...(incoming.extra || {}), ...(set.extra || {}) };
+        const first = panels.find(p => !before.has(p.id)) || panels.find(p => rep.updated.some(u => u.startsWith(p.mark)));
+        set = { project: set.project || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, ...(Object.keys(extra).length ? { extra } : {}), panels, current: first?.id ?? set.current };
         checked.clear(); sel = null; ask = null; selection = W.NONE;
         historyHint = { label: `importing ${file.name}` };
         save(); renderAll();
-        if (replace) markExported(); // what is here now is that file
-        notice(`${replace ? 'Replaced with' : 'Added'} ${added.length} panel${added.length === 1 ? '' : 's'} from ${file.name}.${warnings.length ? ` ${warnings.join(' ')}` : ''}`, warnings.length > 0);
-    } catch (err) { notice(`Could not read ${file.name}: ${err.message}`, true); }
+        notice([`From ${file.name}:`, rep.added.length ? `added ${rep.added.join(', ')}` : '', rep.updated.length ? `updated ${rep.updated.join('; ')}` : '', rep.copies.length ? `study copies ${rep.copies.join(', ')}` : '',
+            rep.skipped.length ? `skipped ${rep.skipped.join(', ')}` : '', rep.renamed.length ? `(marks taken: ${rep.renamed.join(', ')})` : '',
+            typed ? `${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.` : '', ...rep.notes, ...warnings].filter(Boolean).join(' '), !!(rep.notes.length || warnings.length || typed));
+    } catch (err) { notice(`Could not read ${file.name}: ${err.message} Nothing was changed.`, true); }
 }
 async function copyLink(p) {
     const url = `${location.origin}${location.pathname}#p=${G.encodePanel(p)}`;
@@ -3285,15 +3388,17 @@ function openLinkedPanel() {
 }
 
 // --- Start ----------------------------------------------------------------------------------------------------------------
+// The site's views (hits.js): this visit counted (once per 30 minutes a browser), the count in the title bar.
+siteHits().then(h => mountHits(document.getElementById('site-hits'), h, { compact: true })).catch(() => {});
 openLinkedPanel();
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p=')) { openLinkedPanel(); sel = null; ask = null; renderAll(); } }); // a link pasted into this tab
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
-const NO_PANEL_ACTS = new Set(['sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
-const NOT_EDITS = new Set(['sd-labels', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
+const NO_PANEL_ACTS = new Set(['fs-apply', 'fs-reset', 'sd-labels', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
+const NOT_EDITS = new Set(['fs-reset', 'sd-labels', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
-const ACT_LABELS = { 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
+const ACT_LABELS = { 'fs-apply': 'the framing settings on every panel', 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
     'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
     'clip-here': 'the clip', 'clip-del': 'removing the clip', 'clip-top': 'the clips', 'clip-mid': 'the clips', 'clip-all': 'the clips', 'clip-clear': 'removing the clips',
     'mirror-op': 'mirroring the opening', 'copy-op': 'copying the opening', center: 'centering the opening', 'peri-finish': 'the perimeter', 'set-assign': 'giving the members', 'set-delete': 'deleting panels',

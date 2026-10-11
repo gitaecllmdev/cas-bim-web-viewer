@@ -213,6 +213,26 @@ main.ws-is-empty .insp-sec, main.ws-is-empty .units-note, main.ws-is-empty .ws-b
 .hist-menu { left: 0; right: auto; width: 300px; }
 .help-dialog { width: min(640px, 94vw); }
 kbd { display: inline-block; padding: 1px 6px; border: 1px solid #c9ced6; border-bottom-width: 2px; border-radius: 4px; background: #f6f8fa; font: 12px/1.4 ui-monospace, Consolas, monospace; white-space: nowrap; }
+/* The site's views, in the title bar. */
+.ws-hits { position: relative; margin-right: 8px; font-size: 13px; }
+.ws-hits .hits-toggle { font: inherit; color: #fff; background: transparent; border: 1px solid rgba(255,255,255,.35); border-radius: 6px; padding: 3px 9px; cursor: pointer; white-space: nowrap; }
+.ws-hits .hits-toggle:hover, .ws-hits .hits-toggle[aria-expanded="true"] { background: rgba(255,255,255,.12); }
+.ws-hits .hits-visits { position: absolute; right: 0; top: calc(100% + 6px); z-index: 40; width: 360px; max-height: 70vh; overflow: auto; background: #fff; color: #1f2328; border: 1px solid #c9ced6; border-radius: 8px; box-shadow: 0 10px 30px rgba(20,40,80,.25); padding: 10px 12px; text-align: left; }
+.ws-hits .hits-visits h3 { margin: 8px 0 4px; font-size: 13px; }
+.ws-hits .hits-visits ol { margin: 0; padding-left: 18px; font-size: 12px; }
+.ws-hits .hits-visits li { display: flex; justify-content: space-between; gap: 8px; margin: 2px 0; }
+.ws-hits .hits-visits p { margin: 4px 0; font-size: 12px; }
+/* Framing settings (Set dialog). */
+.fs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 12px; margin: 8px 0; }
+.fs-opt { display: flex; gap: 8px; align-items: flex-start; margin: 6px 0; cursor: pointer; }
+.fs-opt input { margin-top: 3px; }
+.fs-opt small { display: block; color: #57606a; font-size: 12px; }
+.mini-field { display: block; margin: 4px 0 8px; }
+.mini-field span { display: block; font-size: 12px; color: #57606a; }
+/* Import: what to do with the panels already here. */
+.conflict-dialog { max-width: min(880px, 94vw); }
+.conflict-dialog h3 { margin: 0 0 6px; }
+.conflict-dialog select { max-width: 100%; }
 /* Compare. */
 .cmp { padding: 4px 2px; }
 .cmp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

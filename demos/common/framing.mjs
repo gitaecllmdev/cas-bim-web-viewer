@@ -220,7 +220,9 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     const layout = { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
         studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn, ...(T ? { top: T, trackLegIn: leg } : {}),
         ...(panel.layoutStartIn > 0 ? { layoutStartIn: panel.layoutStartIn } : {}), ...(panel.layoutFromRight ? { layoutFromRight: true } : {}), ...(panel.flipStuds ? { flipStuds: true } : {}),
-        ...(panel.cutbackIn != null && panel.cutbackIn !== SEAT_ALLOWANCE_IN ? { cutbackIn: panel.cutbackIn } : {}) };
+        ...(panel.cutbackIn != null && panel.cutbackIn !== SEAT_ALLOWANCE_IN ? { cutbackIn: panel.cutbackIn } : {}),
+        ...(panel.seatPieces ? { seatPieces: true } : {}), ...(panel.headEnds === 'flush' ? { headEnds: 'flush', headCutbackIn: panel.headCutbackIn || 0 } : {}),
+        ...(panel.sillEnds === 'flush' ? { sillEnds: 'flush', sillCutbackIn: panel.sillCutbackIn || 0 } : {}) };
     layout.issues = checkLayout(layout, { flangeIn: panel.flangeIn ?? 1.625 }); // fail-safe: see checkLayout
     return layout;
 }
@@ -257,11 +259,21 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 //   headBearing 'jacks' (with 2 or more plies): the header runs over ply 1 (a jack stud under it; ply 2 the king);
 //   crippleEnds: a cripple at each end of the header and sill, inside the opening, besides those on the layout.
 // studFlips: the centers of verticals flipped by hand (m.flipWeb).
+// headEnds / sillEnds: 'overlap' (default: one flange past the rough opening each side, the tabs fastened to the jambs)
+//   or 'flush' (between the jambs, headCutbackIn / sillCutbackIn short at each end). A header on jack studs always
+//   overlaps them (it bears on them).
+// seatPieces: a piece (cripple, jack) is seated in each single track that receives it (the bottom track and a track
+//   header under it, legs up; the top track and a track sill over it, legs down): cut to the track webs less the
+//   cutback, as a full-height stud is (m.seat: [down, up], how far it runs into each). Off: its clear span (the default,
+//   as the plan contract's fixtures have it).
 // top: a sloped top (wallTop), H its highest point. Members under it carry their outline as pts ([x, y] corners,
 // counter-clockwise) beside their bounding box (x, y, w, h): the top track's sloped runs, and the verticals that reach
 // the track (atTop), their tops cut to the slope.
+// A member that is one track (legs one way: it receives a stud's end); a built-up header or sill, or a stud, is not.
+const trackOnly = (m) => (m.parts?.length ? m.parts.reduce((n, p) => n + (p.qty || 1), 0) === 1 && /^\d{3,4}T/i.test(m.parts[0].name || '') : /^\d{3,4}T/i.test(m.type || '') || /track/.test(m.role) && !m.parts);
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
-    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false, studFlips = [] }) {
+    member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false, studFlips = [],
+    headEnds = 'overlap', headCutbackIn = 0, sillEnds = 'overlap', sillCutbackIn = 0, seatPieces = false }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn, T = top;
     const ops = clipOpenings(openings, L, H, LEG, T);
     const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
@@ -301,8 +313,10 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
     // An opening's own framing for a member (see above): { type, parts, src } or nothing.
     const framed = (o, what) => (o.framing?.[what]?.length ? { type: o.framing[what][0].name, parts: o.framing[what], src: o.framing.source } : {});
     const heads = [];
+    // Where a header or sill runs: over the jambs (overlap) or between them (flush, its cutback short at each end).
+    const span = (o, ends, cut) => (ends === 'flush' ? [o.left + cut, o.right - cut] : [Math.max(0, o.left - flangeIn), Math.min(L, o.right + flangeIn)]);
     for (const o of ops) {
-        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn);
+        const [x0, x1] = span(o, onJacks(o) ? 'overlap' : headEnds, headCutbackIn);
         if (!reachesTop(o)) {
             const head = { role: 'head track', func: o.kind === 'mep' ? 'HDM' : isDoor(o) ? 'HDD' : 'HDW', orient: 'h', type: trackType, x: x0, y: o.top, w: x1 - x0, h: headH(o), lengthIn: x1 - x0, ...framed(o, 'head'), ...(o.key ? { of: o.key } : {}) };
             heads.push(head);
@@ -310,7 +324,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
         }
     }
     for (const o of ops.filter(o => !isDoor(o))) {
-        const x0 = Math.max(0, o.left - flangeIn), x1 = Math.min(L, o.right + flangeIn), sh = sillH(o), y = o.bottom - sh;
+        const [x0, x1] = span(o, sillEnds, sillCutbackIn), sh = sillH(o), y = o.bottom - sh;
         const onHead = heads.some(h => x1 > h.x && x0 < h.x + h.w && y < h.y + h.h && y + sh > h.y);
         const func = openingKind(o) === 'mep' ? 'SBM' : openingKind(o) === 'steel' ? 'SBS' : 'SBW';
         if (!onHead && y >= LEG) add({ role: 'sill track', func, orient: 'h', type: trackType, x: x0, y, w: x1 - x0, h: sh, lengthIn: x1 - x0, ...framed(o, 'sill'), ...(o.key ? { of: o.key } : {}) });
@@ -367,7 +381,16 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
                 geo = { y: a, h: uHi - a, atTop: true, ...(uHi - Math.min(...ys) > 1e-6 ? { pts: [[x, a], [x + flangeIn, a], ...tops] } : {}) };
                 len = (full ? Math.max(topAt(T, x, H), topAt(T, x + flangeIn, H)) : uHi - a) - cutbackIn;
             }
-            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}), ...tag, ...(full ? { full: true } : {}) });
+            // A piece seated in the single tracks that receive it (seatPieces): to their webs, less the cutback.
+            let seat = null;
+            if (seatPieces && !full) {
+                const over = (h) => h.orient === 'h' && h.x < x + flangeIn - 1e-6 && h.x + h.w > x + 1e-6, track = (h) => trackOnly(h);
+                const below = members.find(h => over(h) && Math.abs(h.y + h.h - a) < 1e-6), above = geo.atTop ? null : members.find(h => over(h) && Math.abs(h.y - b) < 1e-6);
+                const down = below && track(below) && (below.role === 'bottom track' || below.role === 'head track') ? below.h : 0;
+                const up = above && !above.pts && track(above) && (above.role === 'top track' || above.role === 'sill track') ? above.h : 0;
+                if (down || up) { len += down + up; seat = [down, up]; }
+            }
+            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}), ...tag, ...(full ? { full: true } : {}), ...(seat ? { seat } : {}) });
         }
         return full;
     };
@@ -475,11 +498,12 @@ export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
         };
         if (o.left >= flangeIn && !vs.some(v => beside(v, o.left - v.w))) issues.push(noJamb('left'));
         if (o.right <= L - flangeIn && !vs.some(v => beside(v, o.right))) issues.push(noJamb('right'));
-        const spans = (h) => h.x <= o.left + eps && h.x + h.w >= o.right - eps;
+        // (a flush header or sill stops its cutback short of the jambs at each end: layout.headCutbackIn / sillCutbackIn)
+        const spans = (h, cut = 0) => h.x <= o.left + eps + cut && h.x + h.w >= o.right - eps - cut;
         const topTrack = hs.find(h => h.role === 'top track');
         const atTop = T ? o.top >= underMin(T, o.left, o.right, H, LEG) - 1 : topTrack && o.top >= topTrack.y - 1;
-        if (!atTop && !hs.some(h => near(h.y, o.top) && spans(h))) issues.push({ code: 'no-head', ...(o.key ? { opening: o.key } : {}), message: `No head track over the ${what(o)}` });
-        if (!isDoor(o) && !hs.some(h => near(h.y + h.h, o.bottom) && spans(h))) issues.push({ code: 'no-sill', ...(o.key ? { opening: o.key } : {}), message: `No sill track under the ${what(o)}` });
+        if (!atTop && !hs.some(h => near(h.y, o.top) && spans(h, layout.headCutbackIn || 0))) issues.push({ code: 'no-head', ...(o.key ? { opening: o.key } : {}), message: `No head track over the ${what(o)}` });
+        if (!isDoor(o) && !hs.some(h => near(h.y + h.h, o.bottom) && spans(h, layout.sillCutbackIn || 0))) issues.push({ code: 'no-sill', ...(o.key ? { opening: o.key } : {}), message: `No sill track under the ${what(o)}` });
     }
     return issues;
 }

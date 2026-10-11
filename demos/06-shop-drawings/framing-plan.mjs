@@ -79,7 +79,8 @@ export function detailingFromPanel(panel) {
             header: p.members.header, jamb: p.members.jamb, sill: p.members.sill },
         provenance: p.provenance ? { ...p.provenance } : null,
         layout: { startIn: p.layoutStartIn ?? null, fromRight: !!p.layoutFromRight, optimize: !!p.optimizeOpenings },
-        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}) },
+        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), ...(p.seatPieces ? { seatPieces: true } : {}) },
+        ...(p.headEnds === 'flush' ? { heads: { ends: 'flush', cutbackIn: p.headCutbackIn ?? 0 } } : {}), ...(p.sillEnds === 'flush' ? { sills: { ends: 'flush', cutbackIn: p.sillCutbackIn ?? 0 } } : {}),
         openings: Object.fromEntries(p.openings.map((o, i) => [keys[i], Object.fromEntries(OPENING_DETAIL.filter(k => o[k] !== undefined && o[k] !== '').map(k => [k, o[k]]))])),
         clips: (p.clips || []).map(c => ({ ...c })),
         view: { side: p.sideB ? 'B' : 'A' },
@@ -181,6 +182,9 @@ function panelFrom(snapshot, detailing) {
         layoutFromRight: !!detailing.layout?.fromRight, optimizeOpenings: !!detailing.layout?.optimize,
         flipStuds: !!detailing.studs?.flipAll, studFlips: [...(detailing.studs?.flips || [])], clips: (detailing.clips || []).map(c => ({ ...c })), sideB: false,
         ...(finite(detailing.studs?.cutbackIn) ? { cutbackIn: detailing.studs.cutbackIn } : {}),
+        ...(detailing.studs?.seatPieces ? { seatPieces: true } : {}),
+        ...(detailing.heads?.ends === 'flush' ? { headEnds: 'flush', headCutbackIn: finite(detailing.heads.cutbackIn) ? detailing.heads.cutbackIn : 0 } : {}),
+        ...(detailing.sills?.ends === 'flush' ? { sillEnds: 'flush', sillCutbackIn: finite(detailing.sills.cutbackIn) ? detailing.sills.cutbackIn : 0 } : {}),
         ...(detailing.manual ? { manual: structuredClone(detailing.manual) } : {}),
     };
 }
@@ -319,7 +323,7 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
     const open = (dx, dy, dz) => ({ kind: 'open-side', openSide: [dx, dy, dz] });
     const unresolved = (reason) => ({ kind: 'unresolved', reason });
     const cutRule = (m) => (m.orient === 'h' ? (m.slope ? 'run-along-slope' : 'run')
-        : m.full ? (T ? 'full-height-sloped' : 'full-height') : m.pts ? 'piece-sloped' : 'piece-clear-span');
+        : m.full ? (T ? 'full-height-sloped' : 'full-height') : m.pts ? 'piece-sloped' : m.seat ? 'piece-seated' : 'piece-clear-span');
     // A sloped end's cut: the top line's segment at x (at an interior corner, the segment ending there, as topAt reads it),
     // its angle from square in degrees (full precision) and the side that is longer (+x: the top rises to the right).
     const slopeAt = (x) => {
@@ -448,6 +452,9 @@ function featuresOf(panel, inputs, layout, members, plan) {
     if (plan.accessories.length) f.add('clips');
     if (inputs.openings.some(o => o.clear)) f.add('framing-offset');
     if (members.some(m => m.manual) || layout.manual?.deleted) f.add('manual-members');
+    if (layout.members.some(m => m.seat)) f.add('seated-pieces');
+    if (panel.headEnds === 'flush' && layout.members.some(m => m.role === 'head track')) f.add('flush-headers');
+    if (panel.sillEnds === 'flush' && layout.members.some(m => m.role === 'sill track')) f.add('flush-sills');
     if (plan.source.openings.some(o => o.status === 'unsupported:small-penetration')) f.add('small-penetration-unframed');
     return [...f].sort();
 }

@@ -498,6 +498,7 @@ export function frameInputs(panel) {
     if (panel.layoutFromRight) inputs.layoutFromRight = true;
     if (panel.flipStuds) inputs.flipStuds = true;
     if (cutbackOf(panel) != null) inputs.cutbackIn = cutbackOf(panel);
+    Object.assign(inputs, endsOf(panel));
     if (panel.studFlips?.length) inputs.studFlips = [...panel.studFlips];
     const sp = inputs.spacingIn, framedOut = (start) => openingsToLayout(inputs.openings, { L: lengthIn, start, spacing: sp, fromRight: !!panel.layoutFromRight, flange: inputs.flangeIn });
     const start = panel.layoutStartIn > 0 ? panel.layoutStartIn : panel.optimizeOpenings ? bestLayoutStart(inputs, framedOut) : sp;
@@ -641,6 +642,7 @@ export function cleanManual(m) {
 function placed(m, b) {
     const dx = b.x - m.x, dy = b.y - m.y, grow = m.orient === 'v' ? b.h - m.h : b.w - m.w;
     const out = { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
+    if (dy || grow) delete out.seat; // moved up or down, or another length: no longer where the engine seated it
     // Another member type (one piece only; a built-up member's parts are its opening's): its name, and its flange the
     // vertical's width (a track's leg its height), from where it is.
     const d = b.type && !m.parts?.length ? parseMember(b.type) : null;
@@ -690,6 +692,10 @@ export function panelLayout(panel) {
         if (o.requested) builtUp.add(`${openingName(panel.openings, i)} framed to the stud layout: ${fmtFtIn(o.right - o.left)} between jambs (rough opening ${fmtFtIn(o.requested.right - o.requested.left)}).`);
     });
     for (const line of framingNotes(panel)) builtUp.add(line); // after the members: the rough openings, then the details
+    const ends = endsOf(panel), cutText = (v) => { if (!v) return ''; const n = Math.round(v * 64); let a = n % 64, b = 64; while (a && a % 2 === 0) { a /= 2; b /= 2; } return `, ${Math.floor(n / 64) ? `${Math.floor(n / 64)} ` : ''}${a ? `${a}/${b}` : ''}" short each end`; };
+    if (ends.seatPieces && layout.members.some(m => m.seat)) builtUp.add('Cripples and jacks seated in the tracks that receive them: cut to the track webs less the cutback.');
+    if (ends.headEnds === 'flush') builtUp.add(`Headers flush between the jambs${cutText(ends.headCutbackIn)} (a header on jack studs bears on them).`);
+    if (ends.sillEnds === 'flush') builtUp.add(`Sills flush between the jambs${cutText(ends.sillCutbackIn)}.`);
     layout.notes.push(...builtUp);
     Object.assign(layout, placeClips(layout, panel.clips));
     if (layout.clipList.length) layout.notes.push(`Clips: ${layout.clipList.map(c => `${c.mark} ${c.type} (${c.qty})`).join(', ')}; on each stud's web.`);
@@ -799,10 +805,18 @@ function unlinked(panel) {
 // panels is quick to enter; the first one a plain 10 ft x 10 ft wall. Never linked to a model's wall.
 // Studs cut back where they meet the tracks, headers and sills (a new panel's; the engine's own is its 1/16" seat).
 export const NEW_CUTBACK_IN = 1 / 32;
+// The framing ends (framing.mjs framePanel): pieces seated in the tracks; headers and sills flush between the jambs, with
+// their cutback at each end. Only what differs from the defaults (clear-span pieces, overlapping ends).
+const cut01 = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 && Number(v) <= 1 ? Math.round(Number(v) * 64) / 64 : null);
+export function endsOf(panel) {
+    return { ...(panel?.seatPieces ? { seatPieces: true } : {}),
+        ...(panel?.headEnds === 'flush' ? { headEnds: 'flush', ...(cut01(panel.headCutbackIn) ? { headCutbackIn: cut01(panel.headCutbackIn) } : {}) } : {}),
+        ...(panel?.sillEnds === 'flush' ? { sillEnds: 'flush', ...(cut01(panel.sillCutbackIn) ? { sillCutbackIn: cut01(panel.sillCutbackIn) } : {}) } : {}) };
+}
 export const cutbackOf = (panel) => (Number.isFinite(Number(panel?.cutbackIn)) && Number(panel.cutbackIn) >= 0 && Number(panel.cutbackIn) <= 1 ? Number(panel.cutbackIn) : null);
 export function newPanel(prev = null, marks = []) {
     const mark = prev ? nextNumberMark(prev.mark, marks) : nextNumberMark('P-100', marks);
-    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, cutbackIn: NEW_CUTBACK_IN, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
+    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, cutbackIn: NEW_CUTBACK_IN, seatPieces: true, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
     const { layoutStartIn, ...rest } = unlinked(prev);
     return { ...rest, id: rid(), mark, openings: [] };
 }
@@ -843,18 +857,28 @@ export function exportPanel(panel) {
     const { extra, ...c } = cleanPanel(panel);
     return { ...structuredClone(extra || {}), ...c, openings: c.openings.map(({ extra: oe, ...o }) => ({ ...structuredClone(oe || {}), ...o })) };
 }
-// A panel's framing as this tool lays it out (side A; inches from the left end and the bottom), for the model side to
-// compare with or place from; ignored when read back (it is computed again). null when the inputs need fixing.
+// A panel's framing as this tool lays it out (side A; inches from the left end and the bottom): the resolved plan's own
+// layout (panelLayout with side B off, as framing-plan.mjs resolves it: the engine's framing, then the members placed by
+// hand, the marks and the check again, the clips), so it agrees with the preview, the cut list and Export framing plan.
+// Ignored when read back (computed again). null when the inputs need fixing.
+// A legacy, read-only summary (cas-panel-shops v1, field meanings unchanged; added: a hand-placed member's manual and
+// copyOf, requiredFeatures, deprecated). It is not a placement source: native consumers read the resolved plan
+// (cas-framing-plan-set, Export framing plan), which has what this block cannot: each part of a built-up member as its
+// own physical record with its orientation, the issues with their severities, and whether the plan is ready.
+export const FRAMING_DEPRECATED = 'Legacy read-only summary for review; place from the resolved plan: cas-framing-plan-set (Export framing plan).';
 export function framingOf(panel) {
     if (panelErrors(panel).length) return null;
-    const inputs = frameInputs(panel), lay = frameWall(inputs);
-    return { layoutStartIn: inputs.layoutStartIn || inputs.spacingIn, spacingIn: inputs.spacingIn, ...(inputs.layoutFromRight ? { layoutFromRight: true } : {}), ...(inputs.flipStuds ? { flipStuds: true } : {}),
+    const inputs = frameInputs(panel), lay = panelLayout({ ...panel, sideB: false });
+    const byHand = lay.manual && (lay.manual.count || lay.manual.deleted);
+    return { deprecated: FRAMING_DEPRECATED, ...(byHand ? { requiredFeatures: ['manual-members'] } : {}),
+        layoutStartIn: inputs.layoutStartIn || inputs.spacingIn, spacingIn: inputs.spacingIn, ...(inputs.layoutFromRight ? { layoutFromRight: true } : {}), ...(inputs.flipStuds ? { flipStuds: true } : {}),
         studType: lay.studType, trackType: lay.trackType,
         openings: inputs.openings.map(({ framing, ...o }) => o), // as framed: one with jambs on the stud layout wider, its rough opening as requested
         members: lay.members.map(m => ({ mark: m.mark, ...(m.marks ? { marks: m.marks } : {}), role: m.role, func: m.func, type: m.type, ...(m.parts ? { parts: m.parts } : {}),
-            x: m.x, y: m.y, w: m.w, h: m.h, lengthIn: m.lengthIn, ...(m.pts ? { pts: m.pts } : {}), ...(m.orient === 'v' ? { webRight: webOnRight(m, lay) } : {}) })),
+            x: m.x, y: m.y, w: m.w, h: m.h, lengthIn: m.lengthIn, ...(m.pts ? { pts: m.pts } : {}), ...(m.orient === 'v' ? { webRight: webOnRight(m, lay) } : {}),
+            ...(m.manual ? { manual: m.manual, ...(m.from ? { copyOf: m.from } : {}) } : {}) })),
         cutList: lay.cutList.map(({ mark, qty, type, lengthIn, func }) => ({ mark, qty, type, lengthIn, func })), issues: lay.issues.map(i => i.message),
-        ...(() => { const c = placeClips(lay, panel.clips); return c.clips.length ? { clips: c.clips.map(({ i, ...k }) => ({ ...k, member: lay.members[k.member]?.mark || '' })), clipList: c.clipList } : {}; })() };
+        ...(lay.clips?.length ? { clips: lay.clips.map(({ i, ...k }) => ({ ...k, member: lay.members[k.member]?.mark || '' })), clipList: lay.clipList } : {}) };
 }
 // A cas-panel-shops file (format given) is read strictly: version 1, inches, internal or shared coordinates, else it is
 // refused (nothing half-read). A file without a format (hand-written, or a plain list of walls) is read forgivingly.
@@ -903,7 +927,7 @@ export function provenanceOf(raw) {
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-const PANEL_KEYS = new Set(['revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+const PANEL_KEYS = new Set(['seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
     'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
 const OPENING_KEYS = new Set(['insertId', 'id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
     'headBearing', 'crippleEnds', 'extra']);
@@ -946,6 +970,7 @@ export function cleanPanel(p = {}) {
         ...(provenance && Object.keys(provenance).length ? { provenance } : {}), ...(Object.keys(extra).length ? { extra } : {}),
         ...(cleanBinding(p.style) ? { style: cleanBinding(p.style) } : {}), ...(cleanManual(p.manual) ? { manual: cleanManual(p.manual) } : {}),
         ...(cleanRevisions(p.revisions) ? { revisions: cleanRevisions(p.revisions) } : {}), // issued revisions (revisions.mjs)
+        ...endsOf(p), // pieces seated in the tracks; flush header and sill ends
         ...(p.context && typeof p.context === 'object' ? { context: structuredClone(p.context) } : {}), // level and grid lines (context-lines.mjs: drawing only)
         ...(p.styleQuery && (str(p.styleQuery.finish) || str(p.styleQuery.depthCode)) ? { styleQuery: { finish: str(p.styleQuery.finish), depthCode: str(p.styleQuery.depthCode, 8) } } : {}),
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
@@ -986,7 +1011,8 @@ export function encodePanel(panel) {
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
         trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : '',
             o.offsetIn ?? '', o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : ''])), '', p.optimizeOpenings ? 1 : '',
-        p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '']);
+        p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '',
+        p.seatPieces ? 1 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '']);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -996,8 +1022,9 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = ''] = data;
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = ''] = data;
     return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn, ...(cutbackIn === '' ? {} : { cutbackIn }),
+        seatPieces: seat === 1, ...(headFlush === 1 ? { headEnds: 'flush', headCutbackIn: headCut } : {}), ...(sillFlush === 1 ? { sillEnds: 'flush', sillCutbackIn: sillCut } : {}),
         clips: Array.isArray(clips) ? clips.map(([type, x, y]) => ({ type, x, y })) : [], studFlips: Array.isArray(studFlips) ? studFlips : [],
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
