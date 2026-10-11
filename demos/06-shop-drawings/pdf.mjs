@@ -26,6 +26,12 @@ function rgb(color) {
     if (!hex || hex === 'none' || !/^#[0-9a-f]{6}$/i.test(hex)) return null;
     return [1, 3, 5].map(i => num(parseInt(hex.slice(i, i + 2), 16) / 255)).join(' ');
 }
+// A fill with an opacity (the screen's see-through members), blended with white paper: the PDF draws it solid.
+function paper(color, opacity) {
+    const hex = NAMED[color] || color;
+    if (opacity == null || !/^#[0-9a-f]{6}$/i.test(hex || '')) return color;
+    return `#${[1, 3, 5].map(i => Math.round(255 - (255 - parseInt(hex.slice(i, i + 2), 16)) * opacity).toString(16).padStart(2, '0')).join('')}`;
+}
 // PDF string literal in WinAnsi (Latin-1 range); other characters become '?'.
 const pdfString = (s) => `(${[...s].map(ch => (ch.charCodeAt(0) > 255 ? '?' : ch)).join('').replace(/([\\()])/g, '\\$1')})`;
 const latin1 = (str) => { const b = new Uint8Array(str.length); for (let i = 0; i < str.length; i++) b[i] = str.charCodeAt(i) & 0xff; return b; };
@@ -43,12 +49,12 @@ function drawOps(ops, { P, Hpt, c, images, logo }) {
             const dash = o.dash ? `[${o.dash.split(/[\s,]+/).map(v => num(Number(v) * P)).join(' ')}] 0 d` : '[] 0 d';
             c.push(`${col} RG ${num(o.width * P)} w ${dash} ${X(o.x1)} ${Y(o.y1)} m ${X(o.x2)} ${Y(o.y2)} l S`);
         } else if (o.t === 'rect') {
-            const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
+            const fill = rgb(paper(o.fill, o.opacity)), stroke = o.width > 0 ? rgb(o.stroke) : null;
             if (!fill && !stroke) continue;
             const path = `${X(o.x)} ${num(Hpt - (o.y + o.h) * P)} ${num(o.w * P)} ${num(o.h * P)} re`;
             c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);
         } else if (o.t === 'poly') {
-            const fill = rgb(o.fill), stroke = o.width > 0 ? rgb(o.stroke) : null;
+            const fill = rgb(paper(o.fill, o.opacity)), stroke = o.width > 0 ? rgb(o.stroke) : null;
             if ((!fill && !stroke) || o.pts.length < 3) continue;
             const path = o.pts.map((p, k) => `${X(p[0])} ${Y(p[1])} ${k ? 'l' : 'm'}`).join(' ') + ' h';
             c.push(`${fill ? `${fill} rg ` : ''}${stroke ? `${stroke} RG ${num(o.width * P)} w [] 0 d ` : ''}${path} ${fill && stroke ? 'B' : fill ? 'f' : 'S'}`);

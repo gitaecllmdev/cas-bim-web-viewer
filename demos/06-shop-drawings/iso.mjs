@@ -101,6 +101,7 @@ function outlineFaces(m, layout, D, project, eye, seg = SEG, color = FUNC_COLOR[
 
 // layout: frameWall() output; box: { x, y, w, h } on the sheet (inches); opts: { flangeIn, highlight }.
 export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}) {
+    const hl = highlight == null ? null : new Set(highlight instanceof Set ? highlight : [].concat(highlight)); // one mark or several
     const { lengthIn: L, heightIn: H, members, openings = [] } = layout;
     const D = layout.studIn || 3.625;
     if (!members?.length || !(L > 0) || !(H > 0)) return [];
@@ -116,7 +117,7 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
     const seg = Math.max(SEG, Math.max(L, H) / 24);
     const faces = [];
     for (const m of members) {
-        const color = (highlight != null && m.mark === highlight) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
+        const color = hl?.has(m.mark) ? '#ff8a3d' : FUNC_COLOR[m.func] || STUD;
         if (m.pts) { faces.push(...outlineFaces(m, layout, D, project, eye, seg, color)); continue; } // under a sloped top
         const long = m.orient === 'h' ? 0 : 1; // the axis the member runs along
         const lo = long === 0 ? m.x : m.y, len = long === 0 ? m.w : m.h;
@@ -157,7 +158,7 @@ export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}
         const low = m.orient === 'h' && m.y < 1;
         const top = m.role === 'top track' && layout.top ? topAt(layout.top, m.x + m.w / 2, H) : m.y + m.h; // a sloped top track: at its middle
         const at = m.orient === 'h' ? [m.x + m.w / 2, low ? m.y : top, D] : [m.x, m.y + m.h * 0.62, D];
-        return { mark, at: project(at), kind: m.orient === 'h' ? (low ? 'below' : 'above') : 'left', hi: highlight != null && mark === highlight };
+        return { mark, at: project(at), kind: m.orient === 'h' ? (low ? 'below' : 'above') : 'left', hi: !!hl?.has(mark) };
     });
     const opens = openings.map(o => ({ o, pts: [[o.left, o.bottom, D], [o.right, o.bottom, D], [o.right, o.top, D], [o.left, o.top, D]].map(project),
         label: project([(o.left + o.right) / 2, Math.min(o.top - 6, o.bottom + (o.top - o.bottom) * 0.55), D]) }));

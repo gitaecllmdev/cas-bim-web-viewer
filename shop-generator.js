@@ -7,12 +7,23 @@
 // draw the perimeter (a notch becomes a door or a steel penetration) or draw an opening; dimensions all around what is
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion } from './demos/06-shop-drawings/sheet.mjs';
+import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines } from './demos/06-shop-drawings/sheet.mjs';
+import * as W from './demos/06-shop-drawings/workspace.mjs';
+import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
+import * as FP from './demos/06-shop-drawings/framing-plan.mjs';
+import * as P from './demos/06-shop-drawings/profiles.mjs';
+import * as DT from './demos/06-shop-drawings/details.mjs';
+import * as R from './demos/06-shop-drawings/opening-rules.mjs';
+import * as MAN from './demos/06-shop-drawings/manual.mjs';
+import * as CL from './demos/06-shop-drawings/context-lines.mjs';
+import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
+import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
-const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos' };
+const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos', profiles: 'cas-shopgen:profiles', engineering: 'cas-shopgen:engineering', reviewer: 'cas-shopgen:reviewer',
+    prefs: 'cas-shopgen:prefs', saved: 'cas-shopgen:saved' };
 const main = document.getElementById('gen');
 const $ = (sel) => main.querySelector(sel);
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[ch]);
@@ -22,11 +33,21 @@ const today = () => new Date().toLocaleDateString('en-CA');
 const lenText = (v) => (Number.isFinite(v) ? fmtFtIn(v) : '');
 const inch = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 
-let set = load(KEYS.set, null);
-set = set?.panels ? { ...set, panels: set.panels.map(G.cleanPanel) } : { project: '', drawnBy: '', panels: [], current: null };
-if (!set.panels.length) set.panels.push(G.newPanel());
+// A first visit starts with one panel; a set emptied here stays empty (the empty project's page offers what to do).
+const storedSet = load(KEYS.set, null);
+let set = storedSet?.panels ? { ...storedSet, panels: storedSet.panels.map(G.cleanPanel) } : { project: '', drawnBy: '', panels: [G.newPanel()], current: null };
 let recent = load(KEYS.recent, {}); // field -> values used before, newest first
 let combos = load(KEYS.combos, []); // [{ name, members }] saved here
+// Framing profiles saved here: { jamb, head, sill: [profile] } (profiles.mjs), picked in an opening's Framing details.
+let profiles = (() => { const raw = load(KEYS.profiles, {}); return Object.fromEntries(P.PROFILE_KINDS.map(k => [k, (Array.isArray(raw?.[k]) ? raw[k] : []).map(x => P.cleanProfile(k, x)).filter(Boolean)])); })();
+// The engineering style catalog (the native catalog JSON, read and never changed) and this project's selection of it
+// (style-catalog.mjs), kept in this browser: { text, read, selection } or null.
+let eng = loadEngineering();
+let engView = { tab: 'Wall', search: '', approver: null, reference: '' };
+let stylePending = null; // a style applied with alternatives still to choose: { scope: 'wall' | opening index, panelId, keyId, open, problems, picked }
+// The workspace (workspace.mjs): remembered presentation, and what is selected across the views, the cut list and issues.
+let prefs = W.cleanPrefs(load(KEYS.prefs, {}));
+let selection = W.NONE;
 const checked = new Set(); // panels checked in the set
 let logoHref = null;
 // The elevation editor's state.
@@ -42,7 +63,7 @@ const bottomTrack = (m) => G.parseMember(m.track)?.name || G.trackFor(m.stud) ||
 
 // --- Saving, notices --------------------------------------------------------------------------------------------------
 let saveTimer = 0;
-const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store(KEYS.set, { ...set, current: cur().id }), 250); };
+const save = () => { clearTimeout(saveTimer); saveTimer = setTimeout(() => store(KEYS.set, { ...set, current: cur()?.id ?? null }), 250); };
 function notice(text, warn = false) {
     const el = document.getElementById('notice');
     el.textContent = text;
@@ -64,9 +85,11 @@ const getPath = (obj, path) => path.split('.').reduce((o, k) => o?.[k], obj);
 // Locked to the Revit model: say so instead of changing it.
 const lockedNotice = (what = 'its perimeter and the model\'s openings') => notice(`${cur().mark} is a Revit wall: ${what} stay as the model has them (Duplicate makes a free copy to change).`, true);
 main.addEventListener('input', (e) => {
+    if (e.target.matches?.('[data-nav-search]')) { navQuery = e.target.value; const at = e.target.selectionStart; renderSet(); const s = main.querySelector('[data-nav-search]'); s?.focus(); s?.setSelectionRange(at, at); return; }
     const el = e.target.closest('[data-f]');
     if (!el) return;
     const p = cur(), path = el.dataset.f, onSet = path.startsWith('set.');
+    if (!onSet && !p) return;
     if (!onSet && !G.canEdit(p, path)) { lockedNotice(); return; }
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.t === 'len') {
@@ -89,7 +112,7 @@ main.addEventListener('input', (e) => {
     if (kind) { setKind(p, Number(kind[1]), v); renderCatalogue(); renderChips(); }
     if (path === 'optimizeOpenings') notice(v ? 'Opening optimizer on: the studs on center start where the openings take the fewest stud pieces, every bay within the spacing.' : `Opening optimizer off: studs on center from the ${p.layoutFromRight ? 'right' : 'left'} end.`);
     if (path === 'flipStuds') notice(v ? 'Flip studs on: the studs on center face the other way (end studs and jambs still close their side).' : 'Flip studs off: the studs on center face the left end, as usual.');
-    if (path === 'layoutFromRight') notice(v ? 'Flip panel on: the stud layout starts from the right end, and the plan ordinates run from it.' : 'Flip panel off: the stud layout starts from the left end.');
+    if (path === 'layoutFromRight') notice(v ? 'The stud layout starts from the right end, and the plan ordinates run from it (the studs face as before).' : 'The stud layout starts from the left end.');
     if (/^(optimizeOpenings|flipStuds|layoutFromRight)$/.test(path)) syncToggles();
     const toLayout = /^openings\.(\d+)\.toLayout$/.exec(path);
     if (toLayout) {
@@ -99,12 +122,16 @@ main.addEventListener('input', (e) => {
     }
     if (el.closest('#sk-menu')) closeMenu();
     if (/^openings\.\d+\.(widthIn|leftIn)$/.test(path)) syncCatalogueFields(path);
+    historyHint = { label: el.closest('label')?.querySelector('span')?.textContent?.trim() || path, mergeKey: `f:${path}:${onSet ? 'set' : p.id}` }; // typing in one field: one undo step
     changed();
 });
 // On leaving a field: the length as feet-inches, the value remembered for the next time, a new stud followed.
 let studBefore = null;
 main.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-f="members.stud"]')) studBefore = cur().members.stud; });
 main.addEventListener('change', (e) => {
+    if (e.target.closest('[data-style], [data-style-q], [data-style-pick]')) { styleChange(e.target); return; }
+    const prof = e.target.closest('[data-op-prof]');
+    if (prof) { pickOpeningProfile(prof.dataset.opProf, prof.value); return; }
     const pick = e.target.closest('[data-pick]');
     if (pick) { pickMember(pick.dataset.pick, pick.value); if (pick.closest('#sk-menu')) closeMenu(); return; }
     if (e.target.id === 'combo') { applyCombo(e.target.value); return; }
@@ -113,6 +140,7 @@ main.addEventListener('change', (e) => {
     const el = e.target.closest('[data-f]');
     if (!el) return;
     if (el.dataset.f === 'members.stud' && studBefore != null && studBefore !== el.value) { followStud(studBefore, el.value); studBefore = el.value; }
+    markChosen(cur(), el.dataset.f);
     if (el.dataset.t === 'len') {
         const n = G.parseLength(el.value);
         if (n != null) { el.value = lenText(n); hint(el, n, true); recent.len = G.remember(recent.len, lenText(n), 12); }
@@ -125,6 +153,11 @@ main.addEventListener('change', (e) => {
     if (/^openings\.\d+\.offsetIn$/.test(el.dataset.f)) renderCatalogue(); // its rough opening in the strip
 });
 document.getElementById('import-file').addEventListener('change', (e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) importJson(f); });
+// A panel's member or spacing chosen here: its provenance says so (the resolved plan reports it).
+function markChosen(p, path) {
+    const k = /^members\.(stud|track|topTrack|spacingIn)$/.exec(path || '')?.[1];
+    if (k && p.provenance) p.provenance = { ...p.provenance, [k]: 'user' };
+}
 function hint(el, n, quiet = false) {
     const h = el.parentElement.querySelector('.hint');
     if (!h) return;
@@ -163,9 +196,20 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
     const b = e.target.closest('[data-act]');
     if (!b) return;
     const act = b.dataset.act, i = Number(b.dataset.i), p = cur();
+    if (!p && !NO_PANEL_ACTS.has(act)) return;
+    if (!historyHint && !NOT_EDITS.has(act)) historyHint = { label: ACT_LABELS[act] || act.replace(/-/g, ' ') };
     const acts = {
+        undo: () => doUndo(),
+        redo: () => doRedo(),
+        'nav-toggle': () => { if (matchMedia('(max-width: 820px)').matches) { main.classList.toggle('nav-open'); main.querySelector('.nav-toggle').setAttribute('aria-expanded', String(main.classList.contains('nav-open'))); return; } prefs.navCollapsed = !prefs.navCollapsed; storePrefs(); applyPrefs(); },
+        'bottom-toggle': () => { prefs.bottomOpen = prefs.bottomOpen === false; storePrefs(); renderBottom(current); },
+        side: () => { p.sideB = b.dataset.side === 'B'; changed(); renderSidePick(p); notice(`Viewing side ${p.sideB ? 'B: the drawing is mirrored' : 'A'} (the members are the same).`); },
+        'flips-clear': () => { const n = (p.studFlips || []).length; p.studFlips = []; renderLayoutSec(); changed(); notice(`${n} stud flip${n === 1 ? '' : 's'} cleared: those studs face their usual way.`); },
         new: () => addPanel(G.newPanel(p, set.panels.map(x => x.mark))),
-        copy: () => { addPanel(G.copyPanel(p, set.panels.map(x => x.mark))); if (G.isFromModel(p)) notice(`${cur().mark} is a free copy of ${p.mark}, not linked to the Revit wall: change anything on it.`); },
+        copy: () => {
+            if (G.isFromModel(p) && !confirm(`Duplicate ${p.mark} as an unlinked copy?\n\nThe copy is not linked to the Revit wall: its outline and openings become editable, and it no longer reports to the model. ${p.mark} itself stays linked.`)) return;
+            addPanel(G.copyPanel(p, set.panels.map(x => x.mark))); if (G.isFromModel(p)) notice(`${cur().mark} is an unlinked copy of ${p.mark}: not linked to the Revit wall, change anything on it.`);
+        },
         shape: () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its shape'); p.shape = G.changeShape(p.shape, b.dataset.kind); renderElevHead(); renderShapeTable(); fit(); changed(); },
         tool: () => (b.dataset.tool === 'perimeter' && !G.canEdit(p, 'shape') ? lockedNotice('its perimeter') : setTool(b.dataset.tool)),
         'add-op': () => addOpening(p, b.dataset.kind),
@@ -175,7 +219,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'del-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
         'del-op': () => { if (!G.canEdit(p, `openings.${i}`)) return lockedNotice('the model\'s openings'); p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
         center: () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
-        preview: () => flipPreview(),
+        preview: () => setView('elevation'),
         'layout-here': () => setLayoutStart(p, Number(b.dataset.x)),
         'layout-reset': () => { delete p.layoutStartIn; syncToggles(); changed(); notice(`${p.mark}: the first stud is ${p.optimizeOpenings ? 'the optimizer\'s' : 'on the standard layout'} again.`); },
         'layout-from': () => { p.layoutFromRight = b.dataset.side === 'right'; syncToggles(); changed(); notice(`The stud layout now starts from the ${b.dataset.side} end.`); },
@@ -198,11 +242,37 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         link: () => copyLink(p),
         'save-combo': () => saveCombo(p),
         'del-combo': () => deleteCombo(),
-        open: () => { set.current = b.dataset.id; sel = null; ask = null; setTool('select', false); renderAll(); window.scrollTo({ top: 0, behavior: 'smooth' }); },
+        open: () => { set.current = b.dataset.id; sel = null; ask = null; selection = W.NONE; stylePending = null; schChecked = new Set(); schPick = null; main.classList.remove('nav-open'); setTool('select', false); renderAll(); },
         'set-pdf': () => downloadPdf(chosen()),
         'set-assign': () => assign(p),
         'set-delete': () => deletePanels(),
         'set-export': () => exportJson(),
+        'set-export-plan': () => exportPlanJson(),
+        'eng-open': () => openCatalog(),
+        'rule-use': () => useRule(i, b.dataset.key),
+        'sch-pick': () => openPicker(b),
+        'sch-apply': () => schApply(b.dataset.k, b.dataset.v),
+        'sch-rules': () => schRulesAll(),
+        'sch-arrange': () => { p.openings[i] = { ...p.openings[i], [`${b.dataset.k}Style`]: b.dataset.v }; changed(); renderBottom(current); renderMemberCards(); },
+        'sch-check-all': () => { const all = p.openings.length && schChecked.size === p.openings.length; schChecked = new Set(all ? [] : p.openings.map((_, j) => j)); renderBottom(current); },
+        'cutback-all': () => { const v = G.cutbackOf(p); set.panels.forEach(x => { if (v == null) delete x.cutbackIn; else x.cutbackIn = v; }); changed(); renderSet(); notice(`Every panel's studs cut back ${v == null ? 'by the engine\'s 1/16"' : inch(v)}.`); },
+        'ctx-place': () => contextEdit(c => { const l = c.levels[b.dataset.k] || { name: '', place: 'at', offsetIn: 0 }; c.levels[b.dataset.k] = { ...l, place: b.dataset.v, offsetIn: b.dataset.v === 'at' ? 0 : l.offsetIn || 1 }; }),
+        'ctx-grid-add': () => contextEdit(c => { const L = G.shapeTop(p.shape).lengthIn, used = c.grids.map(g => g.xIn); c.grids.push({ name: String(c.grids.length + 1), xIn: [0, L, L / 2].find(x => !used.includes(x)) ?? L / 2 }); }),
+        'ctx-grid-del': () => contextEdit(c => { c.grids.splice(i, 1); }),
+        'ctx-model': () => { const m = CL.modelContext(set, p); if (!m) return; p.context = { show: true, levels: { bottom: m.levels.bottom, top: m.levels.top }, grids: m.grids }; renderContextSec(); fit(); changed(); notice('Levels and grids from the model.'); },
+        'ctx-toggle': () => contextEdit(c => { c.show = !c.show; }),
+        'man-mode': () => { editMode = !editMode; if (editMode && prefs.view !== 'elevation') setView('elevation'); renderSidePick(p); renderWorkspace(); notice(editMode ? 'Edit members: drag a member to move it (it unlocks), or select one and use its card. Arrow keys nudge it (Shift: 1").' : 'Edit members off.'); },
+        'man-unlock': () => manualEdit((q, lay) => MAN.unlock(q, lay, b.dataset.key), 'Unlocked: it stays where you put it and no longer follows the framing rules.'),
+        'man-lock': () => manualEdit((q) => MAN.lock(q, b.dataset.key), 'Locked: it follows the framing rules again.', { keep: !MAN.isAdded(b.dataset.key) }),
+        'man-unlock-all': () => manualEdit((q, lay) => MAN.unlockAll(q, lay), 'Every member unlocked: the framing rules no longer move any of them.'),
+        'man-lock-all': () => { if (confirm('Lock every member? Everything placed by hand goes back to the framing rules, and the copies are removed.')) manualEdit((q) => MAN.lockAll(q), 'Every member follows the framing rules again.'); },
+        'man-nudge': () => manualNudge(Number(b.dataset.dx) * manualStep(), Number(b.dataset.dy) * manualStep()),
+        'man-copy': () => manualCopy(b.dataset.key),
+        'man-mirror': () => manualMirror(b.dataset.key),
+        'man-remove': () => manualEdit((q) => MAN.remove(q, b.dataset.key), 'Removed (Lock brings it back).', { keep: false }),
+        'op-alt': () => { if (setFromRule(p, i, b.dataset.k, b.dataset.v)) { renderMemberCards(); renderChips(); changed(); } },
+        'op-rule-member': () => { if (!setFromRule(p, i, b.dataset.k, null)) notice('The rule gives alternatives: pick one of them under the member.'); else { renderMemberCards(); renderChips(); changed(); } },
+        'op-arrange': () => { p.openings[i] = { ...p.openings[i], [`${b.dataset.k}Style`]: b.dataset.v }; renderMemberCards(); changed(); },
         'set-import': () => document.getElementById('import-file').click(),
         'set-check-all': () => { set.panels.forEach(x => checked.add(x.id)); renderSet(); },
         'set-check-none': () => { checked.clear(); renderSet(); },
@@ -252,18 +322,22 @@ function selectNew(p, i) {
 }
 
 // --- Rendering ---------------------------------------------------------------------------------------------------------
-function renderAll() {
-    unflip();
-    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet(); renderLayoutInfo();
+function renderAll(fromHistory = false) {
+    if (!fromHistory) commit();
+    renderViewBar();
+    if (!set.panels.length) { renderEmpty(); return; }
+    leaveEmpty();
+    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet(); renderLayoutSec(); renderContextSec();
     fit(); refresh(true);
 }
 let refreshTimer = 0;
-function changed() { save(); refresh(); }
+function changed() { commit(); save(); refresh(); renderCommands(); }
 function refresh(now = false) {
+    if (!cur()) return;
     if (!drag && tool !== 'perimeter') fit(); // the view follows the panel's size, but holds still while dragging
     renderSketch();
     clearTimeout(refreshTimer);
-    refreshTimer = setTimeout(() => { renderPreview(); renderSet(); renderChips(); renderLayoutInfo(); }, now ? 0 : drag ? 160 : 90);
+    refreshTimer = setTimeout(() => { renderPreview(); renderSet(); renderChips(); renderLayoutInfo(); refreshOpeningRule(); }, now ? 0 : drag ? 160 : 90);
 }
 
 function renderPanel() {
@@ -275,12 +349,7 @@ function renderPanel() {
         ${G.isFromModel(p) ? `<span class="model-badge" title="${esc(`Revit wall ${p.revit.uniqueId || ''}${p.revit.wallTypeName ? ` · ${p.revit.wallTypeName}` : ''}${p.revit.levelName ? ` · ${p.revit.levelName}` : ''}`)}">🔒 Revit wall · perimeter and its openings locked</span>` : ''}`;
     syncToggles();
 }
-// The sheet's switches (Side B, Flip studs, Flip panel) and the optimizer's, as the panel has them.
-function syncToggles() {
-    const p = cur();
-    for (const k of ['sideB', 'flipStuds', 'layoutFromRight']) for (const el of main.querySelectorAll(`#flip-bar [data-f="${k}"]`)) { el.checked = !!p[k]; el.closest('.pill')?.classList.toggle('on', !!p[k]); }
-    renderLayoutInfo();
-}
+// (The switches' sync: syncToggles in the workspace section, the stud layout and facing group.)
 
 // The elevation's title, the shape to start from and its sizes.
 function renderElevHead() {
@@ -339,29 +408,34 @@ function optionTags(path, value, options) {
     const all = [...options, ...(known || !value ? [] : [{ value, label: `Typed: ${value}` }]), { value: '__type', label: 'Type another size…' }];
     return all.map(o => `<option value="${esc(o.value)}" ${o.value === (typing.has(path) ? '__type' : value) ? 'selected' : ''}>${esc(o.label)}</option>`).join('');
 }
-function memberCard({ path, label, value = '', options, resolved, r, note = '', extra = '', ask: asking = false }) {
+// Where a setting's value comes from (the resolved plan's intent: workspace.mjs settingState), as a small badge.
+const stateBadge = (source) => { if (source == null) return ''; const st = W.settingState(source); return `<span class="set-state ${st.state}" title="Where this setting comes from">${esc(st.label)}</span>`; };
+const intentNow = () => (cur() ? framed(cur()).plan?.intent : null);
+function memberCard({ path, label, value = '', options, resolved, r, note = '', extra = '', ask: asking = false, source = null }) {
     const typed = typing.has(path);
     return `<div class="mcard ${asking ? 'ask' : ''}" data-card="${esc(path)}">
         <div class="micon" aria-hidden="true">${memberIcon(resolved)}</div>
-        <div class="mbody"><span class="mlabel">${esc(label)}</span>
+        <div class="mbody"><span class="mlabel">${esc(label)}${stateBadge(source)}</span>
             <select data-pick="${esc(path)}" aria-label="${esc(label)}">${optionTags(path, value, options)}</select>
             ${typed ? `<input type="text" class="mtype" data-f="${esc(path)}" data-r="${r}" list="dl-${r}" value="${esc(value)}" placeholder="362S162-43, or (2) 362S162-43 WITH (1) 362T125-43" autocomplete="off">` : ''}
             <small class="mdesc">${esc(note || G.specText(resolved) || resolved)}</small>${extra}</div></div>`;
 }
 // A core member's choices: the top track, the studs on center or the bottom track.
 function coreChoice(key) {
-    const m = cur().members, ch = G.memberChoices(m), bottom = bottomTrack(m), matching = G.trackFor(m.stud);
-    if (key === 'topTrack') return { path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
-        options: [{ value: '', label: `Same as bottom track: ${bottom}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${bottom}` };
-    if (key === 'stud') return { path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud') };
-    return { path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
-        options: [{ value: '', label: `Matches the stud: ${matching}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${matching}` };
+    // A stud the model left open (VARIES, none): its track is open too, never a blank name.
+    const m = cur().members, ch = G.memberChoices(m), bottom = bottomTrack(m), matching = G.trackFor(m.stud), open = (n) => n || 'once the stud is picked';
+    const source = intentNow()?.members?.[key]?.source ?? null;
+    if (key === 'topTrack') return { source, path: 'members.topTrack', label: 'Top track', value: m.topTrack, r: 'topTrack', resolved: m.topTrack || bottom,
+        options: [{ value: '', label: `Same as bottom track: ${open(bottom)}` }, ...optsOf(ch.topTrack, 'topTrack')], note: m.topTrack ? '' : `as the bottom track, ${open(bottom)}` };
+    if (key === 'stud') return { source, path: 'members.stud', label: 'On-center studs', value: m.stud, r: 'stud', resolved: m.stud, options: optsOf(ch.stud, 'stud') };
+    return { source, path: 'members.track', label: 'Bottom track', value: m.track, r: 'track', resolved: bottom,
+        options: [{ value: '', label: `Matches the stud: ${open(matching)}` }, ...optsOf(ch.track, 'track')], note: m.track ? '' : `matches the stud, ${open(matching)}` };
 }
 function renderCore() {
     const m = cur().members;
     const spacing = typing.has('members.spacingIn')
         ? `<input type="text" class="mtype" data-f="members.spacingIn" data-t="num" value="${esc(m.spacingIn)}" aria-label="Stud spacing in inches">`
-        : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${[...new Set([...G.SPACINGS, Number(m.spacingIn)])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${v}" o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
+        : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${Number(m.spacingIn) > 0 ? '' : '<option value="" selected disabled>Pick (the model gave none)</option>'}${[...new Set([...G.SPACINGS, ...(Number(m.spacingIn) > 0 ? [Number(m.spacingIn)] : [])])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${v}" o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
     $('#core-strip').innerHTML = `<div class="row core-head"><b>Core members</b><span class="muted small">top track · studs on center · bottom track</span><span class="spacer"></span>
             <select id="combo" aria-label="Member combo"><option value="">Member combo…</option>
                 <optgroup label="Saved in this browser">${combos.map((c, i) => `<option value="s${i}">${esc(c.name)}</option>`).join('') || '<option disabled>None yet: Save as a combo</option>'}</optgroup>
@@ -369,9 +443,9 @@ function renderCore() {
             <button class="secondary" data-act="save-combo">Save as a combo</button>${combos.length ? '<button class="link" data-act="del-combo">Delete a combo</button>' : ''}</div>
         <div class="core-cards">
             ${memberCard(coreChoice('topTrack'))}
-            ${memberCard({ ...coreChoice('stud'), extra: `<div class="spacing"><label>@ ${spacing}</label></div>` })}
+            ${memberCard({ ...coreChoice('stud'), extra: `<div class="spacing"><label>@ ${spacing}</label>${stateBadge(intentNow()?.members?.spacingIn?.source)}</div>` })}
             ${memberCard(coreChoice('track'))}
-        </div>`;
+        </div>${wallStyleStrip(cur())}`;
 }
 // The opening optimizer's switch on the sketch (off: studs on center from the left end), and what it comes to.
 function renderLayoutInfo() {
@@ -407,25 +481,6 @@ function toLayoutNote(p, i) {
     const parts = [pieces ? `${n} ${pieces > 0 ? 'fewer' : 'more'} stud piece${n === 1 ? '' : 's'}` : '', Math.abs(lengthIn) >= 1 ? `${fmtFtIn(Math.abs(lengthIn))} ${lengthIn > 0 ? 'less' : 'more'} steel` : ''].filter(Boolean);
     return framedText + (parts.length ? `${o.toLayout ? '' : 'turned on: '}${parts.join(', ')}` : 'no saving here');
 }
-function layoutToggle(p, i) {
-    const o = p.openings[i];
-    return `<label class="opt-toggle lay-toggle${o.toLayout ? ' on' : ''}" title="Move this opening's jambs out to the nearest studs on center: those studs are its jambs, so no extra studs stand beside it. The rough opening stays as typed, drawn inside the framed one.">
-        <input type="checkbox" data-f="openings.${i}.toLayout" ${o.toLayout ? 'checked' : ''}><span>Jambs on the stud layout</span><small>${esc(toLayoutNote(p, i))}</small></label>`;
-}
-// Above an opening's members: which opening they are for (a small picture of its framing, its kind, size and place).
-function openingContext(p, i) {
-    const o = p.openings[i], name = G.openingName(p.openings, i), type = G.OPENING_TYPES[o.kind];
-    const size = o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, up through the top from ${fmtFtIn(o.sillIn)}` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}${o.kind === 'door' ? '' : `, sill ${fmtFtIn(o.sillIn)}`}`;
-    return `<div class="op-context ${o.kind}">${openingGlyph(o.kind)}<div><span class="muted small">Members for</span> <b>${name}</b> · ${esc(type.name)}<br>
-        <span class="small">${esc(size)} · ${fmtFtIn(o.leftIn)} from the left end</span>${G.offsetOf(o) > 0 ? `<br><span class="small ro-text">rough opening ${esc(roText(p, i))}</span>` : ''}</div></div>`;
-}
-function openingGlyph(kind) { // the opening, a jamb each side, the header over it and the sill under it, as the kind has them
-    const head = kind !== 'steel', sill = kind !== 'door', y0 = head ? 9 : 0, y1 = kind === 'door' ? 38 : 30;
-    return `<svg class="op-glyph" viewBox="0 0 56 40" aria-hidden="true"><rect class="g-op ${kind}" x="15" y="${y0}" width="26" height="${y1 - y0}"/>
-        <rect class="g-j" x="11" y="${y0}" width="4" height="${y1 - y0}"/><rect class="g-j" x="41" y="${y0}" width="4" height="${y1 - y0}"/>
-        ${head ? `<rect class="g-h" x="11" y="${y0 - 5}" width="34" height="4"/>` : ''}${sill ? `<rect class="g-s" x="11" y="${y1 + 1}" width="34" height="3"/>` : ''}
-        <line class="g-floor" x1="2" y1="39.5" x2="54" y2="39.5"/></svg>`;
-}
 function renderCatalogue() {
     const box = $('#catalogue'), p = cur();
     if (sel != null && !p.openings[sel]) { sel = null; ask = null; }
@@ -434,6 +489,7 @@ function renderCatalogue() {
             <p class="muted small">Every opening is framed with these unless you pick its own: click an opening in the elevation, or add one.</p>
             ${['jamb', 'head', 'sill'].map(k => openingCard(null, k)).join('')}
             <p class="muted small">Doors take jambs and a header; windows and MEP openings jambs, a header and a sill; steel penetrations (up through the top) jambs and a sill.</p>`;
+        syncOpeningSelection();
         return;
     }
     const o = p.openings[sel], type = G.OPENING_TYPES[o.kind], name = G.openingName(p.openings, sel), L = G.shapeTop(p.shape).lengthIn;
@@ -446,14 +502,14 @@ function renderCatalogue() {
         ${ask === sel ? `<p class="ask-note">${name} is in: pick its ${type.members.map(k => G.MEMBER_LABELS[k].toLowerCase()).join(' and ').replace(' and ', type.members.length > 2 ? ', ' : ' and ')}, or keep the defaults.</p>` : ''}
         <div class="fields cat-fields">${f('Width', 'widthIn', o.widthIn)}${o.kind === 'steel' ? '' : f('Height', 'heightIn', o.heightIn)}
             ${o.kind === 'door' ? '' : f(o.kind === 'steel' ? 'Sill height (up through the top)' : 'Sill height', 'sillIn', o.sillIn)}
-            ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}
-            ${field('Framing offset', `openings.${sel}.offsetIn`, G.offsetOf(o), { t: 'len', list: 'len', cls: 'f-offset', ph: `${inch(G.FRAMING_OFFSETS[o.kind])} (${o.kind}s)` })}</div>
-        <div class="row fr-row"><button class="secondary" data-act="framing" data-i="${sel}" title="Double jambs, box headers, jack studs, the rough opening: with a preview">⚙ Framing details…</button>
-            <span class="muted small">${esc(framingSummary(p, sel))}</span></div>
-        ${layoutToggle(p, sel)}
-        ${openingContext(p, sel)}
-        ${type.members.map(k => openingCard(sel, k)).join('')}
-        <div class="row"><button data-act="done">Done</button>${locked ? '' : `<button class="link" data-act="center" data-i="${sel}">Center it</button><span class="muted small">Arrow keys move it (Shift: 6").</span>`}</div>`;
+            ${f('From left end', 'leftIn', o.leftIn)}${f('From right end', '__right', Math.max(0, L - o.leftIn - o.widthIn))}</div>
+        ${ruleCard(p, sel)}
+        <div class="op-profiles">${memberRows(p, sel)}
+            <p class="muted small">Rough opening ${esc(roText(p, sel))} · offset ${esc(inch(G.offsetOf(o)))}${o.toLayout ? ' · jambs on the stud layout' : ''}${o.crippleEnds ? ' · cripples at the ends' : ''}</p>
+            <button class="secondary" data-act="framing" data-i="${sel}" title="Jambs, header, sill, the rough opening and more: with a preview">⚙ Framing details and preview…</button></div>
+        <div class="row"><button data-act="done">Done</button>${locked ? '' : `<button class="link" data-act="center" data-i="${sel}">Center it</button><button class="link" data-act="mirror-op" data-i="${sel}" title="The same opening the same distance from the other end">Mirror</button>
+            <button class="link" data-act="copy-op" data-i="${sel}" title="Another opening like this one">Copy</button><span class="muted small">Arrow keys move it (Shift: 6").</span>`}</div>`;
+    syncOpeningSelection();
 }
 // The selected opening's typed sizes, kept up to date while it is dragged or nudged.
 function syncCatalogueFields(except = '') {
@@ -475,6 +531,7 @@ function pickMember(path, value) {
     }
     typing.delete(path);
     const p = cur();
+    markChosen(p, path);
     if (path === 'members.stud') followStud(p.members.stud, value);
     else setPath(p, path, path === 'members.spacingIn' ? Number(value) : value);
     const key = path.split('.').pop();
@@ -518,7 +575,11 @@ function renderHint() {
             <span class="row peri-actions"><button data-act="peri-finish" ${peri?.pts.length >= 4 ? '' : 'disabled'}>Close the perimeter</button><button class="secondary" data-act="peri-undo" ${peri?.pts.length ? '' : 'disabled'}>Undo a corner</button><button class="link" data-act="peri-cancel">Cancel (Esc)</button></span>`;
     } else if (tool === 'clip') {
         const n = (cur().clips || []).length;
-        el.innerHTML = `<b>Clips:</b> click near a stud to put a <input id="clip-type" class="mini wide" list="dl-clip" value="${esc(clipType)}" aria-label="Clip type"> on it, on its web, at that height; click a clip to remove it.
+        const ay = clipAlignY(cur());
+        el.innerHTML = `<b>Clips:</b> click near a stud to put a <input id="clip-type" class="mini wide" list="dl-clip" value="${esc(clipType)}" aria-label="Clip type (type any)"> on it, on its web, at that height; click a clip to remove it.
+            <span class="row clip-align"><label class="fd-check"><input type="checkbox" id="clip-align-on" ${clipAlign.on ? 'checked' : ''}> Align new clips at</label>
+                <input id="clip-align-at" class="mini" value="${esc(ay == null ? '' : lenText(ay))}" placeholder="the first clip's height" aria-label="Align new clips at this height">
+                <span class="muted small">${ay == null ? 'the first clip you place sets it' : clipAlign.y == null ? 'the first clip\'s height' : 'typed'}; near it a clip snaps to the line (Alt: place it freely)</span></span>
             <span class="row clip-actions">Clip every stud: <button class="secondary" data-act="clip-top">2" under the top</button><button class="secondary" data-act="clip-mid">at mid-height</button>
             or at <input id="clip-at" class="mini" value="${esc(lenText(clipAt))}" aria-label="Height for clips on every stud"><button class="secondary" data-act="clip-all">Clip every stud</button>
             ${n ? `<button class="link danger" data-act="clip-clear">Remove all ${n} clip${n === 1 ? '' : 's'}</button>` : ''}<button class="link" data-act="tool" data-tool="select">Done (Esc)</button></span>`;
@@ -546,8 +607,9 @@ function fit() {
         const W = Math.max(L || 0, 240) * 1.25 + 60, Hh = Math.max(H || 0, 144) * 1.25 + 40;
         view = { x: -48, y: -(Hh - 30), w: W, h: Hh + 30 };
     } else {
-        const pad = Math.max(L, H, 48) * 0.17;
-        view = { x: -pad * 1.7, y: -(Math.max(H, 12) + pad * 1.5), w: Math.max(L, 12) + pad * 3.4, h: Math.max(H, 12) + pad * 3.1 };
+        const pad = Math.max(L, H, 48) * 0.17, ctx = CL.contextLines(cur(), set), ys = ctx.show ? ctx.levels.map(l => l.yIn) : [];
+        const hi = Math.max(H, 12, ...ys) + (ctx.show && ctx.grids.length ? pad * 0.6 : 0), lo = Math.min(0, ...ys);
+        view = { x: -pad * 1.7 - (ys.length ? pad * 0.6 : 0), y: -(hi + pad * 1.5), w: Math.max(L, 12) + pad * 3.4 + (ys.length ? pad * 0.6 : 0), h: hi - lo + pad * 3.1 };
     }
 }
 function renderSketch() {
@@ -581,6 +643,7 @@ function renderSketch() {
         parts.push(dimH(0, L, -fs * 1.4, fmtFtIn(L), 'sk-dim', true), dimV(-fs * 1.6, 0, at(0), fmtFtIn(at(0)), 'sk-dim'), dimV(L + fs * 1.6, 0, at(L), fmtFtIn(at(L)), 'sk-dim', true));
         for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, fmtFtIn(h), { cls: 'sk-dim-t' }));
     }
+    if (tool !== 'perimeter' && valid) parts.push(contextLayer(p, L, H, top, fs, t, Y));
     // Where the studs will be: their centerlines (side A), cripples as short ones.
     if (tool !== 'perimeter' && valid) parts.push(centerlines(p, H, top));
     // Openings.
@@ -593,9 +656,16 @@ function renderSketch() {
         if (G.offsetOf(o) > 0) { const r = G.roughOpening(o, H), rt = b.through ? topY : r.top; parts.push(`<rect x="${r.left}" y="${Y(rt)}" width="${r.right - r.left}" height="${rt - r.bottom}" class="sk-ro"><title>${esc(`${name}'s rough opening: ${roText(p, i)}`)}</title></rect>`); }
         const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - G.roughOpening(o, H).left) < 1e-6 && Math.abs(x.bottom - G.roughOpening(o, H).bottom) < 1e-6);
         if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${fmtFtIn(fb.right - fb.left)} between jambs`)}</title></rect>`);
-        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}" data-drag="op:${i}"><title>${esc(`${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
+        const tiny = G.isSmallPenetration(p, o); // a model's penetration under 6": not framed (the resolved plan reports it)
+        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}${tiny ? ' small' : ''}" data-drag="op:${i}"><title>${esc(tiny ? `${name}: a ${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)} penetration, under 6": not framed here (decide its framing)` : `${name}: ${G.OPENING_TYPES[o.kind].name}, drag to move it`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
+    // Placing clips: the align line (bold while the aim snaps to it) and where the next clip goes.
+    if (tool === 'clip' && valid) {
+        const ay = clipAlignY(p);
+        if (ay != null && clipAlign.on) parts.push(`<g class="sk-align${clipAim?.aligned ? ' on' : ''}"><line x1="${-fs * 2}" y1="${Y(ay)}" x2="${L + fs * 3.4}" y2="${Y(ay)}"/>${t(L + fs * 3.6, Y(ay) + fs * 0.35, `${clipAim?.aligned ? 'aligned ' : ''}${fmtFtIn(ay)}`, { a: 'start', cls: 'sk-align-t', size: fs * 0.8 })}</g>`);
+        if (clipAim && clipAim.x >= 0 && clipAim.x <= L) parts.push(`<rect x="${clipAim.x - Math.max(0.6, u * 0.45)}" y="${Y(clipAim.y) - Math.max(1.5, u * 0.9)}" width="${Math.max(1.25, u * 0.9)}" height="${Math.max(3, u * 1.8)}" class="sk-clip ghost"/>`);
+    }
     // Clips, on their studs' webs (at least a little block on screen, however small the panel is drawn).
     if (tool !== 'perimeter' && laid.lay) for (const c of G.placeClips(laid.lay, p.clips).clips) {
         const w = Math.max(1.25, u * 0.9), h = Math.max(3, u * 1.8);
@@ -765,7 +835,8 @@ function bindSketch(svg) {
         e.preventDefault();
         if (tool === 'perimeter') { drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return; }
         if (tool === 'opening') { rectDraw = { a: [snap(q[0]), snap(q[1])], b: [snap(q[0]), snap(q[1])] }; drag = { what: 'rect', x: e.clientX, y: e.clientY, moved: false }; return; }
-        if (tool === 'clip') { const c = e.target.closest('[data-clip]'); c ? removeClip(p, Number(c.dataset.clip)) : addClips(p, [{ type: clipType, x: round16(q[0]), y: round16(q[1]) }]); return; }
+        if (tool === 'clip') { const c = e.target.closest('[data-clip]'); if (c) { removeClip(p, Number(c.dataset.clip)); return; } const a = clipAimAt(p, q, e.altKey); addClips(p, [{ type: clipType, x: round16(q[0]), y: a.y }]); if (a.aligned) notice(`Aligned at ${fmtFtIn(a.y)}.`); return; }
+        dragSeq++; // one drag: one undo step
         drag = { what: h?.dataset.drag || 'none', start: q, moved: false, orig: structuredClone({ shape: p.shape, openings: p.openings }), x: e.clientX, y: e.clientY, view0: { ...view } };
         const m = /^op:(\d+)$/.exec(drag.what);
         if (m && sel !== Number(m[1])) { sel = Number(m[1]); if (ask !== sel) ask = null; renderCatalogue(); renderChips(); renderSketch(); }
@@ -773,6 +844,7 @@ function bindSketch(svg) {
     svg.addEventListener('pointermove', (e) => {
         const q = wallPoint(e);
         if (tool === 'perimeter') { peri.cursor = snapPerimeter(q); renderSketch(); return; }
+        if (tool === 'clip' && !drag) { clipAim = { x: q[0], ...clipAimAt(cur(), q, e.altKey) }; renderSketch(); }
         if (!drag) {
             const h = e.target.closest('[data-hover],[data-drag]'), key = h ? h.dataset.hover || h.dataset.drag : null;
             if (key !== hover) { hover = key; renderSketch(); }
@@ -867,11 +939,24 @@ function finishRect() {
 const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
-    if (document.getElementById('fr-dialog')?.open) return; // the framing dialog has the keys
+    if (document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open) return; // a dialog has the keys
     if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
+    if (e.ctrlKey || e.metaKey) { // undo / redo (in a text box, the box's own undo)
+        const k = e.key.toLowerCase();
+        if (k === 'z' && !e.shiftKey) { e.preventDefault(); doUndo(); return; }
+        if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); doRedo(); return; }
+        return;
+    }
+    if (!cur()) return;
     if (tool === 'perimeter' && peri) { perimeterKey(e); return; }
-    if (e.key === 'Escape') { if (tool !== 'select') setTool('select'); else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); } return; }
+    if (e.key === 'Escape') { if (tool !== 'select') setTool('select'); else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); } else if (selection.kind !== 'none') selectTarget(W.NONE); return; }
+    if (editMode && selection.kind === 'member' && /^Arrow/.test(e.key)) {
+        e.preventDefault();
+        const d = e.shiftKey ? 1 : 1 / 16;
+        manualNudge(e.key === 'ArrowLeft' ? -d : e.key === 'ArrowRight' ? d : 0, e.key === 'ArrowUp' ? d : e.key === 'ArrowDown' ? -d : 0);
+        return;
+    }
     if (sel == null || !/^Arrow/.test(e.key)) return;
     const p = cur(), o = p.openings[sel], L = G.shapeTop(p.shape).lengthIn, step = e.shiftKey ? 6 : 0.5;
     if (!o) return;
@@ -948,7 +1033,7 @@ function finishPerimeter() {
 // --- Right-click on the sketch: what can be done with what is under the pointer --------------------------------------
 // An opening: its members, kind, jambs on the layout, center, copy, remove. A stud: its type, start the layout there. The
 // top: the top track, a control point to drag. The bottom: the bottom track. An end: start the layout from it. A point:
-// remove it. Empty panel: add an opening there. Always: Preview, the optimizer, Flip studs, Flip panel.
+// remove it. Empty panel: add an opening there. Always (shortcuts, all also in the inspector): the elevation, the optimizer, stud facing, layout end.
 let menuAt = null;
 function closeMenu() {
     const box = document.getElementById('sk-menu');
@@ -969,7 +1054,7 @@ function openMenu(e) {
     const check = (label, path, on, note = '') => `<label class="mi-check"><input type="checkbox" data-f="${esc(path)}" ${on ? 'checked' : ''}><span>${esc(label)}</span>${note ? `<small>${esc(note)}</small>` : ''}</label>`;
     const choose = (i) => { if (sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); } };
     const endMenu = (side) => out.push(head(`The ${side} end`, `${fmtFtIn(at(side === 'left' ? 0 : L))} high · end stud ${studName(p.members)}`),
-        btn(`Start the stud layout from the ${side} end`, 'layout-from', { side }, { off: !!p.layoutFromRight === (side === 'right'), title: side === 'right' ? 'Flip panel: the layout and its offsets from this end' : 'The layout from the left end, as usual' }));
+        btn(`Start the stud layout from the ${side} end`, 'layout-from', { side }, { off: !!p.layoutFromRight === (side === 'right'), title: side === 'right' ? 'The layout and its offsets from this end (stud facing unchanged)' : 'The layout from the left end, as usual' }));
     const out = [];
     const opening = /^op:(\d+)$/.exec(key), mem = /^mem:(\d+)$/.exec(key), edge = /^edge:(\d+)$/.exec(key), pt = /^pt:(\d+)$/.exec(key), end = /^pg:(l|r|tl|tr|bl|br)$/.exec(key), clip = /^clip:(\d+)$/.exec(key);
     if (opening && p.openings[Number(opening[1])]) {
@@ -1016,11 +1101,11 @@ function openMenu(e) {
             `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`,
             btn(`◫ Add a ${clipType.toLowerCase()} on the nearest stud`, 'clip-here', { x: round16(x), y: round16(y) }));
     }
-    out.push(out.length ? '<hr>' : '', btn('⟲ Preview 5 s', 'preview', {}, { title: 'The framing elevation with its tags and dimensions, for 5 seconds' }),
+    // Shortcuts only: every one of these is also in the inspector (Stud layout and facing) or over the views (side).
+    out.push(out.length ? '<hr>' : '', btn('Show the framing elevation', 'preview', {}, { title: 'The Elevation view: the framing with its tags and dimensions' }),
         check('Opening optimizer', 'optimizeOpenings', p.optimizeOpenings, p.layoutStartIn > 0 ? 'first stud set by hand' : ''),
-        check('Flip studs', 'flipStuds', p.flipStuds, 'studs face the other way'),
-        check('Flip panel', 'layoutFromRight', p.layoutFromRight, 'layout from the right end'),
-        check('Side B', 'sideB', p.sideB, 'mirror the sheet'),
+        check('Flip every stud', 'flipStuds', p.flipStuds, 'stud facing: physical'),
+        check('Layout from the right end', 'layoutFromRight', p.layoutFromRight, 'where the studs on center start'),
         p.layoutStartIn > 0 ? btn(`Clear the first stud set by hand (${inch(p.layoutStartIn)})`, 'layout-reset') : '');
     const box = document.getElementById('sk-menu');
     box.innerHTML = out.join('');
@@ -1086,6 +1171,19 @@ function copyOpening(p, i) {
 
 // --- Clips -------------------------------------------------------------------------------------------------------------
 let clipType = load(KEYS.recent, {}).clip?.[0] || G.CLIP_TYPES[0], clipAt = 48;
+// Clips align to the first one placed (or a typed height): near that line a new clip snaps to it; Alt places it freely.
+const clipAlign = { on: true, y: null };
+let clipAim = null; // { x, y, aligned }: where the next clip goes (the clip tool)
+const clipAlignY = (p) => (clipAlign.y != null ? clipAlign.y : p?.clips?.length ? p.clips[0].y : null);
+function clipAimAt(p, q, free = false) {
+    const ay = clipAlignY(p), tol = (view.w / (svgEl?.clientWidth || 800)) * 24; // about 24 pixels on screen
+    if (!free && clipAlign.on && ay != null && Math.abs(q[1] - ay) <= tol) return { y: ay, aligned: true };
+    return { y: round16(q[1]), aligned: false };
+}
+main.addEventListener('change', (e) => {
+    if (e.target.id === 'clip-align-on') { clipAlign.on = e.target.checked; renderSketch(); }
+    if (e.target.id === 'clip-align-at') { const v = G.parseLength(e.target.value); clipAlign.y = e.target.value.trim() === '' ? null : v; renderHint(); renderSketch(); }
+});
 main.addEventListener('change', (e) => { if (e.target.id === 'clip-type') { clipType = e.target.value.trim() || G.CLIP_TYPES[0]; recent.clip = G.remember(recent.clip, clipType); store(KEYS.recent, recent); renderDatalists(); } });
 // New clips: only those that land on a stud and not on one already there.
 function addClips(p, list) {
@@ -1111,145 +1209,399 @@ function framingSummary(p, i) {
         fr.head ? (fr.head.depthIn ? `${inch(fr.head.depthIn)} ${fr.head.style === 'back' ? 'back-to-back' : 'box'} header` : 'track header') + (fr.bearing === 'jacks' ? ' on jack studs' : '') : '',
         fr.crippleEnds ? 'cripples at the ends' : ''].filter(Boolean).join(' · ');
 }
-let fd = null; // the dialog's state: { i, draft (the opening being edited), jamb, head, sill (picker states), touched }
+// The dialog's state: { i, draft (the opening being edited), custom (members showing the detailed editor), work (the
+// profile each custom editor is building), saveAs (a name being typed per member), spread (use for every opening of this
+// kind in the panel), more (extra options open) }.
+let fd = null;
 const frDialog = () => document.getElementById('fr-dialog');
 // draft: start from this version of the opening (Back to the defaults) instead of the panel's.
 function openFraming(i, draft = null) {
     const p = cur(), o = p.openings[i];
     if (!o) return;
-    const d = draft || structuredClone(o), panel = { ...p, openings: p.openings.map((x, j) => (j === i ? d : x)) };
-    const stud = studName(p.members), track = bottomTrack(p.members);
-    const state = (k) => { const sp = G.specParts(G.memberFor(panel, d, k).spec), byStuds = sp.studQty > 0;
-        return { style: byStuds ? (d[`${k}Style`] === 'back' ? 'back' : 'box') : 'track', studs: byStuds ? sp.studQty : 2, stud: sp.studs[0]?.name || stud, tracks: byStuds ? sp.trackQty : Math.max(1, sp.trackQty), track: sp.tracks[0]?.name || track }; };
-    const jp = G.specParts(G.memberFor(panel, d, 'jamb').spec);
-    fd = { i, draft: d, jamb: { plies: Math.max(1, Math.min(3, jp.studQty || 1)), stud: jp.studs[0]?.name || stud, tracks: jp.tracks }, head: state('head'), sill: state('sill'), touched: new Set() };
+    fd = { i, draft: draft || structuredClone(o), custom: new Set(), work: {}, saveAs: {}, spread: false, more: !!(o.toLayout || o.crippleEnds) };
     if (sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); }
     renderFraming();
     if (!frDialog().open) frDialog().showModal();
 }
-// The draft's member texts from the pickers (only those touched: an untouched member keeps what it had, '' included).
-function framingSpecs() {
-    const d = fd.draft, spec = (s) => (s.style === 'track' ? `${s.tracks > 1 ? `(${s.tracks}) ` : ''}${s.track}` : `(${s.studs}) ${s.stud}${s.tracks ? ` WITH (${s.tracks}) ${s.track}` : ''}`);
-    if (fd.touched.has('jamb')) { const j = fd.jamb; d.jamb = `${j.plies > 1 ? `(${j.plies}) ` : ''}${j.stud}${j.tracks.length ? ` WITH ${j.tracks.map(t => `(${t.qty}) ${t.name}`).join(' WITH ')}` : ''}`; }
-    for (const k of ['head', 'sill']) if (fd.touched.has(k)) { d[k] = spec(fd[k]); if (fd[k].style === 'back') d[`${k}Style`] = 'back'; else delete d[`${k}Style`]; }
-}
 const draftPanel = () => { const p = cur(); return { ...p, openings: p.openings.map((o, j) => (j === fd.i ? fd.draft : o)) }; };
+const FD_LABELS = { jamb: 'Jambs', head: 'Header', sill: 'Sill' };
+// A member's choices: the panel's default, the standard profiles, those saved in this browser.
+const profileChoices = (kind) => [...P.PRESETS[kind].map((p, n) => ({ id: `b${n}`, p, saved: false })), ...profiles[kind].map((p, n) => ({ id: `s${n}`, p, saved: true }))];
+// The profile an opening's member is framed with: 'default' (the panel's), a choice's id, or 'custom'.
+function profileChoiceOf(panel, o, kind) {
+    if (!o[kind]) return 'default';
+    const now = P.profileOfOpening(panel, o, kind);
+    return (now && profileChoices(kind).find(c => P.sameFraming(kind, c.p, now, panel.members))?.id) || 'custom';
+}
+const choiceNow = (kind) => (fd.custom.has(kind) ? 'custom' : profileChoiceOf(draftPanel(), fd.draft, kind));
+// A member drawn small, as cut: the jamb studs in plan (the opening to the right), a header or sill across the wall.
+function profileGlyph(kind, prof) {
+    const C = (x, y, w, h, open) => { const [a, b] = open === 'r' ? [x + w, x] : open === 'l' ? [x, x + w] : [x, x];
+        return open === 'u' ? `<path d="M${x} ${y}V${y + h}H${x + w}V${y}"/>` : open === 'd' ? `<path d="M${x} ${y + h}V${y}H${x + w}V${y + h}"/>`
+            : `<path d="M${a} ${y}H${b}V${y + h}H${a}"/>`; };
+    let body = '';
+    if (!prof) body = '<text x="24" y="21" text-anchor="middle">?</text>';
+    else if (kind === 'jamb') {
+        const n = prof.plies, w = 7, gap = 1.5, x0 = 24 - (n * w + (n - 1) * gap) / 2;
+        for (let q = 0; q < n; q++) {
+            const open = n === 1 || prof.style === 'same' ? 'l' : prof.style === 'back' ? (q % 2 ? 'r' : 'l') : (q % 2 ? 'l' : 'r');
+            body += C(x0 + q * (w + gap), 6, w, 22, open);
+        }
+        body += '<line x1="44" y1="3" x2="44" y2="31" class="g-op"/>';
+    } else if (prof.made === 'track') {
+        for (let q = 0; q < prof.tracks; q++) body += C(10 + q * 1.5, 22 - q * 1.5, 28 - q * 3, 8, 'u');
+    } else {
+        const top = prof.tracks > 1, bottom = prof.tracks > 0;
+        if (bottom) body += C(10, 25, 28, 5, 'u');
+        if (top) body += C(10, 4, 28, 5, 'd');
+        body += prof.made === 'back' ? C(17, 9, 7, 16, 'l') + C(24, 9, 7, 16, 'r') : C(11, 9, 7, 16, 'r') + C(30, 9, 7, 16, 'l');
+    }
+    return `<svg class="fd-glyph" viewBox="0 0 48 34" aria-hidden="true">${body}</svg>`;
+}
+// A member's row: its glyph, the profile list, what it comes to; the detailed editor only when Custom is picked.
+function profileRow(kind) {
+    const p = cur(), d = fd.draft, panel = draftPanel(), now = choiceNow(kind), choices = profileChoices(kind);
+    const shown = now === 'default' ? P.profileOfOpening(panel, { ...d, [kind]: '' }, kind) : now === 'custom' ? fd.work[kind] || P.profileOfOpening(panel, d, kind) : choices.find(c => c.id === now).p;
+    const dflt = G.memberFor(panel, { ...d, [kind]: '' }, kind).spec;
+    const opt = (c) => `<option value="${c.id}" ${c.id === now ? 'selected' : ''}>${esc(c.p.name)}</option>`;
+    const saved = choices.filter(c => c.saved);
+    const desc = shown ? P.describeProfile(kind, shown, p.members) : G.specText(G.memberFor(panel, d, kind).spec) || G.memberFor(panel, d, kind).spec;
+    return `<div class="fd-prof" data-kind="${kind}">${profileGlyph(kind, shown)}
+        <div class="fd-prof-main"><label><span>${FD_LABELS[kind]}${kind === 'sill' && d.kind === 'steel' ? ' (under the steel)' : ''}</span>
+            <select data-fd="profile" data-k="${kind}" aria-label="${FD_LABELS[kind]} profile">
+                <option value="default" ${now === 'default' ? 'selected' : ''}>Panel default (${esc(dflt)})</option>
+                <optgroup label="Standard">${choices.filter(c => !c.saved).map(opt).join('')}</optgroup>
+                ${saved.length ? `<optgroup label="Saved in this browser">${saved.map(opt).join('')}</optgroup>` : ''}
+                <option value="custom" ${now === 'custom' ? 'selected' : ''}>Custom…</option></select></label>
+            <small>${esc(desc)}${arrangementOpen(panel, d, kind) ? ' <b class="arr-open">· arrangement not chosen</b>' : ''}</small>
+            ${/^s\d+$/.test(now) ? `<button type="button" class="link small" data-fd="delete-profile" data-k="${kind}" data-v="${now.slice(1)}">Delete this saved profile</button>` : ''}
+        </div></div>${now === 'custom' ? customEditor(kind) : ''}`;
+}
+// Built-up parts (2 or more studs) whose arrangement the opening does not give: the plan leaves them unplaced.
+function arrangementOpen(panel, o, kind) {
+    const n = G.specParts(G.memberFor(panel, o, kind).spec).studQty;
+    return (kind === 'jamb' ? n > 1 : n > 0) && !o[`${kind}Style`];
+}
+// The detailed editor for one member (a profile being built), and Save as a profile.
+function customEditor(kind) {
+    const p = cur(), wall = G.parseMember(p.members.stud), sameDepth = (n) => Math.abs((G.parseMember(n)?.depthIn ?? -1) - (wall?.depthIn ?? -2)) < 1e-6;
+    const w = fd.work[kind] || (fd.work[kind] = P.profileOfOpening(draftPanel(), fd.draft, kind) || { ...P.PRESETS[kind][0], name: '' });
+    const seg = (key, value, opts) => `<div class="seg fd-seg">${opts.map(([v, label, off]) => `<button type="button" class="${String(v) === String(value) ? 'on' : 'secondary'}" data-fd="${key}" data-k="${kind}" data-v="${v}"${off ? ' disabled' : ''}>${label}</button>`).join('')}</div>`;
+    const sizes = (key, value, list, wallLabel, wallValue) => `<select data-fd="${key}" data-k="${kind}"><option value="${wallValue}" ${value === wallValue ? 'selected' : ''}>${esc(wallLabel)}</option>${[...new Set([value, ...list])].filter(v => v && v !== wallValue).map(v => `<option ${v === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
+    const studLabel = `the wall's stud (${studName(p.members)})`, trackLabel = `the wall's track (${bottomTrack(p.members)})`;
+    const tracks = G.memberChoices(p.members).track.filter(sameDepth);
+    let rows;
+    if (kind === 'jamb') rows = `<div class="fd-line"><span>Studs each side</span>${seg('w-plies', w.plies, [[1, '1'], [2, '2'], [3, '3']])}${sizes('w-stud', w.stud, G.STUDS.filter(sameDepth), studLabel, '=stud')}</div>
+        ${w.plies > 1 ? `<div class="fd-line"><span>Arranged</span>${seg('w-style', w.style, Object.entries(G.JAMB_STYLES).map(([v, l]) => [v, l.split(' (')[0]]))}</div>` : ''}`;
+    else rows = `<div class="fd-line"><span>Made of</span>${seg('w-made', w.made, [['track', 'Track'], ['box', 'Box'], ['back', 'Back to back']])}</div>
+        ${w.made === 'track' ? `<div class="fd-line"><span>Track</span>${seg('w-tracks', w.tracks, [[1, '1'], [2, '2 nested']])}${sizes('w-track', w.track, tracks, trackLabel, '=track')}</div>`
+            : `<div class="fd-line"><span>Studs</span>${seg('w-studs', w.studs, [[1, '1'], [2, '2']])}${sizes('w-stud', w.stud, G.STUDS, studLabel, '=stud')}</div>
+               <div class="fd-line"><span>Tracks</span>${seg('w-tracks', w.tracks, [[0, 'none'], [1, '1'], [2, '2']])}${w.tracks ? sizes('w-track', w.track, tracks, trackLabel, '=track') : ''}</div>`}
+        ${kind === 'head' ? `<div class="fd-line"><span></span><label class="fd-check"><input type="checkbox" data-fd="w-jacks" data-k="head" ${w.bearing === 'jacks' ? 'checked' : ''} ${G.specParts(G.memberFor(draftPanel(), fd.draft, 'jamb').spec).studQty < 2 ? 'disabled title="Needs 2 or more jamb studs each side"' : ''}> On jack studs</label></div>` : ''}`;
+    return `<div class="fd-custom" data-kind="${kind}">${rows}
+        <div class="fd-line fd-save"><span></span><input type="text" class="mini" data-fd="save-name" data-k="${kind}" placeholder="Name, e.g. ${kind === 'jamb' ? 'Double 362 boxed' : 'Box 600 on jacks'}" value="${esc(fd.saveAs[kind] || '')}" maxlength="60">
+            <button type="button" class="secondary" data-fd="save-profile" data-k="${kind}">Save as a profile</button></div></div>`;
+}
 function renderFraming() {
     const p = cur(), d = fd.draft, kind = d.kind, type = G.OPENING_TYPES[kind], name = G.openingName(p.openings, fd.i), panel = draftPanel();
-    const wall = G.parseMember(p.members.stud), deep = (n) => G.parseMember(n)?.depthIn, sameDepth = (n) => Math.abs((deep(n) ?? -1) - (wall?.depthIn ?? -2)) < 1e-6;
-    const ch = G.memberChoices(p.members), jambStuds = G.STUDS.filter(sameDepth), tracks = ch.track.filter(sameDepth);
-    const fr = G.openingFraming(panel, d), off = G.offsetOf(d), dflt = G.FRAMING_OFFSETS[kind];
-    const seg = (key, value, opts) => `<div class="seg fd-seg">${opts.map(([v, label, offOpt, title]) => `<button type="button" class="${String(v) === String(value) ? 'on' : 'secondary'}" data-fd="${key}" data-v="${v}"${offOpt ? ' disabled' : ''}${title ? ` title="${esc(title)}"` : ''}>${label}</button>`).join('')}</div>`;
-    const pickList = (key, value, list) => `<select data-fd="${key}">${[...new Set([value, ...list])].filter(Boolean).map(v => `<option ${v === value ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select>`;
-    const member = (k, label) => {
-        const s = fd[k], st = fr[k];
-        return `<fieldset class="fd-group"><legend>${label}</legend>
-            <div class="fd-line"><span>Made of</span>${seg(`${k}Style`, s.style, [['track', 'Track'], ['box', 'Box (toe to toe)'], ['back', 'Back to back']])}</div>
-            ${s.style === 'track' ? `<div class="fd-line"><span>Track</span>${seg(`${k}Tracks`, s.tracks, [[1, '1'], [2, '2 nested']])}${pickList(`${k}Track`, s.track, tracks)}</div>`
-                : `<div class="fd-line"><span>Studs</span>${seg(`${k}Studs`, s.studs, [[1, '1'], [2, '2']])}${pickList(`${k}Stud`, s.stud, G.STUDS)}<em>${inch(deep(s.stud) || 0)} deep</em></div>
-                   <div class="fd-line"><span>Tracks</span>${seg(`${k}Tracks`, s.tracks, [[0, 'none'], [1, '1 (under)'], [2, '2 (over and under)']])}${s.tracks ? pickList(`${k}Track`, s.track, tracks) : ''}</div>`}
-            <div class="fd-line"><span>As text</span><input type="text" data-fd="${k}Spec" value="${esc(d[k] || '')}" placeholder="${esc(st?.spec || '')} (the default)" list="dl-${k === 'head' ? 'header' : k}"></div>
-            ${k === 'head' ? `<div class="fd-line"><span>Bears</span>${seg('bearing', fr.bearing, [['between', 'Between the jambs'], ['jacks', 'On jack studs', fd.jamb.plies < 2, fd.jamb.plies < 2 ? 'Needs 2 or more jamb studs each side' : 'The header runs over the first jamb stud (a jack under it); the next is the king']])}</div>` : ''}
-        </fieldset>`;
-    };
-    const pv = framingPreview(panel);
-    frDialog().innerHTML = `<form method="dialog" class="fd">
+    const fr = G.openingFraming(panel, d), off = G.offsetOf(d), same = p.openings.filter((o, j) => j !== fd.i && o.kind === kind && !G.isSmallPenetration(p, o)).length;
+    const pv = framingPreview(panel), views = detailViews(kind);
+    if (!views.includes(fd.view)) fd.view = views.includes('head') ? 'head' : 'opening';
+    frDialog().innerHTML = `<form method="dialog" class="fd fd-simple">
         <div class="fd-head"><b class="op-name ${kind}">${name}</b><span>${esc(type.name)} · ${esc(kind === 'steel' ? `${fmtFtIn(d.widthIn)} wide` : `${fmtFtIn(d.widthIn)} x ${fmtFtIn(d.heightIn)}`)}${G.isLockedOpening(p, d) ? ' · 🔒 the model\'s (its framing can change)' : ''}</span>
             <span class="spacer"></span><button type="button" class="link" data-fd="cancel" aria-label="Close">✕</button></div>
         <div class="fd-body"><div class="fd-controls">
-            <fieldset class="fd-group"><legend>Rough opening</legend>
-                <div class="fd-line"><span>Framing offset</span><input type="text" class="mini" data-fd="offset" value="${esc(inch(off))}"><em>each side${kind === 'door' ? ' and over it' : kind === 'steel' ? ' and under it' : ', over and under'}; ${kind}s default to ${inch(dflt)}</em>
-                    ${d.offsetIn != null && d.offsetIn !== '' ? '<button type="button" class="link" data-fd="offsetReset">default</button>' : ''}</div>
-                <div class="fd-line"><span></span><b>${esc(kind === 'steel' ? `${fmtFtIn(fr.ro.right - fr.ro.left)} wide` : `${fmtFtIn(fr.ro.right - fr.ro.left)} x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`)}</b><em>framed around</em></div>
-            </fieldset>
-            <fieldset class="fd-group"><legend>Jambs</legend>
-                <div class="fd-line"><span>Studs each side</span>${seg('plies', fd.jamb.plies, [[1, '1'], [2, '2 (double)'], [3, '3']])}${pickList('jambStud', fd.jamb.stud, jambStuds)}</div>
-                <div class="fd-line"><span>Arranged</span>${seg('jambStyle', fr.jambStyle, Object.entries(G.JAMB_STYLES).map(([v, l]) => [v, l, fd.jamb.plies < 2]))}</div>
-                <div class="fd-line"><span></span><label class="fd-check"><input type="checkbox" data-fd="toLayout" ${d.toLayout ? 'checked' : ''}> On the stud layout (the nearest studs on center are the jambs)</label></div>
-            </fieldset>
-            ${type.members.includes('head') ? member('head', 'Header') : ''}
-            ${type.members.includes('sill') ? member('sill', kind === 'steel' ? 'Sill (under the steel)' : 'Sill') : ''}
-            <fieldset class="fd-group"><legend>Studs above and below</legend>
-                <label class="fd-check"><input type="checkbox" data-fd="crippleEnds" ${d.crippleEnds ? 'checked' : ''}> Also a cripple at each end of the header and sill (against the jambs), besides those on the layout</label>
-            </fieldset>
+            ${profileRow('jamb')}
+            ${type.members.includes('head') ? profileRow('head') : ''}
+            ${type.members.includes('sill') ? profileRow('sill') : ''}
+            <div class="fd-ro-line">Rough opening <b>${esc(kind === 'steel' ? `${fmtFtIn(fr.ro.right - fr.ro.left)} wide` : `${fmtFtIn(fr.ro.right - fr.ro.left)} x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`)}</b>
+                <label>offset <input type="text" class="mini" data-fd="offset" value="${esc(inch(off))}" aria-label="Framing offset"></label>
+                ${d.offsetIn != null && d.offsetIn !== '' ? `<button type="button" class="link small" data-fd="offsetReset">${esc(inch(G.FRAMING_OFFSETS[kind]))} default</button>` : ''}</div>
+            <details class="fd-more" ${fd.more ? 'open' : ''}><summary>More options</summary>
+                <label class="fd-check"><input type="checkbox" data-fd="toLayout" ${d.toLayout ? 'checked' : ''}> <span>Jambs on the stud layout (the nearest studs on center are the jambs)<br><small class="muted">${esc(toLayoutNote(panel, fd.i))}</small></span></label>
+                <label class="fd-check"><input type="checkbox" data-fd="crippleEnds" ${d.crippleEnds ? 'checked' : ''}> A cripple at each end of the header and sill, against the jambs</label>
+            </details>
         </div>
-        <div class="fd-preview"><div class="fd-svg">${pv.svg}</div>${pv.errors.length ? `<ul class="errors">${pv.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : `<p class="muted small">${esc(pv.caption)}</p>`}</div></div>
+        <div class="fd-preview"><div class="fd-tabs" role="tablist" aria-label="Drawings of this opening">${views.map(v => `<button type="button" role="tab" id="fdt-${v}" aria-selected="${v === fd.view}" class="${v === fd.view ? 'on' : ''}" data-fd="view" data-v="${v}">${DT_VIEWS[v]}</button>`).join('')}</div>
+            ${fd.view === 'opening' ? `<div class="fd-svg" role="tabpanel" aria-labelledby="fdt-opening">${pv.svg}</div>
+            <div class="fd-legend"><span class="lg-jamb">Jambs</span>${type.members.includes('head') ? '<span class="lg-head">Header</span>' : ''}${type.members.includes('sill') ? '<span class="lg-sill">Sill</span>' : ''}<span class="lg-ro">Rough opening</span></div>`
+                : `<div class="fd-detail" role="tabpanel" aria-labelledby="fdt-${fd.view}">${pv.errors.length ? '' : detailPane(panel, fd.view)}</div>`}
+            ${pv.errors.length ? `<ul class="errors">${pv.errors.map(e => `<li>${esc(e)}</li>`).join('')}</ul>` : ''}</div></div>
         <div class="fd-foot"><button type="button" class="link" data-fd="reset">Back to the defaults</button><span class="spacer"></span>
+            ${same ? `<label class="fd-check"><input type="checkbox" data-fd="spread" ${fd.spread ? 'checked' : ''}> ${same === 1 ? `Also the other ${esc(G.kindWord(kind))} here` : `Also the other ${same} ${esc(G.kindWord(kind))}s here`}</label>` : ''}
             <button type="button" class="secondary" data-fd="cancel">Cancel</button><button type="button" data-fd="apply" ${pv.errors.length ? 'disabled' : ''}>Apply</button></div>
     </form>`;
 }
-// The opening framed, a bay or two each side: the members (studs white, jamb studs blue-grey, tracks yellow, headers
-// and sills salmon), each stud's C in plan under it, the rough opening dashed, the opening as typed inside it.
+// The opening framed, a bay or two each side, kept plain: studs white, jambs blue, header and sill salmon, tracks
+// yellow, the rough opening dashed red.
 function framingPreview(panel) {
     const errors = G.panelErrors(panel).filter(e => e.where === `opening-${fd.i}` || e.where === 'members').map(e => e.message);
     if (errors.length) return { errors, svg: '' };
     const inputs = G.frameInputs(panel), lay = frameWall(inputs), ro = inputs.openings[fd.i], L = lay.lengthIn, H = lay.heightIn, sp = inputs.spacingIn;
     if (!ro) return { errors: ['Not framed: check its size and place.'], svg: '' };
-    const x0 = Math.max(0, ro.left - sp * 1.6), x1 = Math.min(L, ro.right + sp * 1.6), pad = Math.max(x1 - x0, H) * 0.06;
+    const x0 = Math.max(0, ro.left - sp * 1.3), x1 = Math.min(L, ro.right + sp * 1.3), pad = Math.max(x1 - x0, H) * 0.05;
     const inView = (m) => m.x + m.w > x0 - 0.01 && m.x < x1 + 0.01;
-    const fill = (m) => (m.role === 'head track' || m.role === 'sill track' ? '#f4a7a0' : m.orient === 'h' ? '#f2d64b' : m.role === 'jamb stud' ? '#cfdcea' : m.role === 'cripple' ? '#f3f3f3' : '#ffffff');
-    const rects = lay.members.filter(inView).map(m => { const a = Math.max(m.x, x0), b = Math.min(m.x + m.w, x1);
-        return m.pts && m.orient === 'v' ? `<polygon points="${m.pts.map(([x, y]) => `${x},${-y}`).join(' ')}" fill="${fill(m)}" class="fd-m"/>` : `<rect x="${a}" y="${-(m.y + m.h)}" width="${b - a}" height="${m.h}" fill="${fill(m)}" class="fd-m"><title>${esc(`${m.role}${m.ply ? ` (ply ${m.ply})` : ''}: ${m.type}`)}</title></rect>`; });
-    const cs = lay.members.filter(m => m.orient === 'v' && inView(m) && m.y < 2).map(m => { const ya = 1.2, yb = 4.2, lip = 1, r = webOnRight(m, lay), [open, web] = r ? [m.x, m.x + m.w] : [m.x + m.w, m.x];
-        return `<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="fd-c"/>`; });
-    const clear = ro.clear ? `<rect x="${ro.clear.left}" y="${-ro.clear.top}" width="${ro.clear.right - ro.clear.left}" height="${ro.clear.top - ro.clear.bottom}" class="fd-clear"/>` : '';
+    const fill = (m) => (m.role === 'head track' || m.role === 'sill track' ? '#f4a7a0' : m.orient === 'h' ? '#f2d64b' : m.role === 'jamb stud' ? '#9fc0de' : '#ffffff');
+    // Headers and sills over their jambs (the jambs' edges dashed behind them), with their parts' lines (sheet.mjs).
+    const headOrSill = (m) => m.role === 'head track' || m.role === 'sill track';
+    const seg = (l, cls) => `<line x1="${Math.max(l.x1, x0)}" y1="${-l.y1}" x2="${Math.min(l.x2, x1)}" y2="${-l.y2}" class="${cls}"/>`;
+    const rects = [...lay.members.filter(inView)].sort((a, b) => Number(headOrSill(a)) - Number(headOrSill(b))).map(m => { const a = Math.max(m.x, x0), b = Math.min(m.x + m.w, x1);
+        return (m.pts && m.orient === 'v' ? `<polygon points="${m.pts.map(([x, y]) => `${x},${-y}`).join(' ')}" fill="${fill(m)}" class="fd-m"/>` : `<rect x="${a}" y="${-(m.y + m.h)}" width="${b - a}" height="${m.h}" fill="${fill(m)}" class="fd-m"><title>${esc(`${m.role}${m.ply ? ` (ply ${m.ply})` : ''}: ${m.type}`)}</title></rect>`)
+            + lapLines(m, lay.members).map(l => seg(l, 'fd-hidden')).join('') + partLines(m, lay.openings.find(o => o.key && o.key === m.of)).map(l => seg(l, l.hidden ? 'fd-hidden' : 'fd-part')).join(''); });
     const roTop = ro.through ? H : ro.top;
-    const svg = `<svg viewBox="${x0 - pad} ${-H - pad} ${x1 - x0 + 2 * pad} ${H + pad * 2.2}" role="img" aria-label="The opening's framing">
-        <line x1="${x0 - pad}" y1="0" x2="${x1 + pad}" y2="0" class="fd-floor"/>${rects.join('')}${cs.join('')}
-        <rect x="${ro.left}" y="${-roTop}" width="${ro.right - ro.left}" height="${roTop - ro.bottom}" class="fd-ro"/>${clear}</svg>`;
-    const fr = G.openingFraming(panel, fd.draft), vs = lay.members.filter(m => m.orient === 'v');
-    const caption = `Rough opening ${fmtFtIn(ro.right - ro.left)}${ro.through ? ' wide' : ` x ${fmtFtIn(roTop - ro.bottom)}`} (dashed), the opening as typed inside it. ${fr.plies} jamb stud${fr.plies > 1 ? 's' : ''} each side${fr.head?.depthIn ? `; a ${inch(fr.head.depthIn)} deep header${fr.bearing === 'jacks' ? ' on jack studs' : ''}` : ''}. The panel: ${vs.length} stud pieces${lay.issues.length ? `, framing check: ${lay.issues[0].message}` : ', framing check passed'}.`;
-    return { errors: lay.issues.length ? lay.issues.map(i => i.message).slice(0, 3) : [], svg, caption };
+    const svg = `<svg viewBox="${x0 - pad} ${-H - pad} ${x1 - x0 + 2 * pad} ${H + pad * 2}" role="img" aria-label="The opening's framing">
+        <line x1="${x0 - pad}" y1="0" x2="${x1 + pad}" y2="0" class="fd-floor"/>${rects.join('')}
+        <rect x="${ro.left}" y="${-roTop}" width="${ro.right - ro.left}" height="${roTop - ro.bottom}" class="fd-ro"/></svg>`;
+    return { errors: lay.issues.length ? lay.issues.map(i => i.message).slice(0, 3) : [], svg };
+}
+// --- The opening's members as a framing engineer details them (details.mjs), from the plan of the draft ---------------
+// Section A-A of the header or sill (its parts across the wall to scale), the header's end at its jamb, the jamb studs in
+// plan. An arrangement not chosen is not drawn as framing: its options are drawn to pick from.
+const DT_VIEWS = { opening: 'Opening', head: 'Header', jamb: 'Jambs', sill: 'Sill' };
+const DT_ARRANGE = {
+    head: [['box', 'Box', 'webs at the wall faces, toes in'], ['back', 'Back to back', 'webs together, flanges out']],
+    sill: [['box', 'Box', 'webs at the wall faces, toes in'], ['back', 'Back to back', 'webs together, flanges out']],
+    jamb: [['box', 'Boxed', 'toe to toe'], ['back', 'Back to back', 'webs together'], ['same', 'Same way', 'webs to the opening']],
+};
+const detailViews = (kind) => { const m = G.OPENING_TYPES[kind].members; return ['opening', ...(m.includes('head') ? ['head'] : []), 'jamb', ...(m.includes('sill') ? ['sill'] : [])]; };
+function draftPlan(panel) {
+    try { return FP.resolveFramingPlan(FP.snapshotFromPanel(panel, { documentId: set.source?.documentId ?? null }), FP.detailingFromPanel(panel), null, engineeringFor()); } catch { return null; }
+}
+const partsWords = (sec) => { const s = sec.parts.filter(p => p.stud), t = sec.parts.filter(p => !p.stud);
+    return [s.length ? `${s.length} x ${s[0].designator}` : '', t.length ? `${t.length} x ${t[0].designator}` : ''].filter(Boolean).join(' + '); };
+const DT_REASONS = { 'nested-track': 'two tracks nested: where the second one sits is not defined here (type the header as one track, or as studs with tracks).',
+    'jamb-track-arrangement': 'a jamb with a track around it: how the track sits on the stud is not defined here.' };
+function detailPane(panel, view) {
+    const key = G.openingKeys(panel)[fd.i], plan = draftPlan(panel);
+    if (!plan || !key || !plan.layout) return '<p class="muted">Not framed yet: check the opening\'s size and place.</p>';
+    const asm = view === 'jamb' ? `${key}:jamb:L` : `${key}:${view}`, sec = DT.sectionOf(plan, asm), what = FD_LABELS[view].toLowerCase();
+    const caveat = '<p class="dt-caveat">Drawn from this framing: sizes from the SSMA names, lips nominal. Screws and connections are the engineer\'s detail: this drawing is not one.</p>';
+    if (sec.state === 'none') return `<p class="muted">No ${what} on this opening.</p>`;
+    if (sec.state === 'unresolved') {
+        if (DT_REASONS[sec.reason] || !DT_ARRANGE[view]) return `<div class="dt-choose"><p><b>Not placed:</b> ${esc(DT_REASONS[sec.reason] || 'the arrangement is not defined here.')}</p></div>${caveat}`;
+        const cards = DT_ARRANGE[view].filter(([v]) => view !== 'jamb' || sec.parts.length > 1 || v === 'box').map(([v, label, words]) => {
+            const variant = { ...panel, openings: panel.openings.map((o, j) => (j === fd.i ? { ...o, [`${view}Style`]: v } : o)) };
+            const s = DT.sectionOf(draftPlan(variant), asm), d = DT.sectionSvg(s, { side: 'L', title: label, keys: false });
+            return `<figure class="dt-opt">${d.svg}<figcaption><b>${label}</b> <span class="muted">${esc(words)}</span></figcaption>
+                ${s.fit?.ok === false ? `<p class="dt-bad">${esc(s.fit.message)}</p>` : ''}<button type="button" data-fd="arrange" data-k="${view}" data-v="${v}">Use ${esc(label.toLowerCase())}</button></figure>`;
+        }).join('');
+        return `<div class="dt-choose"><p><b>How do the ${view === 'jamb' ? 'jamb studs' : `${what}'s parts`} go together?</b> ${esc(partsWords(sec))}: not chosen yet, so they are not placed (the views and the PDF say PRELIMINARY).
+            The engineer's ${view === 'jamb' ? 'built-up jamb' : `${what} construction`} detail says which.</p><div class="dt-opts">${cards}</div></div>${caveat}`;
+    }
+    const notes = (list) => (list.length ? `<ol class="dt-notes">${list.map(n => `<li>${esc(n)}</li>`).join('')}</ol>` : '');
+    const a = DT.sectionSvg(sec, { side: 'L', title: view === 'jamb' ? 'The jamb studs in plan' : 'Section A-A' });
+    const b = view === 'head' ? DT.headerEndSvg(plan, key, 'L') : { svg: '', notes: [] };
+    const now = fd.draft[`${view}Style`], others = (DT_ARRANGE[view] || []).filter(([v]) => v !== (now || 'box') && (view !== 'jamb' || sec.parts.length > 1));
+    const change = sec.parts.filter(p => p.stud).length > 1 || (view === 'jamb' && sec.parts.length > 1)
+        ? `<p class="dt-arr">${now ? 'Arrangement' : 'Arrangement (not chosen: drawn as the default)'}: <b>${esc(sec.arrangement)}</b> ${others.map(([v, label]) => `<button type="button" class="secondary small" data-fd="arrange" data-k="${view}" data-v="${v}">${esc(label)} instead</button>`).join(' ')}</p>` : '';
+    return `${sec.fit.ok ? '' : `<p class="dt-bad">${esc(sec.fit.message)}</p>`}${change}
+        <div class="dt-pair${b.svg ? '' : ' one'}"><figure class="dt-fig"><figcaption>${view === 'jamb' ? 'Plan at the left jamb' : `Section A-A · ${esc(what)}`}</figcaption>${a.svg}${notes(a.notes)}</figure>
+            ${b.svg ? `<figure class="dt-fig"><figcaption>Elevation at the left jamb</figcaption>${b.svg}${notes(b.notes)}</figure>` : ''}</div>${caveat}`;
+}
+// --- An opening's members by the engineering rule (opening-rules.mjs) ------------------------------------------------
+// The rule card: what the lookup reads (the wall, the opening), the schedule it sits in (wall height by width, the cell
+// that covers it marked), what that rule gives, and Use. Then one row per member: what is in force and where it came
+// from, the rule's alternatives to pick from, the arrangement a built-up member needs, Back to the rule.
+const ftIn = (feet) => (feet > 0 ? fmtFtIn(Math.round(feet * 12 * 16) / 16) : '0');
+// A member as a schedule writes it: '362S162-54', '(2) 362S162-33 + (2) 362T125-33'.
+const memberText = (v) => { const d = G.parseMember(v); return d && d.qty === 1 && G.specParts(v).studQty + G.specParts(v).trackQty <= 1 ? d.name : String(v || '').replace(/\s+WITH\s+/gi, ' + ').replace(/\s+/g, ' ').trim(); };
+const giveText = (g) => (!g ? '' : g.text ? memberText(g.text) : g.choices ? g.choices.map(memberText).join(' or ') : g.notApplicable ? 'none' : 'to pick');
+function ruleCard(p, i) {
+    const o = p.openings[i], r = R.ruleFor(eng, p, i);
+    if (!r.applies) {
+        const why = r.why === 'kind' ? `The engineering catalog has no rules for ${G.kindWord(o.kind)}s: pick the members below.`
+            : 'No engineering catalog open: the members come from the panel\'s defaults, or pick them below.';
+        return `<div class="rule-card off"><div class="rule-head"><b>Engineering rule</b></div><p class="muted small">${esc(why)}</p>
+            ${r.why === 'no-catalog' ? '<button class="secondary small" data-act="eng-open">Open the engineering catalog…</button>' : ''}</div>`;
+    }
+    const q = r.query, word = G.kindWord(o.kind), using = r.bound, covers = (s) => !R.missedBy(s, q).length;
+    const reads = [`${q.depthCode || '?'} wall${q.finish ? ` · ${q.finish}` : ''}`, `${fmtFtIn(q.wallHeightIn)} high`, `${word} ${fmtFtIn(q.openingWidthIn)} wide`, `${fmtFtIn(q.heightAboveOpeningIn)} of wall above`];
+    const sch = r.schedule, outKey = (s) => SC.openingStyleOutputs(s, o.kind);
+    const cell = (s) => { const out = outKey(s), h = out.members.head || out.choices.head?.join(' / ') || '', j = out.members.jamb || out.choices.jamb?.join(' / ') || '';
+        const miss = R.missedBy(s, q), cls = [covers(s) ? 'covers' : 'misses', using?.KEY_ID === s.KEY_ID ? 'on' : '', r.match?.KEY_ID === s.KEY_ID ? 'match' : ''].join(' ');
+        return `<button class="rule-cell ${cls}" data-act="rule-use" data-i="${i}" data-key="${esc(s.KEY_ID)}" ${covers(s) ? '' : 'disabled'}
+            title="${esc(`${s.displayCode}: ${miss.length ? `does not cover this ${word} (${miss.join(', ')})` : `covers this ${word}`}. Header ${h || '—'} · jambs ${j || '—'}`)}"><b>${esc(s.displayCode)}</b>
+            <small>H ${esc(h ? memberText(h) : '—')}</small><small>J ${esc(j ? j.split(' / ').map(memberText).join(' or ') : '—')}</small></button>`; };
+    const table = sch.rows.length ? `<table class="rule-table" aria-label="${esc(`${r.styleType} rules for this wall`)}"><thead><tr><th>Wall up to</th>${sch.columns.map(c => `<th>${esc(`${ftIn(c.min)} – ${ftIn(c.max)}`)} wide</th>`).join('')}</tr></thead>
+        <tbody>${sch.rows.map(rw => `<tr><th>${esc(rw.maxWall > 0 ? ftIn(rw.maxWall) : 'any')}${rw.maxAbove > 0 ? `<small>${esc(ftIn(rw.maxAbove))} above</small>` : ''}</th>${rw.cells.map(list => `<td>${list.map(cell).join('') || '<span class="muted">—</span>'}</td>`).join('')}</tr>`).join('')}</tbody></table>` : '';
+    let say;
+    if (r.status === 'matched' && using?.KEY_ID === r.match.KEY_ID) say = `<p class="rule-say ok">Using <b>${esc(r.match.displayCode)}</b>: it covers this ${word}.</p>`;
+    else if (r.status === 'matched') say = `<p class="rule-say"><b>${esc(r.match.displayCode)}</b> covers this ${word}${using ? ` (now using ${esc(using.displayCode)}${covers(using) ? '' : `, which does not: ${esc(R.missedBy(using, q).join(', '))}`})` : ''}.
+        <button data-act="rule-use" data-i="${i}" data-key="${esc(r.match.KEY_ID)}">Use ${esc(r.match.displayCode)}</button></p>`;
+    else if (r.status === 'ambiguous') say = `<p class="rule-say warn">${r.eligible.length} rules cover this ${word} equally: pick one in the table${using ? ` (now using ${esc(using.displayCode)})` : ''}.</p>`;
+    else say = `<p class="rule-say warn">No ${r.projectRows ? 'project ' : ''}rule covers this ${word}: ask the engineer, or pick the members below.${using ? ` Now using ${esc(using.displayCode)}${covers(using) ? '' : ` (it does not cover it: ${esc(R.missedBy(using, q).join(', '))})`}.` : ''}</p>
+        ${r.outsideProject ? `<p class="rule-say">The catalog's <b>${esc(r.outsideProject.displayCode)}</b> covers it but is not in the project's styles. <button class="secondary" data-act="rule-use" data-i="${i}" data-key="${esc(r.outsideProject.KEY_ID)}">Add it to the project and use it</button></p>` : ''}
+        ${!r.projectRows ? '<button class="secondary small" data-act="eng-open">Pick the project\'s styles…</button>' : ''}`;
+    return `<div class="rule-card"><div class="rule-head"><b>Engineering rule</b><span class="muted small">${esc(reads.join(' · '))}</span></div>${say}${table}</div>`;
+}
+const SOURCE_BADGES = { rule: ['from the rule', 'style'], set: ['set here', 'overridden'], default: ['panel default', 'inherited'] };
+const ARRANGE_WORDS = { jamb: [['box', 'Boxed'], ['back', 'Back to back'], ['same', 'Same way']], head: [['box', 'Box'], ['back', 'Back to back']], sill: [['box', 'Box'], ['back', 'Back to back']] };
+function memberRows(p, i) {
+    const o = p.openings[i], r = R.ruleFor(eng, p, i), states = R.memberStates(p, i, r.applies ? r : null), choices = (k) => profileChoices(k);
+    return states.map(st => {
+        const k = st.member, now = st.source === 'rule' ? 'rule' : profileChoiceOf(p, o, k), saved = choices(k).filter(c => c.saved);
+        const shown = now === 'default' || now === 'custom' || now === 'rule' ? P.profileOfOpening(p, now === 'default' ? { ...o, [k]: '' } : o, k) : choices(k).find(c => c.id === now)?.p;
+        const opt = (c) => `<option value="${c.id}" ${c.id === now ? 'selected' : ''}>${esc(c.p.name)}</option>`;
+        const g = st.rule?.gives, [badge, cls] = SOURCE_BADGES[st.source];
+        const alts = g?.choices ? `<div class="alt-row"><span class="muted small">${esc(st.rule.code)} gives one of:</span>${g.choices.map(c => `<button class="chip ${(G.specText(st.value) || st.value) === (G.specText(c) || c) && o[k] ? 'on' : ''}" data-act="op-alt" data-i="${i}" data-k="${k}" data-v="${esc(c)}">${esc(memberText(c))}</button>`).join('')}</div>` : '';
+        const arr = st.arrangement.needed ? `<div class="arr-row"><span class="muted small">Arranged</span><span class="seg">${ARRANGE_WORDS[k].map(([v, label]) => `<button class="${st.arrangement.value === v ? 'on' : 'secondary'}" data-act="op-arrange" data-i="${i}" data-k="${k}" data-v="${v}" aria-pressed="${st.arrangement.value === v}">${label}</button>`).join('')}</span>
+            ${st.arrangement.value ? '' : '<b class="arr-open">not chosen</b>'}</div>` : '';
+        const back = st.differs && g && (g.text || g.choices) ? `<p class="rule-diff">${esc(st.rule.code)} gives ${esc(giveText(g))}. <button class="link" data-act="op-rule-member" data-i="${i}" data-k="${k}">Back to the rule</button></p>` : '';
+        return `<div class="mrow" data-member="${k}">${profileGlyph(k, shown)}<div class="mrow-main">
+            <div class="mrow-head"><b>${esc(st.label)}</b><span class="mval">${esc(memberText(st.value))}</span><span class="set-state ${cls}">${badge}</span></div>
+            <select data-op-prof="${k}" aria-label="${esc(st.label)}: where the member comes from">
+                ${g && (g.text || g.choices) ? `<option value="rule" ${now === 'rule' ? 'selected' : ''}>${esc(`From rule ${st.rule.code}: ${giveText(g)}`)}</option>` : ''}
+                <option value="default" ${now === 'default' ? 'selected' : ''}>${esc(`Panel default: ${memberText(G.memberFor(p, { ...o, [k]: '' }, k).spec)}`)}</option>
+                <optgroup label="Standard">${choices(k).filter(c => !c.saved).map(opt).join('')}</optgroup>${saved.length ? `<optgroup label="Saved in this browser">${saved.map(opt).join('')}</optgroup>` : ''}
+                <option value="custom" ${now === 'custom' ? 'selected' : ''}>${now === 'custom' ? 'Custom (as set)' : 'Custom…'}</option></select>
+            ${alts}${arr}${back}</div></div>`;
+    }).join('');
+}
+// The rule's member for one member of the opening, set (a choice of alternatives: the one picked), and the opening bound
+// to that rule. -> false when the rule gives alternatives and none was named.
+function setFromRule(p, i, k, pick = null) {
+    const r = R.ruleFor(eng, p, i), row = r.applies ? r.bound || r.match : null, g = row && R.ruleGives(row, p.openings[i].kind, k);
+    if (!g || !(g.text || g.choices)) return false;
+    const value = g.text || (pick && g.choices.includes(pick) ? pick : null);
+    if (!value) return false;
+    p.openings[i] = { ...p.openings[i], [k]: value, ...(p.openings[i].style?.keyId === row.KEY_ID ? {} : { style: SC.bindingOf(eng.read, row) }) };
+    return true;
+}
+// Use a rule for the whole opening (the table's cell, or Use). A rule not in the project's styles is added first (asked:
+// it clears the selection's approval).
+function useRule(i, keyId) {
+    const p = cur(), row = SC.rowById(eng?.read, keyId);
+    if (!row || !p.openings[i]) return;
+    if (!SC.projectStyles(eng.read, eng.selection, row.styleType).some(s => s.row.KEY_ID === row.KEY_ID)) {
+        if (!confirm(`Add ${row.displayCode} to the project's styles and use it? The project selection's approval will need to be given again.`)) return;
+        eng = { ...eng, selection: SC.includeStyle(eng.selection, eng.read, row.KEY_ID) }; saveEngineering();
+    }
+    try {
+        const res = SC.applyOpeningStyle(p, i, eng.read, row);
+        replacePanel(res.panel);
+        ask = null;
+        renderMemberCards(); changed();
+        notice(`${G.openingName(p.openings, i)}: ${row.displayCode} in use${res.open.length ? `: pick its ${res.open.map(x => G.MEMBER_LABELS[x.key].toLowerCase()).join(' and ')} (the rule gives alternatives)` : ''}${res.problems.length ? `. ${res.problems.map(x => x.message).join(' ')}` : ''}.`);
+    } catch (err) { notice(err.message, true); }
+}
+// The selected opening's rule and member rows, again after a change (its size, the wall): not while one of them has the
+// keyboard (a list open, a button just pressed is fine: they re-render on their own).
+function refreshOpeningRule() {
+    const p = cur(), card = main.querySelector('#catalogue .rule-card'), rows = main.querySelector('#catalogue .op-profiles');
+    if (sel == null || !p?.openings[sel] || !card || !rows || card.contains(document.activeElement) || rows.contains(document.activeElement)) return;
+    card.outerHTML = ruleCard(p, sel);
+    const tail = rows.querySelector(':scope > p, :scope > button') ? [...rows.children].filter(c => !c.classList.contains('mrow')).map(c => c.outerHTML).join('') : '';
+    rows.innerHTML = memberRows(p, sel) + tail;
+}
+// A profile picked beside the elevation for the selected opening (Custom…: the dialog, its editor open).
+function pickOpeningProfile(kind, value) {
+    const p = cur(), i = sel;
+    if (i == null || !p.openings[i]) return;
+    if (value === 'rule') {
+        if (!setFromRule(p, i, kind, p.openings[i][kind] || null)) notice('The rule gives alternatives: pick one of them under the member.');
+        renderMemberCards(); renderChips(); changed();
+        return;
+    }
+    if (value === 'custom') {
+        openFraming(i);
+        fd.custom.add(kind); fd.work[kind] = P.profileOfOpening(draftPanel(), fd.draft, kind) || { ...P.PRESETS[kind][0], name: '' };
+        setProfile(kind, fd.work[kind]); renderFraming();
+        return;
+    }
+    const prof = value === 'default' ? null : profileChoices(kind).find(c => c.id === value)?.p;
+    let o = prof ? P.applyProfile(p.openings[i], kind, prof, p.members) : P.clearProfile(p.openings[i], kind);
+    if (kind === 'jamb' && o.headBearing === 'jacks' && G.specParts(G.memberFor(p, o, 'jamb').spec).studQty < 2) { o = { ...o }; delete o.headBearing; }
+    p.openings[i] = o;
+    ask = null;
+    renderMemberCards(); renderChips(); changed();
+}
+// A member's profile applied to the draft (Custom: the profile being built).
+function setProfile(kind, prof) {
+    const p = cur();
+    fd.draft = prof ? P.applyProfile(fd.draft, kind, prof, p.members) : P.clearProfile(fd.draft, kind);
+    if (kind === 'jamb' && fd.draft.headBearing === 'jacks' && G.specParts(G.memberFor(draftPanel(), fd.draft, 'jamb').spec).studQty < 2) delete fd.draft.headBearing;
 }
 function framingInput(e) {
     const el = e.target.closest('[data-fd]');
     if (!el || !fd) return;
-    const k = el.dataset.fd, v = el.dataset.v ?? (el.type === 'checkbox' ? el.checked : el.value), d = fd.draft;
-    const num = (x) => Number(x);
+    const k = el.dataset.fd, kind = el.dataset.k, v = el.dataset.v ?? (el.type === 'checkbox' ? el.checked : el.value), d = fd.draft;
     if (k === 'cancel') { frDialog().close(); return; }
     if (k === 'apply') { applyFraming(); return; }
+    if (k === 'save-name') { fd.saveAs[kind] = String(v); return; }
+    if (k === 'offset' && e.type === 'input') {
+        const n = G.parseLength(String(v));
+        const box = frDialog().querySelector('.fd-svg');
+        if (n != null) { d.offsetIn = round16(n); if (box) box.innerHTML = framingPreview(draftPanel()).svg; }
+        return;
+    }
     if (k === 'reset') { const r = { ...d, head: '', jamb: '', sill: '' }; for (const f of ['offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout']) delete r[f]; openFraming(fd.i, r); return; }
     if (k === 'offset') { const n = G.parseLength(String(v)); if (n == null) return; d.offsetIn = round16(n); }
     else if (k === 'offsetReset') delete d.offsetIn;
-    else if (k === 'plies') { fd.jamb.plies = num(v); fd.touched.add('jamb'); if (fd.jamb.plies < 2) delete d.headBearing; }
-    else if (k === 'jambStud') { fd.jamb.stud = v; fd.touched.add('jamb'); }
-    else if (k === 'jambStyle') { if (v === 'box') delete d.jambStyle; else d.jambStyle = v; }
     else if (k === 'toLayout') { if (v) d.toLayout = true; else delete d.toLayout; }
     else if (k === 'crippleEnds') { if (v) d.crippleEnds = true; else delete d.crippleEnds; }
-    else if (k === 'bearing') { if (v === 'jacks') d.headBearing = 'jacks'; else delete d.headBearing; }
-    else {
-        const m = /^(head|sill)(Style|Studs|Stud|Tracks|Track|Spec)$/.exec(k);
-        if (!m) return;
-        const [, part, what] = m, s = fd[part];
-        if (what === 'Spec') { d[part] = String(v).trim(); fd.touched.delete(part); const sp = G.specParts(d[part] || G.memberFor(draftPanel(), d, part).spec); s.style = sp.studQty ? (s.style === 'back' ? 'back' : 'box') : 'track'; }
-        else {
-            if (what === 'Style') { s.style = v; if (v !== 'track' && !G.parseMember(s.stud)) s.stud = studName(cur().members); }
-            if (what === 'Studs') s.studs = num(v);
-            if (what === 'Stud') s.stud = v;
-            if (what === 'Tracks') s.tracks = num(v);
-            if (what === 'Track') s.track = v;
-            if (s.style === 'track' && s.tracks < 1) s.tracks = 1;
-            fd.touched.add(part);
-        }
-    }
-    framingSpecs();
-    if (e.type === 'input' && el.type === 'text') { const pv = framingPreview(draftPanel()); frDialog().querySelector('.fd-svg').innerHTML = pv.svg; return; } // typing: the preview only
+    else if (k === 'spread') fd.spread = !!v;
+    else if (k === 'view') fd.view = DT_VIEWS[v] ? v : 'opening';
+    else if (k === 'arrange') { d[`${kind}Style`] = v; fd.custom.delete(kind); delete fd.work[kind]; } // a choice made: the plan places the parts
+    else if (k === 'profile') {
+        if (v === 'custom') { fd.custom.add(kind); fd.work[kind] = P.profileOfOpening(draftPanel(), d, kind) || { ...P.PRESETS[kind][0], name: '' }; setProfile(kind, fd.work[kind]); }
+        else { fd.custom.delete(kind); delete fd.work[kind]; setProfile(kind, v === 'default' ? null : profileChoices(kind).find(c => c.id === v)?.p); }
+    } else if (k === 'delete-profile') {
+        const n = Number(v), gone = profiles[kind][n];
+        if (!gone) return;
+        profiles = { ...profiles, [kind]: profiles[kind].filter((_, j) => j !== n) };
+        store(KEYS.profiles, profiles);
+        fd.custom.add(kind); fd.work[kind] = { ...gone, name: '' };
+        notice(`Profile "${gone.name}" deleted (this opening keeps its framing).`);
+    } else if (k === 'save-profile') {
+        const name = String(fd.saveAs[kind] || '').trim(), prof = P.cleanProfile(kind, { ...(fd.work[kind] || P.profileOfOpening(draftPanel(), d, kind)), name });
+        if (!name) { notice('Give the profile a name first.', true); frDialog().querySelector(`[data-fd="save-name"][data-k="${kind}"]`)?.focus(); return; }
+        if (!prof) { notice('This framing cannot be kept as a profile (a mix of sizes typed by hand).', true); return; }
+        const list = profiles[kind].filter(x => x.name.toLowerCase() !== name.toLowerCase());
+        profiles = { ...profiles, [kind]: [...list, prof].sort((a, b) => a.name.localeCompare(b.name)) };
+        store(KEYS.profiles, profiles);
+        fd.custom.delete(kind); delete fd.work[kind]; fd.saveAs[kind] = '';
+        setProfile(kind, prof);
+        notice(`Saved "${name}": pick it for any ${FD_LABELS[kind].toLowerCase()} from now on (kept in this browser).`);
+    } else if (/^w-/.test(k)) {
+        const w = { ...(fd.work[kind] || P.profileOfOpening(draftPanel(), d, kind) || P.PRESETS[kind][0]) };
+        if (k === 'w-plies') w.plies = Number(v);
+        if (k === 'w-stud') w.stud = v;
+        if (k === 'w-style') w.style = v;
+        if (k === 'w-made') { w.made = v; if (v === 'track') w.tracks = Math.max(1, Math.min(2, w.tracks || 1)); }
+        if (k === 'w-studs') w.studs = Number(v);
+        if (k === 'w-tracks') w.tracks = Number(v);
+        if (k === 'w-track') w.track = v;
+        if (k === 'w-jacks') w.bearing = v ? 'jacks' : 'between';
+        fd.work[kind] = P.cleanProfile(kind, { ...w, name: w.name || 'Custom' }) || w;
+        setProfile(kind, fd.work[kind]);
+    } else return;
     renderFraming();
-    frDialog().querySelector(`[data-fd="${k}"]`)?.focus();
+    frDialog().querySelector(`[data-fd="${k}"]${kind ? `[data-k="${kind}"]` : ''}`)?.focus();
 }
+const FRAMING_FIELDS = ['jamb', 'jambStyle', 'head', 'headStyle', 'headBearing', 'sill', 'sillStyle', 'crippleEnds'];
 function applyFraming() {
     const p = cur(), i = fd.i, o = p.openings[i], d = fd.draft;
     // The dialog never moves or resizes the opening: only its framing changes (allowed on a Revit opening too).
     p.openings[i] = { ...d, kind: o.kind, leftIn: o.leftIn, widthIn: o.widthIn, heightIn: o.heightIn, sillIn: o.sillIn, ...(o.locked ? { locked: true } : {}) };
-    for (const k of ['head', 'jamb', 'sill']) if (d[k]) { recent[recentKey(k)] = G.remember(recent[recentKey(k)], d[k]); }
+    let spread = 0;
+    if (fd.spread) p.openings = p.openings.map((x, j) => {
+        if (j === i || x.kind !== o.kind || G.isSmallPenetration(p, x)) return x;
+        spread++;
+        const y = { ...x };
+        for (const f of FRAMING_FIELDS) { if (d[f] === undefined || d[f] === '') delete y[f]; else y[f] = d[f]; }
+        if (!d.jamb) y.jamb = ''; if (!d.head) y.head = ''; if (!d.sill) y.sill = '';
+        return y;
+    });
+    for (const k of ['head', 'jamb', 'sill']) if (d[k] && !d[k].startsWith('=')) { recent[recentKey(k)] = G.remember(recent[recentKey(k)], d[k]); }
     store(KEYS.recent, recent);
     frDialog().close();
     renderMemberCards(); renderChips(); renderDatalists(); changed();
-    notice(`${G.openingName(p.openings, i)}: framing set (${framingSummary(p, i)}).`);
+    notice(`${G.openingName(p.openings, i)}${spread ? ` and ${spread} other${spread === 1 ? '' : 's'}` : ''}: framing set (${framingSummary(p, i)}).`);
 }
 frDialog().addEventListener('click', (e) => { if (e.target === frDialog()) { frDialog().close(); return; } if (e.target.closest('button[data-fd]')) framingInput(e); });
 frDialog().addEventListener('change', (e) => { if (!e.target.closest('button')) framingInput(e); });
 frDialog().addEventListener('input', (e) => { if (e.target.type === 'text') framingInput(e); });
+frDialog().addEventListener('toggle', (e) => { if (fd && e.target.matches?.('details.fd-more')) fd.more = e.target.open; }, true);
 frDialog().addEventListener('close', () => { fd = null; });
 
 // --- Openings list under the sketch --------------------------------------------------------------------------------------
@@ -1258,34 +1610,9 @@ function renderChips() {
     $('#op-chips').innerHTML = p.openings.length ? p.openings.map((o, i) => {
         const b = G.openingBox(o), bad = errors.some(e => e.where === `opening-${i}`);
         return `<button class="op-chip ${o.kind} ${i === sel ? 'on' : ''} ${bad ? 'bad' : ''}" data-act="select-op" data-i="${i}" title="${esc(G.OPENING_TYPES[o.kind].name)}">
-            <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : ''} ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
+            <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : G.isFromModel(p) ? ' <span class="own study" title="Added here: a study opening, report-only">study</span>' : ''} ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
     }).join('') : '<span class="muted small">No openings yet: add one, or draw it.</span>';
 }
-
-// --- Preview: the sketch turned over to the framing elevation for 5 seconds -----------------------------------------
-let flipTimer = 0;
-function flipPreview() {
-    const wrap = $('#sketch-flip');
-    if (wrap.classList.contains('flipped')) { unflip(); return; }
-    const p = cur(), { errors, layout } = framed(p);
-    if (!layout) { notice(`Nothing to preview yet: ${errors[0]?.message || 'fix the inputs'}`, true); return; }
-    $('#sketch-back').innerHTML = `<div class="back-head"><b>${esc(p.mark)} · framing elevation${p.sideB ? ' (side B)' : ''}</b>
-            <span class="muted small">tags and dimensions as on the sheet · back to the sketch in 5 s, or click</span></div>
-        <div class="back-svg">${renderSheetRegion(layout, sheetInfo(p), 'elevation') /* its own proportions, scaled like an image: nothing past the crop shows */
-            .replace(/width="([\d.]+)in" height="([\d.]+)in"/, (m, w, h) => `width="${Math.round(w * 96)}" height="${Math.round(h * 96)}"`)}</div>
-        <div class="back-timer"><i></i></div>`;
-    wrap.classList.add('flipped');
-    $('#preview-btn').classList.add('on');
-    clearTimeout(flipTimer);
-    flipTimer = setTimeout(unflip, 5000);
-}
-function unflip() {
-    clearTimeout(flipTimer);
-    main.querySelector('#sketch-flip')?.classList.remove('flipped');
-    main.querySelector('#preview-btn')?.classList.remove('on');
-}
-document.getElementById('sketch-back').addEventListener('click', unflip);
-document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && main.querySelector('#sketch-flip.flipped')) unflip(); });
 
 // --- The sheet ---------------------------------------------------------------------------------------------------------
 // No QR code on these sheets: a panel typed in here has no page of its own, and a link holding the whole panel makes a
@@ -1293,61 +1620,869 @@ document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && main.que
 function sheetInfo(p) {
     return { mark: p.mark || 'P-?', project: set.project || '', level: p.level || '-', wallType: p.wallType || '-', date: today(), drawnBy: set.drawnBy || 'CAS BIM Web Viewer',
         logoHref, sheet: 'auto', sourceNote: 'Entered by hand in the Panel Shop Generator (no model). Verify the dimensions in the field.',
-        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.' };
+        keyplanNote: 'NO MODEL: SIZES ENTERED BY HAND', linkNote: 'Entered in the Panel Shop Generator: share this panel with its Copy link.', ...sheetContext(p) };
 }
+// The panel's resolved plan (framing-plan.mjs: the same calculation the plan export carries) and its drawing for the
+// sheet's side (side B mirrors the drawing only). errors: what stops it being drawn; notes: what to know (warnings, and
+// choices still to make on a drawn panel).
+// Remembered by the panel's content (the resolved plan is pure: the same inputs give the same plan).
+const framedMemo = new Map();
 function framed(p) {
-    const errors = G.panelErrors(p);
-    if (errors.length) return { errors };
-    try { return { errors, layout: G.panelLayout(p) }; } catch (err) { return { errors: [{ where: 'shape', message: `Could not frame this panel: ${err.message}` }] }; }
+    const key = JSON.stringify([p, set.source?.documentId ?? null, eng ? [eng.read.sha256, eng.selection] : null]);
+    if (framedMemo.has(key)) return framedMemo.get(key);
+    let out;
+    try {
+        const plan = FP.resolveFramingPlan(FP.snapshotFromPanel(p, { documentId: set.source?.documentId ?? null }), FP.detailingFromPanel(p), null, engineeringFor());
+        const layout = plan.layout ? FP.planDrawing(plan, p.sideB ? 'B' : 'A') : null;
+        const errors = layout ? [] : plan.issues.filter(i => i.severity !== 'warning' && i.code !== 'plan.empty');
+        const notes = plan.issues.filter(i => (layout ? !/^layout\./.test(i.code) : i.severity === 'warning'));
+        out = { plan, layout, errors: errors.length || layout ? errors : [{ message: 'Nothing to frame yet.' }], notes };
+    } catch (err) { out = { errors: [{ where: 'shape', message: `Could not frame this panel: ${err.message}` }], notes: [] }; }
+    framedMemo.set(key, out);
+    if (framedMemo.size > 80) framedMemo.delete(framedMemo.keys().next().value);
+    return out;
 }
-function renderPreview() {
-    const p = cur(), { errors, layout } = framed(p);
-    document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : ''}`;
-    const check = document.getElementById('pv-check'), sheet = document.getElementById('pv-sheet'), list = document.getElementById('pv-errors');
-    if (!layout) {
-        check.innerHTML = `<span class="check-failed">Not drawn yet: fix ${errors.length === 1 ? 'this' : `these ${errors.length}`}</span>`;
-        list.innerHTML = `<ul class="errors">${errors.map(e => `<li>${esc(e.message)}</li>`).join('')}</ul>`;
-        sheet.classList.add('stale');
+const noteList = (notes) => (notes.length ? `<ul class="plan-notes">${notes.map(i => `<li class="${i.severity}"><b>${i.severity === 'warning' ? 'Note' : 'To decide'}</b> ${esc(i.message)}</li>`).join('')}</ul>` : '');
+// --- The workspace: the views of the selected panel, its cut list and issues, its properties' context ---------------
+// One resolved plan (framed: framing-plan.mjs) drives every view, the cut list, the issues and the export; viewing never
+// changes a member. A plan with errors is not drawn as framing; one with choices still open is drawn marked PRELIMINARY.
+let current = { panel: null, plan: null, layout: null, errors: [], notes: [] };
+let wsTimer = 0;
+const scheduleWorkspace = () => { clearTimeout(wsTimer); wsTimer = setTimeout(renderWorkspace, 0); };
+function renderWorkspace() {
+    const p = cur();
+    if (!p) return;
+    const f = framed(p);
+    current = { panel: p, ...f };
+    if (!selectionHolds(f.plan)) selection = W.NONE;
+    renderStatus(p, f);
+    renderActiveView(p, f);
+    renderBottom(f);
+    renderInspectorContext(p, f);
+    renderCommands();
+    renderSidePick(p);
+}
+const renderPreview = renderWorkspace; // the name older code calls
+// A small length in sixteenths ('1/16"'), and which way a member's section opens, in words (the plan's axes: x along the
+// panel from its left end on side A, y up, z through the wall from side A).
+const sixteenths = (v) => { const t = Math.round(v * 16), w = Math.floor(t / 16); let n = t % 16, d = 16; if (!n) return `${w}"`; while (n % 2 === 0) { n /= 2; d /= 2; } return `${w ? `${w} ` : ''}${n}/${d}"`; };
+function facingText(v) {
+    const [x, y, z] = v.map(c => Math.round(c * 1000) / 1000), words = [];
+    if (Math.abs(x) > 0.2) words.push(x < 0 ? 'toward the left end' : 'toward the right end');
+    if (Math.abs(y) > 0.2) words.push(y > 0 ? 'up' : 'down');
+    if (Math.abs(z) > 0.2) words.push(z > 0 ? 'toward side B' : 'toward side A');
+    return `opens ${words.join(' and ') || 'nowhere'}`;
+}
+// A selection the current plan still has (a member, a label, an opening, an issue).
+function selectionHolds(plan) {
+    const s = selection;
+    if (!plan || s.kind === 'none' || s.kind === 'panel' || s.kind === 'setting') return true;
+    if (s.kind === 'member') return (plan.members || []).some(m => m.memberKey === s.key);
+    if (s.kind === 'mark') return (plan.cutList || []).some(r => r.mark === s.key);
+    if (s.kind === 'opening') return (plan.source?.openings || []).some(o => o.sourceKey === s.key);
+    if (s.kind === 'issue') return !!plan.issues?.[s.key];
+    return false;
+}
+const openChoices = (plan) => (plan?.issues || []).filter(i => i.severity === 'needs-resolution');
+function renderStatus(p, f) {
+    const el = document.getElementById('pv-check'), plan = f.plan, open = openChoices(plan);
+    if (!f.layout) {
+        const choices = f.errors.every(e => e.severity === 'needs-resolution');
+        el.innerHTML = `<span class="check-failed">Not framed: ${choices ? 'choose' : 'fix'} ${f.errors.length === 1 ? 'this' : `these ${f.errors.length}`} (see Issues)</span>`;
         return;
     }
-    sheet.classList.remove('stale');
-    const total = layout.cutList.reduce((a, r) => a + r.qty, 0);
-    check.innerHTML = layout.issues.length ? `<span class="check-failed">Framing check failed (${layout.issues.length}): do not release</span>`
-        : `<span class="check-passed">✓ Framing check passed · ${total} members · ${G.openingsSummary(p.openings)}</span>`;
-    list.innerHTML = layout.issues.length ? `<ul class="errors">${layout.issues.slice(0, 6).map(i => `<li>${esc(i.message)}</li>`).join('')}</ul>` : '';
-    sheet.innerHTML = renderSheet(layout, sheetInfo(p)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
+    const total = f.layout.cutList.reduce((a, r) => a + r.qty, 0);
+    el.innerHTML = (f.layout.issues.length ? `<span class="check-failed">Framing check failed (${f.layout.issues.length}): do not release</span>`
+        : `<span class="check-passed">✓ Framing check passed · ${total} members · ${esc(G.openingsSummary(p.openings))}</span>`)
+        + (open.length ? ` <span class="eng-badge warn" title="Choices still open: the drawing is marked PRELIMINARY and is not ready for fabrication or placement">Preliminary: ${open.length} choice${open.length === 1 ? '' : 's'} open</span>` : '')
+        + engineeringBadge(p, plan)
+        + ' <span class="muted small" title="A valid preview is not engineering approval and not Revit placement readiness">Preview only</span>';
+}
+// The marks, member keys and opening keys the selection lights up everywhere.
+const linksNow = () => W.selectionLinks(current.plan, selection);
+function sheetInfoFor(p, f, { hits = false } = {}) {
+    const links = linksNow();
+    return { ...sheetInfo(p), highlight: links.marks.size ? links.marks : null, memberHits: hits, unresolved: openChoices(f.plan).map(i => i.message) };
+}
+const svgFit = (svg) => svg.replace(/width="([\d.]+)in" height="([\d.]+)in"/, (m, w, h) => `width="${Math.round(w * 96)}" height="${Math.round(h * 96)}"`);
+function notFramed(f) {
+    return `<div class="not-framed"><h3>Not framed</h3><p>This panel is not framed until these are settled: nothing is drawn as framing in the meantime.</p>
+        <ul class="errors">${f.errors.map(e => `<li>${esc(e.message)}</li>`).join('')}</ul><p class="muted small">Each has its Locate and fix in Issues, below.</p></div>`;
+}
+function setView(id) {
+    if (!W.viewIds.includes(id)) return;
+    prefs.view = id; storePrefs();
+    renderViewBar();
+    for (const v of main.querySelectorAll('.view')) v.hidden = v.dataset.view !== id;
+    if (id === 'sketch') { fit(); renderSketch(); }
+    renderActiveView(cur(), current);
+}
+function renderViewBar() {
+    $('#view-tabs').innerHTML = W.VIEWS.map(v => `<button role="tab" id="tab-${v.id}" aria-selected="${v.id === prefs.view}" aria-controls="view-${v.id}" tabindex="${v.id === prefs.view ? 0 : -1}"
+        data-view-tab="${v.id}" ${v.available === false ? 'disabled' : ''} title="${esc(v.available === false ? `${v.hint}: ${v.reason}` : v.hint)}">${esc(v.label)}</button>`).join('');
+}
+function renderSidePick(p) {
+    $('#side-pick').innerHTML = `<button class="edit-toggle${editMode ? ' on' : ''}" data-act="man-mode" aria-pressed="${editMode}" title="Unlock members and place them by hand: move, copy, mirror, remove (Elevation view)">✎ Edit members</button><span class="muted">Viewing side</span><button role="radio" aria-checked="${!p.sideB}" data-act="side" data-side="A" title="As seen from side A">A</button><button role="radio" aria-checked="${!!p.sideB}" data-act="side" data-side="B" title="As seen from side B: the drawing is mirrored; the members never change">B</button><span class="muted small">drawing only</span>`;
+}
+function renderActiveView(p, f) {
+    if (!p) return;
+    const id = prefs.view, host = main.querySelector(`#view-${id}`);
+    if (!host || id === 'sketch') return;
+    const layout = f.layout, open = openChoices(f.plan), pre = open.length ? `<div class="preliminary">PRELIMINARY: ${open.length} choice${open.length === 1 ? '' : 's'} open</div>` : '';
+    if (id === 'drawing') {
+        document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : ''}`;
+        const sheet = document.getElementById('pv-sheet'), list = document.getElementById('pv-errors');
+        if (!layout) { list.innerHTML = notFramed(f); sheet.innerHTML = ''; sheet.classList.add('stale'); return; }
+        sheet.classList.remove('stale');
+        list.innerHTML = '';
+        sheet.innerHTML = renderSheet(layout, sheetInfoFor(p, f)).replace(/width="[\d.]+in" height="[\d.]+in"/, 'width="100%"');
+        return;
+    }
+    if (!layout) { host.innerHTML = notFramed(f); return; }
+    const info = sheetInfoFor(p, f, { hits: true });
+    if (id === 'elevation') host.innerHTML = `${editMode ? editBar(p, f) : ''}<div class="view-svg${editMode ? ' editing' : ''}">${pre}${svgFit(renderSheetRegion(layout, info, 'elevation'))}</div>
+        <p class="view-caption">Click a member to select it (or pick a row in the cut list). ${open.length ? 'Members whose arrangement is still open are hatched orange.' : ''} ${selCaption(f)}</p>`;
+    // The plans are long and thin: drawn at least 8 px to the inch (scroll sideways along a long panel) so the ticks read.
+    else if (id === 'plan') { const wide = `style="--plan-min:${Math.round(layout.lengthIn * 8)}px"`;
+        host.innerHTML = `<p class="view-caption">Top track plan (looking down): the studs at the top, and which way each faces.</p><div class="view-svg plan" ${wide}>${pre}${svgFit(renderSheetRegion(layout, info, 'planTop'))}</div>
+        <p class="view-caption">Bottom track plan: the studs at the floor, and the openings' edges.${layout.lengthIn * 8 > host.clientWidth ? ' Scroll sideways for the whole length.' : ''} ${selCaption(f)}</p><div class="view-svg plan" ${wide}>${svgFit(renderSheetRegion(layout, info, 'planBottom'))}</div>`; }
+    else if (id === '3d') host.innerHTML = `<div class="view-svg">${pre}${svgFit(renderIsoView(layout, { widthIn: 10, heightIn: 6.5, highlight: info.highlight }))}</div>
+        <p class="view-caption">3D view, side ${p.sideB ? 'B' : 'A'}, not to scale. Select in the elevation, plan or cut list: the selection is colored here.</p>`;
+    decorateHits(host, f);
+}
+// What the colors say while a member is selected: it is filled, the others with its cut list label only outlined.
+function selCaption(f) {
+    if (selection.kind !== 'member') return '';
+    const m = (f.plan?.members || []).find(x => x.memberKey === selection.key), same = m ? (f.plan.members.filter(x => x.mark === m.mark).length - 1) : 0;
+    return m && same > 0 ? `Filled: the selected ${esc(m.role || 'member')}; outlined: the ${same} other${same === 1 ? '' : 's'} labelled ${esc(m.mark)}.` : '';
+}
+// The click targets over the members: hatched when their arrangement is unresolved, outlined when selected.
+function decorateHits(host, f) {
+    const links = linksNow(), graphics = f.plan?.graphics || [], byKey = new Map((f.plan?.members || []).map(m => [m.memberKey, m]));
+    for (const r of host.querySelectorAll('.member-hit[data-i]')) {
+        const keys = graphics[Number(r.dataset.i)]?.memberKeys || [];
+        r.classList.toggle('unresolved', keys.some(k => byKey.get(k)?.orientation?.kind === 'unresolved'));
+        r.classList.toggle('selected', keys.some(k => links.memberKeys.has(k)));
+        r.classList.toggle('manual', keys.some(k => !!byKey.get(k)?.manual));
+    }
+}
+// Cut list and issues, under the views.
+function renderBottom(f) {
+    const plan = f.plan, issues = plan?.issues || [], errors = issues.filter(i => i.severity === 'error').length, open = issues.filter(i => i.severity === 'needs-resolution').length;
+    const tab = ['issues', 'openings'].includes(prefs.bottom) ? prefs.bottom : 'cut', shown = prefs.bottomOpen !== false, nOps = cur()?.openings?.length || 0;
+    const rows = f.layout ? plan.cutList : [];
+    $('#bottom-tabs').innerHTML = `<button role="tab" id="btab-cut" aria-selected="${tab === 'cut'}" data-bottom-tab="cut" tabindex="${tab === 'cut' ? 0 : -1}">Cut list<span class="count">${rows.length}</span></button>
+        <button role="tab" id="btab-issues" aria-selected="${tab === 'issues'}" data-bottom-tab="issues" tabindex="${tab === 'issues' ? 0 : -1}">Issues<span class="count ${errors ? 'bad' : open ? 'open' : ''}">${issues.length}</span></button>
+        <button role="tab" id="btab-openings" aria-selected="${tab === 'openings'}" data-bottom-tab="openings" tabindex="${tab === 'openings' ? 0 : -1}" title="Every opening's jambs, header and sill, assigned like a schedule">Openings<span class="count">${nOps}</span></button>
+        <button class="link collapse" data-act="bottom-toggle" aria-expanded="${shown}">${shown ? 'Hide' : 'Show'}</button>`;
+    const body = $('#bottom-body');
+    body.hidden = !shown;
+    if (!shown) return;
+    const links = linksNow();
+    if (tab === 'openings') { body.innerHTML = openingSchedule(cur()); return; }
+    if (tab === 'cut') {
+        body.innerHTML = rows.length ? `<table class="cut-table" aria-label="Cut list"><thead><tr><th>Label</th><th>Qty</th><th>Function</th><th>Member</th><th>Cut length</th></tr></thead><tbody>
+            ${rows.map(r => `<tr tabindex="0" data-mark="${esc(r.mark)}" class="${links.marks.has(r.mark) ? 'selected' : ''}" aria-selected="${links.marks.has(r.mark)}"><td><b>${esc(r.mark)}</b></td><td>${r.qty}</td><td>${esc(r.func || '')}</td><td>${esc(r.designator)}</td><td>${esc(fmtFtIn(r.cutLengthIn))}</td></tr>`).join('')}</tbody></table>`
+            : `<p class="muted">${f.layout ? 'No members.' : 'Not framed yet: no cut list (see Issues).'}</p>`;
+        return;
+    }
+    const modelLinked = G.isFromModel(cur());
+    body.innerHTML = issues.length ? `<ol class="issue-list">${issues.map((i, n) => {
+        const { actions, note } = W.issueActions(plan, i, { modelLinked });
+        const sev = i.severity === 'error' ? ['!', 'Error'] : i.severity === 'needs-resolution' ? ['?', 'To decide'] : ['i', 'Note'];
+        return `<li class="issue ${i.severity} ${links.issues.includes(n) || (selection.kind === 'issue' && selection.key === n) ? 'selected' : ''}" data-issue="${n}">
+            <span class="sev" title="${sev[1]}" aria-label="${sev[1]}">${sev[0]}</span><span class="msg">${esc(i.message)}<span class="code">${esc(i.code)}</span></span>
+            ${note ? `<span class="note">${esc(note)}</span>` : ''}
+            ${actions.length ? `<span class="acts">${actions.map((a, k) => `<button class="secondary" data-issue-act="${n}:${k}">${esc(a.label)}</button>`).join('')}</span>` : ''}</li>`;
+    }).join('')}</ol>` : '<p class="muted">No issues.</p>';
+}
+// The selection's own card at the top of the properties.
+function renderInspectorContext(p, f) {
+    const box = $('#insp-context'), plan = f.plan, s = selection, own = W.ownershipOf(plan, { modelLinked: G.isFromModel(p) });
+    const ownBadge = (o) => (o === 'model' ? '<span class="own model">🔒 the model\'s</span>' : o === 'study' ? '<span class="own study">study: report-only</span>' : '<span class="own typed">typed here</span>');
+    if (s.kind === 'member' || s.kind === 'mark') {
+        const members = (plan?.members || []).filter(m => (s.kind === 'member' ? m.memberKey === s.key : m.mark === s.key));
+        const m = members[0];
+        if (!m) { box.innerHTML = ''; return; }
+        const row = (plan.cutList || []).find(r => r.mark === m.mark), ends = m.cut.ends, slope = ends.topSlope || ends.plumb;
+        const flippable = m.tags?.layout != null || (m.role === 'stud' && !m.tags?.of && !m.tags?.end);
+        const xc = Math.round(m.start[0] * 16) / 16, flipped = (p.studFlips || []).some(c => Math.abs(c - xc) < 0.5);
+        box.innerHTML = `<div class="ctx-card"><h3>${esc(s.kind === 'mark' ? `${m.mark}: ${row?.qty ?? members.length} × ${m.designator}` : `${m.mark} · ${m.role}`)}</h3>
+            <dl><dt>Member</dt><dd>${esc(m.designator)}${m.catalogKey ? '' : ' <span class="set-state unresolved">not in the catalog</span>'}</dd>
+                <dt>Cut length</dt><dd>${esc(fmtFtIn(m.cut.lengthIn))} <span class="muted">(${esc(m.cut.rule)}${m.cut.allowanceIn ? `, ${sixteenths(m.cut.allowanceIn)} seat` : ''})</span></dd>
+                ${slope ? `<dt>Cut end</dt><dd>${ends.topSlope ? 'top' : 'ends'} at ${slope.angleDeg.toFixed(1)}° (long side ${esc(slope.longSide)})</dd>` : ''}
+                <dt>Faces</dt><dd>${m.orientation.kind === 'unresolved' ? `<span class="set-state unresolved">unresolved: ${esc(m.orientation.reason)}</span>` : esc(facingText(m.orientation.openSide))}</dd>
+                ${s.kind === 'member' ? `<dt>Key</dt><dd><code>${esc(m.memberKey)}</code></dd>` : `<dt>Members</dt><dd>${members.map(x => `<code>${esc(x.memberKey)}</code>`).join(' ')}</dd>`}
+                ${m.assemblyKey ? `<dt>Part of</dt><dd><code>${esc(m.assemblyKey)}</code> (${esc(m.partKey)})</dd>` : ''}</dl>
+            <div class="acts">${m.tags?.of ? `<button class="secondary" data-ctx="select-opening" data-v="${esc(m.tags.of)}">Its opening</button><button class="secondary" data-ctx="framing" data-v="${esc(m.tags.of)}">Framing details…</button>` : ''}
+                ${flippable ? `<button class="secondary" data-act="stud-flip" data-x="${xc}">${flipped ? '⟲ Flip this stud back' : '⟲ Flip this stud'}</button>` : ''}
+                <button class="link" data-ctx="clear">Clear selection</button></div>${s.kind === 'member' ? manualBlock(p, m.memberKey) : ''}</div>`;
+        return;
+    }
+    if (s.kind === 'issue') {
+        const i = plan?.issues?.[s.key];
+        const { actions, note } = W.issueActions(plan, i, { modelLinked: G.isFromModel(p) });
+        box.innerHTML = i ? `<div class="ctx-card"><h3>${esc(i.severity === 'error' ? 'Error' : i.severity === 'needs-resolution' ? 'To decide' : 'Note')}</h3><p>${esc(i.message)}</p>${note ? `<p class="muted small">${esc(note)}</p>` : ''}
+            <div class="acts">${actions.map((a, k) => `<button class="secondary" data-issue-act="${s.key}:${k}">${esc(a.label)}</button>`).join('')}<button class="link" data-ctx="clear">Clear selection</button></div></div>` : '';
+        return;
+    }
+    // The panel (nothing selected, or an opening: its editor is in Openings below).
+    const L = f.layout;
+    box.innerHTML = `<div class="ctx-card"><h3 title="${esc(p.mark)}">${esc(p.mark || 'Panel')}${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
+        <dl><dt>Geometry</dt><dd>${own.geometry === 'model' ? `<span class="own model" title="${esc(`Revit wall ${p.revit?.uniqueId || ''}`)}">🔒 the Revit wall's: outline and openings locked</span>` : '<span class="own typed">typed or drawn here: editable</span>'}</dd>
+            ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
+        ${manualSummary(p, f)}<div class="acts"><button class="secondary" data-act="copy" title="${esc(own.duplicate.explain)}">${esc(own.duplicate.label)}</button></div></div>`;
+}
+// --- Manual edit mode: members unlocked and placed by hand (manual.mjs) -----------------------------------------------
+// Edits are side A (the plan's layout); the views may be side B (mirrored): what is typed or dragged is turned to side A.
+let editMode = false;
+const layoutA = () => current.plan?.layout || null;
+// The layout member a plan record belongs to (a built-up member's parts: their one member), by the graphics.
+function layoutKeyOf(memberKey) {
+    const plan = current.plan, i = (plan?.graphics || []).findIndex(g => g.memberKeys.includes(memberKey));
+    return i >= 0 ? plan.layout?.members?.[i]?.key ?? null : null;
+}
+const sideB = () => !!cur()?.sideB;
+const viewX = (m, L) => (sideB() ? L - m.x - m.w : m.x);
+function manualEdit(fn, say = '', { keep = true } = {}) {
+    const p = cur(), lay = layoutA();
+    if (!p || !lay) return;
+    replacePanel(fn(p, lay));
+    if (!keep && selection.kind === 'member') selection = W.NONE;
+    changed(); renderWorkspace();
+    if (say) notice(say);
+}
+function manualStep() { const v = G.parseLength(main.querySelector('#man-step')?.value || ''); return v > 0 ? v : 1 / 16; }
+function selectedLayoutKey() { return selection.kind === 'member' ? layoutKeyOf(selection.key) : null; }
+function manualNudge(dx, dy) {
+    const key = selectedLayoutKey();
+    if (!key || !(dx || dy)) return;
+    historyHint = { label: 'the move', mergeKey: `man-move:${key}` };
+    manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, key), lay, key, sideB() ? -dx : dx, dy));
+}
+// Copies keep the selection on the new member: one stud space along (a vertical), or 12" up (a horizontal).
+function manualCopy(key) {
+    const p = cur(), lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    if (!m) return;
+    const along = m.orient === 'v' ? (Number(p.members.spacingIn) || 16) : 0, up = m.orient === 'h' ? 12 : 0;
+    const r = MAN.copy(p, lay, key, sideB() ? -along : along, up);
+    replacePanel(r.panel); changed(); selectAdded(r.key); notice('Copied: the copy is placed by hand (drag or nudge it).');
+}
+function manualMirror(key) {
+    const p = cur(), lay = layoutA(), r = MAN.mirror(p, lay, key);
+    if (!r.key) return;
+    replacePanel(r.panel); changed(); selectAdded(r.key); notice('Mirrored across the panel\'s middle, facing the other way.');
+}
+// After a copy: select it (its plan key is the manual one) once the plan has it.
+function selectAdded(key) { renderWorkspace(); const rec = current.plan?.members?.find(x => x.memberKey === key || x.memberKey.startsWith(`${key}:`)); if (rec) selectTarget({ kind: 'member', key: rec.memberKey }); }
+// The member card's block: locked (follows the rules) or placed by hand (where, how long, nudge, copy, mirror, remove, lock).
+function manualBlock(p, memberKey) {
+    const key = layoutKeyOf(memberKey), lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    if (!m) return '';
+    if (!MAN.isUnlocked(p, key)) return `<div class="man-card"><span class="set-state inherited">follows the framing rules</span>
+        <button class="secondary" data-act="man-unlock" data-key="${esc(key)}" title="It stays where it is and no longer follows the framing rules; then move, copy, mirror or remove it">✎ Unlock to place by hand</button></div>`;
+    const L = lay.lengthIn, len = m.orient === 'v' ? m.h : m.w, f = (label, k, v) => `<label>${label}<input type="text" class="mini" data-man-f="${k}" data-key="${esc(key)}" value="${esc(lenText(v))}" autocomplete="off"></label>`;
+    const nb = (t, dx, dy, title) => `<button class="secondary" data-act="man-nudge" data-dx="${dx}" data-dy="${dy}" title="${title}">${t}</button>`;
+    return `<div class="man-card on"><div class="man-head"><span class="set-state overridden">✎ placed by hand${MAN.isAdded(key) ? ' (a copy)' : ''}</span>
+            <button class="link" data-act="man-lock" data-key="${esc(key)}" title="${MAN.isAdded(key) ? 'Remove this copy' : 'Back to where the framing rules put it'}">${MAN.isAdded(key) ? 'Remove the copy' : '🔒 Lock (back to the rules)'}</button></div>
+        <div class="man-fields">${f('From left end', 'x', viewX(m, L))}${f('From bottom', 'y', m.y)}${f(m.orient === 'v' ? 'Height' : 'Length', 'len', len)}</div>
+        <div class="man-nudge"><span class="muted small">Nudge</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}
+            <select id="man-step" aria-label="Nudge step">${['1/16"', '1/8"', '1/2"', '1"', '6"'].map(v => `<option>${v}</option>`).join('')}</select></div>
+        <div class="acts"><button class="secondary" data-act="man-copy" data-key="${esc(key)}">Copy</button><button class="secondary" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
+            ${MAN.isAdded(key) ? '' : `<button class="secondary danger" data-act="man-remove" data-key="${esc(key)}">Remove</button>`}</div></div>`;
+}
+// The panel card: how much is placed by hand, and the edits that no longer apply.
+function manualSummary(p, f) {
+    const n = MAN.unlockedCount(p), gone = MAN.removedKeys(p).length, stale = f.layout ? (current.plan?.layout?.manual?.stale || []) : [];
+    if (!n && !gone && !editMode) return '';
+    return `<div class="man-sum"><b>Placed by hand</b> ${n} member${n === 1 ? '' : 's'}${gone ? `, ${gone} removed` : ''}
+        <span class="acts"><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n || gone ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}</span>
+        ${stale.length ? `<ul class="plan-notes">${stale.map(x => `<li class="warning">${esc(x.message)}</li>`).join('')}</ul>` : ''}</div>`;
+}
+// Over the elevation in edit mode.
+function editBar(p) {
+    const n = MAN.unlockedCount(p);
+    return `<div class="edit-bar" role="toolbar" aria-label="Edit members"><b>✎ Edit members</b><span class="muted small">Drag a member to move it (it unlocks) · select one for its card · arrows nudge it (Shift: 1")</span>
+        <span class="spacer"></span><span class="small">${n} by hand</span><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}<button class="small" data-act="man-mode">Done</button></div>`;
+}
+// Typed place and length (side A once typed).
+function manualField(el) {
+    const key = el.dataset.key, v = G.parseLength(el.value), lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    if (v == null || !m) return;
+    const L = lay.lengthIn, box = el.dataset.manF === 'x' ? { x: sideB() ? L - v - m.w : v } : el.dataset.manF === 'y' ? { y: v } : m.orient === 'v' ? { h: v } : { w: v };
+    historyHint = { label: 'the place', mergeKey: `man-f:${key}:${el.dataset.manF}` };
+    replacePanel(MAN.place(cur(), lay, key, box)); changed(); renderWorkspace();
+}
+// Dragging a member in the elevation (edit mode): it unlocks and goes where it is dropped (1/16" steps).
+let manDrag = null;
+function manualPointerDown(e) {
+    const hit = e.target.closest?.('#view-elevation .member-hit[data-i]');
+    if (!editMode || !hit || e.button !== 0) return;
+    const svg = hit.ownerSVGElement, i = Number(hit.dataset.i), g = current.plan?.graphics?.[i], key = current.plan?.layout?.members?.[i]?.key;
+    if (!g || !key) return;
+    const along = g.w >= g.h ? g.w : g.h, size = g.w >= g.h ? hit.width.baseVal.value : hit.height.baseVal.value;
+    manDrag = { hit, svg, key, x0: e.clientX, y0: e.clientY, scale: (size - 0.06) / along, moved: false };
+    hit.setPointerCapture?.(e.pointerId);
+}
+function manualPointerMove(e) {
+    if (!manDrag) return;
+    const ctm = manDrag.svg.getScreenCTM(), dx = (e.clientX - manDrag.x0) / ctm.a, dy = (e.clientY - manDrag.y0) / ctm.d;
+    if (Math.hypot(e.clientX - manDrag.x0, e.clientY - manDrag.y0) > 3) manDrag.moved = true;
+    if (manDrag.moved) manDrag.hit.setAttribute('transform', `translate(${dx} ${dy})`);
+}
+function manualPointerUp(e) {
+    if (!manDrag) return;
+    const d = manDrag; manDrag = null;
+    if (!d.moved) return;
+    const ctm = d.svg.getScreenCTM(), dxSheet = (e.clientX - d.x0) / ctm.a, dySheet = (e.clientY - d.y0) / ctm.d;
+    const dx = Math.round((dxSheet / d.scale) * 16) / 16, dy = Math.round((-dySheet / d.scale) * 16) / 16;
+    d.hit.removeAttribute('transform');
+    if (!(dx || dy)) return;
+    historyHint = { label: 'the move' };
+    manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, d.key), lay, d.key, sideB() ? -dx : dx, dy), `Moved ${fmtFtIn(Math.abs(dx))} ${dx >= 0 ? 'right' : 'left'}${dy ? `, ${fmtFtIn(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''} (placed by hand).`);
+    selectAdded(d.key); // the moved member, selected: its card to fine-tune it
+}
+main.addEventListener('pointerdown', manualPointerDown);
+main.addEventListener('pointermove', manualPointerMove);
+main.addEventListener('pointerup', manualPointerUp);
+main.addEventListener('change', (e) => { if (e.target.matches?.('[data-man-f]')) manualField(e.target); });
+// --- Levels and grids: context lines in the sketch (context-lines.mjs); never a member ------------------------------
+// The panel's own (p.context), else the model's defaults; an edit starts from what is shown.
+function contextEdit(fn) {
+    const p = cur(), shown = CL.cleanContext(p.context) || (() => { const m = CL.modelContext(set, p); return { show: true, levels: { bottom: m?.levels.bottom || null, top: m?.levels.top || null }, grids: m?.grids || [] }; })();
+    const c = structuredClone(shown);
+    c.levels ||= { bottom: null, top: null }; c.grids ||= [];
+    fn(c);
+    p.context = CL.cleanContext(c) || { show: false, levels: { bottom: null, top: null }, grids: [] };
+    renderContextSec(); fit(); changed();
+}
+function renderContextSec() {
+    const p = cur(), box = $('#context-sec');
+    if (!p || !box) return;
+    const own = CL.cleanContext(p.context), model = CL.modelContext(set, p), c = own || { show: false, levels: model?.levels || { bottom: null, top: null }, grids: model?.grids || [] };
+    const lv = (which) => {
+        const l = c.levels[which] || { name: '', place: 'at', offsetIn: 0 };
+        return `<div class="ctx-level"><b>${which === 'bottom' ? 'Bottom level' : 'Top level'}</b>
+            <input type="text" class="mini" data-ctx-f="levels.${which}.name" value="${esc(l.name)}" placeholder="${which === 'bottom' ? 'e.g. L2' : 'e.g. L3'}" aria-label="${which} level's name">
+            <span class="seg">${CL.PLACES.map(pl => `<button class="${l.place === pl ? 'on' : 'secondary'}" data-act="ctx-place" data-k="${which}" data-v="${pl}" aria-pressed="${l.place === pl}">${pl === 'at' ? 'At' : pl === 'above' ? 'Above' : 'Below'}</button>`).join('')}</span>
+            ${l.place === 'at' ? '' : `<input type="text" class="mini" data-ctx-f="levels.${which}.offsetIn" value="${esc(lenText(l.offsetIn))}" aria-label="how far ${l.place}">`}
+            <small class="muted">the panel's ${which}</small></div>`;
+    };
+    const say = model ? [model.levels.bottom && `${model.levels.bottom.name} ${model.levels.bottom.place === 'at' ? 'at the bottom' : `${CL.fmtIn(model.levels.bottom.offsetIn)} ${model.levels.bottom.place} the bottom`}`,
+        model.levels.top && `${model.levels.top.name} ${model.levels.top.place === 'at' ? 'at the top' : `${CL.fmtIn(model.levels.top.offsetIn)} ${model.levels.top.place} the top`}`,
+        model.grids.length && `grids ${model.grids.map(g => g.name).join(', ')}`].filter(Boolean).join(' · ') : '';
+    box.innerHTML = `<label class="fd-check"><input type="checkbox" data-ctx-show ${c.show ? 'checked' : ''}> Show them in the sketch (the levels on the sheet too)</label>
+        ${model ? `<p class="muted small">The model: ${esc(say)}. <button class="link" data-act="ctx-model">Use the model's</button></p>` : '<p class="muted small">Type the levels and grids (no model for this panel). Context only: they never move a member.</p>'}
+        ${lv('bottom')}${lv('top')}
+        <div class="ctx-grids"><b>Grids</b> <small class="muted">from the left end</small>${c.grids.map((g, i) => `<span class="ctx-grid"><input class="mini" data-ctx-f="grids.${i}.name" value="${esc(g.name)}" aria-label="Grid name"> at <input class="mini" data-ctx-f="grids.${i}.xIn" value="${esc(lenText(g.xIn))}" aria-label="Grid ${esc(g.name)} from the left end"><button class="link" data-act="ctx-grid-del" data-i="${i}" aria-label="Remove grid ${esc(g.name)}">×</button></span>`).join('')}
+            <button class="secondary small" data-act="ctx-grid-add">+ Grid</button></div>`;
+}
+// Typed: a level's name or offset, a grid's name or place.
+function contextField(el) {
+    const path = el.dataset.ctxF.split('.'), v = el.value;
+    contextEdit(c => {
+        if (path[0] === 'levels') { const l = c.levels[path[1]] || { name: '', place: 'at', offsetIn: 0 }; if (path[2] === 'name') l.name = v; else { const n = G.parseLength(v); if (n != null) l.offsetIn = Math.abs(n); } c.levels[path[1]] = l; }
+        else { const g = c.grids[Number(path[1])]; if (!g) return; if (path[2] === 'name') g.name = v; else { const n = G.parseLength(v); if (n != null) g.xIn = n; } }
+    });
+}
+main.addEventListener('change', (e) => {
+    if (e.target.matches?.('[data-ctx-f]')) contextField(e.target);
+    else if (e.target.matches?.('[data-ctx-show]')) contextEdit(c => { c.show = e.target.checked; });
+});
+// The sketch's layer: each level a dash-dot line across, named at the left with where it is; each grid a dash-dot line up
+// through the panel with its bubble over it.
+function contextLayer(p, L, H, top, fs, t, Y) {
+    const ctx = CL.contextLines(p, set);
+    if (!ctx.show) return '';
+    const hi = top ? Math.max(...top.map(q => q[1])) : H, out = [], x0 = -fs * 5.5, x1 = L + fs * 3;
+    for (const l of ctx.levels) {
+        const y = Y(l.yIn);
+        out.push(`<g class="sk-level"><line x1="${x0}" y1="${y}" x2="${x1}" y2="${y}"/><path d="M${x0} ${y} l${fs * 0.5} ${-fs * 0.7} h${-fs} z" class="sk-level-mark"/>
+            ${t(x0 + fs * 0.9, y - fs * 0.35, l.name, { a: 'start', cls: 'sk-level-t', size: fs * 0.95 })}${t(x0 + fs * 0.9, y + fs * 1.05, l.text, { a: 'start', cls: 'sk-level-s', size: fs * 0.7 })}<title>${esc(`${l.name}: ${l.text}`)}</title></g>`);
+    }
+    for (const g of ctx.grids) {
+        const r = fs * 0.95, yb = Y(hi) - fs * 1.6 - r;
+        out.push(`<g class="sk-gridline"><line x1="${g.xIn}" y1="${Y(0) + fs}" x2="${g.xIn}" y2="${yb + r}"/><circle cx="${g.xIn}" cy="${yb}" r="${r}"/>${t(g.xIn, yb + r * 0.38, g.name, { cls: 'sk-grid-t', size: fs * 0.95 })}<title>${esc(`Grid ${g.name}: ${fmtFtIn(g.xIn)} from the left end`)}</title></g>`);
+    }
+    return out.join('');
+}
+// The sheet's level lines (the generator's panels have no model context of their own).
+const sheetContext = (p) => { const levels = CL.sheetLevels(CL.contextLines(p, set)); return levels.length ? { elev: { levels, context: [] } } : {}; };
+// --- The Openings schedule: every opening's jambs, header and sill in one table, assigned like a schedule ----------
+// A row per opening (check it to assign several at once); a member cell opens a picker: the rule's member (and its
+// alternatives), the panel default, the standard and saved profiles, or one typed. Use the rules: every door and window
+// takes the rule that covers it (its alternatives left to pick). Pure UI over the opening fields.
+let schChecked = new Set(), schPick = null; // schPick: { i, k } the cell the picker is for
+function openingSchedule(p) {
+    if (!p?.openings?.length) return '<p class="muted">No openings yet: add one in the sketch.</p>';
+    const anyRule = p.openings.some((o, i) => R.ruleFor(eng, p, i).applies);
+    const cell = (i, k, st) => {
+        if (!st) return '<td class="sch-na">—</td>';
+        const [badge, cls] = SOURCE_BADGES[st.source];
+        return `<td><button class="sch-cell ${cls}${schPick?.i === i && schPick?.k === k ? ' on' : ''}" data-act="sch-pick" data-i="${i}" data-k="${k}" title="${esc(`${st.label}: ${badge}${st.differs ? ` (rule ${st.rule.code} gives ${giveText(st.rule.gives)})` : ''}`)}">${esc(memberText(st.value))}<small>${badge}${st.differs ? ' ≠ rule' : ''}</small></button>
+            ${st.arrangement.needed ? `<span class="sch-arr">${ARRANGE_WORDS[k].map(([v, label]) => `<button class="${st.arrangement.value === v ? 'on' : ''}" data-act="sch-arrange" data-i="${i}" data-k="${k}" data-v="${v}" title="${label}">${label.split(' ')[0]}</button>`).join('')}${st.arrangement.value ? '' : '<b class="arr-open">?</b>'}</span>` : ''}</td>`;
+    };
+    const rows = p.openings.map((o, i) => {
+        const r = R.ruleFor(eng, p, i), states = Object.fromEntries(R.memberStates(p, i, r.applies ? r : null).map(s => [s.member, s]));
+        const rule = !r.applies ? '<span class="muted small">—</span>' : r.bound ? `<span class="sch-rule ok">${esc(r.bound.displayCode)}</span>`
+            : r.status === 'matched' ? `<button class="secondary small" data-act="rule-use" data-i="${i}" data-key="${esc(r.match.KEY_ID)}" title="Use the rule that covers it">Use ${esc(r.match.displayCode)}</button>` : `<span class="sch-rule warn">${r.status === 'ambiguous' ? 'several' : 'none'}</span>`;
+        const b = G.openingBox(o, G.shapeTop(p.shape).heightIn);
+        return `<tr class="${sel === i ? 'selected' : ''}"><td><input type="checkbox" data-sch-check="${i}" ${schChecked.has(i) ? 'checked' : ''} aria-label="Check ${esc(G.openingName(p.openings, i))}"></td>
+            <td><button class="link" data-ctx="select-opening" data-v="${esc(G.openingKeys(p)[i])}"><b class="op-name ${o.kind}">${esc(G.openingName(p.openings, i))}</b></button></td>
+            <td class="small">${esc(G.OPENING_TYPES[o.kind].name)}<br>${esc(`${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? '' : ` x ${fmtFtIn(b.top - b.bottom)}`}`)}</td><td>${rule}</td>
+            ${cell(i, 'jamb', states.jamb)}${cell(i, 'head', states.head)}${cell(i, 'sill', states.sill)}</tr>`;
+    }).join('');
+    const n = schChecked.size;
+    return `<div class="sch-bar"><span class="small">${n ? `<b>${n} checked</b>: a pick applies to all of them` : 'Click a member to change it; check rows to change several at once.'}</span>
+            <span class="spacer"></span>${anyRule ? '<button class="secondary small" data-act="sch-rules" title="Every door and window takes the rule that covers it">Use the rules for all</button>' : '<button class="link small" data-act="eng-open">Open the engineering catalog for rules</button>'}</div>
+        <table class="sch-table" aria-label="Openings: jambs, header and sill"><thead><tr><th><button class="link small" data-act="sch-check-all" aria-label="Check all">☐</button></th><th>Opening</th><th>Kind, size</th><th>Rule</th><th>Jambs</th><th>Header</th><th>Sill</th></tr></thead>
+        <tbody>${rows}</tbody></table>${schPick ? pickerHtml(p) : ''}`;
+}
+// The picker for one cell: what this member can be.
+function pickerHtml(p) {
+    const { i, k } = schPick, o = p.openings[i];
+    if (!o || !G.OPENING_TYPES[o.kind].members.includes(k)) return '';
+    const r = R.ruleFor(eng, p, i), row = r.applies ? r.bound || r.match : null, g = row ? R.ruleGives(row, o.kind, k) : null;
+    const targets = schTargets(i, k), many = targets.length > 1, tile = (v, label, sub = '') => `<button class="sch-tile" data-act="sch-apply" data-k="${k}" data-v="${esc(v)}"><b>${esc(label)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</button>`;
+    const choices = profileChoices(k), dflt = memberText(G.memberFor(p, { ...o, [k]: '' }, k).spec);
+    return `<div class="sch-picker" role="dialog" aria-label="${esc(FD_LABELS[k])}"><div class="sch-picker-head"><b>${esc(FD_LABELS[k])}</b> for ${many ? `${targets.length} openings` : esc(G.openingName(p.openings, i))}<span class="spacer"></span><button class="link" data-act="sch-pick" data-i="-1" aria-label="Close">✕</button></div>
+        ${g?.text ? `<div class="sch-group"><span class="muted small">Rule ${esc(row.displayCode)}</span>${tile('rule:', memberText(g.text), 'from the rule')}</div>` : ''}
+        ${g?.choices ? `<div class="sch-group"><span class="muted small">Rule ${esc(row.displayCode)} gives one of</span>${g.choices.map(c => tile(`rule:${c}`, memberText(c), 'from the rule')).join('')}</div>` : ''}
+        <div class="sch-group"><span class="muted small">Panel default</span>${tile('default:', dflt, 'as the panel gives every opening')}</div>
+        <div class="sch-group"><span class="muted small">Standard</span>${choices.filter(c => !c.saved).map(c => tile(`prof:${c.id}`, c.p.name, P.describeProfile(k, c.p, p.members))).join('')}</div>
+        ${choices.some(c => c.saved) ? `<div class="sch-group"><span class="muted small">Saved in this browser</span>${choices.filter(c => c.saved).map(c => tile(`prof:${c.id}`, c.p.name, P.describeProfile(k, c.p, p.members))).join('')}</div>` : ''}
+        <div class="sch-group sch-type"><span class="muted small">Type a member</span><input type="text" class="mini wide" id="sch-typed" placeholder="362S162-54, or (2) 600S162-54 WITH (2) 362T125-33" list="dl-${k === 'head' ? 'header' : k}"><button class="secondary small" data-act="sch-apply" data-k="${k}" data-v="typed:">Use it</button></div></div>`;
+}
+// The openings a pick applies to: the checked ones that take this member (the clicked one when none is checked).
+function schTargets(i, k) {
+    const p = cur(), takes = (j) => !!p.openings[j] && G.OPENING_TYPES[p.openings[j].kind].members.includes(k);
+    const list = schChecked.size && schChecked.has(i) ? [...schChecked].filter(takes) : [i];
+    return list.filter(takes);
+}
+function openPicker(b) {
+    const i = Number(b.dataset.i);
+    schPick = i < 0 || (schPick?.i === i && schPick?.k === b.dataset.k) ? null : { i, k: b.dataset.k };
+    renderBottom(current);
+    main.querySelector('.sch-picker .sch-tile')?.focus();
+}
+function schApply(k, v) {
+    const p = cur();
+    if (!schPick) return;
+    const targets = schTargets(schPick.i, k), [kind, arg] = [v.slice(0, v.indexOf(':')), v.slice(v.indexOf(':') + 1)];
+    let typed = '';
+    if (kind === 'typed') { typed = (main.querySelector('#sch-typed')?.value || '').trim(); if (!typed || !G.specText(typed)) { notice('Type a member this tool reads, like 362S162-54 or (2) 600S162-54 WITH (2) 362T125-33.', true); return; } }
+    let done = 0, skipped = 0;
+    for (const j of targets) {
+        const o = p.openings[j];
+        if (kind === 'rule') { if (setFromRule(p, j, k, arg || null)) done++; else skipped++; continue; }
+        if (kind === 'default') p.openings[j] = P.clearProfile(o, k);
+        else if (kind === 'prof') { const prof = profileChoices(k).find(c => c.id === arg)?.p; if (!prof) continue; p.openings[j] = P.applyProfile(o, k, prof, p.members); }
+        else if (kind === 'typed') { p.openings[j] = { ...o, [k]: typed }; delete p.openings[j][`${k}Style`]; }
+        done++;
+    }
+    schPick = null;
+    changed(); renderBottom(current); renderMemberCards(); renderChips();
+    notice(`${FD_LABELS[k]}: ${done} opening${done === 1 ? '' : 's'} set${skipped ? `; ${skipped} not (no rule covers them, or its alternatives need a pick)` : ''}.`);
+}
+function schRulesAll() {
+    const p = cur(), used = [], none = [];
+    p.openings.forEach((o, i) => {
+        const r = R.ruleFor(eng, p, i);
+        if (!r.applies) return;
+        if (r.status !== 'matched') { none.push(G.openingName(p.openings, i)); return; }
+        try { const res = SC.applyOpeningStyle(cur(), i, eng.read, r.match); replacePanel(res.panel); used.push(`${G.openingName(p.openings, i)} ${r.match.displayCode}`); } catch { none.push(G.openingName(p.openings, i)); }
+    });
+    changed(); renderBottom(current); renderMemberCards(); renderChips();
+    notice(`Rules used: ${used.join(', ') || 'none'}${none.length ? `. No single rule for ${none.join(', ')}: pick them.` : '.'}`);
+}
+main.addEventListener('change', (e) => {
+    if (!e.target.matches?.('[data-sch-check]')) return;
+    const i = Number(e.target.dataset.schCheck);
+    if (e.target.checked) schChecked.add(i); else schChecked.delete(i);
+    renderBottom(current);
+});
+// Commands in the bar: available or not, and their names.
+function renderCommands() {
+    const p = cur(), cs = W.commandState({ panels: set.panels.length, current: p, plan: current.plan, selection, history: undoHistory, modelLinked: G.isFromModel(p) });
+    const undoBtn = document.getElementById('undo-btn'), redoBtn = document.getElementById('redo-btn');
+    undoBtn.disabled = !cs.undo.enabled; undoBtn.title = `${cs.undo.label} (Ctrl+Z)`;
+    redoBtn.disabled = !cs.redo.enabled; redoBtn.title = `${cs.redo.label} (Ctrl+Y)`;
+    const dup = document.getElementById('dup-btn');
+    dup.disabled = !cs.duplicate.enabled; dup.textContent = G.isFromModel(p) ? 'Duplicate (unlinked)' : 'Duplicate';
+    dup.title = G.isFromModel(p) ? 'A copy not linked to the Revit wall: its outline and openings become editable' : 'A copy of this panel';
+    const pdf = document.getElementById('pdf-btn');
+    if (pdf) { pdf.disabled = !cs.pdf.enabled; pdf.title = cs.pdf.reason || 'The shop drawing as a PDF'; }
+    const dirtyEl = document.getElementById('dirty'), dirty = isDirty();
+    dirtyEl.classList.toggle('on', dirty);
+    dirtyEl.textContent = !set.panels.length ? '' : dirty ? 'Changes not exported' : 'Exported';
+    dirtyEl.title = 'Everything is kept in this browser as you work; Export writes a file to keep or share.';
+}
+
+// Selecting: from a view, the cut list, an issue, an opening chip or the properties. Locate: show it where it is.
+function selectTarget(t, { locate = false } = {}) {
+    selection = t || W.NONE;
+    if (t?.kind === 'opening') {
+        const i = G.openingKeys(cur()).indexOf(t.key);
+        if (i >= 0 && sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); }
+        openSection('opening');
+    } else if (t && t.kind !== 'setting' && sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); }
+    if (t?.kind === 'setting') { focusSetting(t.key); return; }
+    if (locate && (t?.kind === 'member' || t?.kind === 'mark') && !['elevation', 'plan', '3d'].includes(prefs.view)) setView('elevation');
+    if (locate && t?.kind === 'opening' && prefs.view === 'drawing') setView('sketch');
+    renderWorkspace();
+    // Its card is at the top of the inspector: bring it back into view there (the side panel only, never the page).
+    if (t && t.kind !== 'opening' && !matchMedia('(max-width: 1180px)').matches) $('#inspector').scrollTo({ top: 0, behavior: 'smooth' });
+    if (locate) requestAnimationFrame(() => main.querySelector('.view:not([hidden]) .member-hit.selected, .view:not([hidden]) .op-chip.on')?.scrollIntoView({ block: 'nearest', inline: 'center', behavior: 'smooth' }));
+}
+// The opening chosen in the sketch or the chips is the workspace's selection too.
+function syncOpeningSelection() {
+    const p = cur();
+    if (!p) return;
+    const keys = G.openingKeys(p);
+    // A newly selected opening opens its editor (Openings); closing that section again is respected until the next one.
+    if (sel != null && keys[sel]) { if (selection.kind !== 'opening' || selection.key !== keys[sel]) { selection = { kind: 'opening', key: keys[sel] }; openSection('opening'); scheduleWorkspace(); } }
+    else if (selection.kind === 'opening') { selection = W.NONE; scheduleWorkspace(); }
+    const sum = document.getElementById('opening-sum');
+    if (sum) sum.textContent = sel != null && p.openings[sel] ? `Opening ${G.openingName(p.openings, sel)}` : 'Openings';
+}
+function openSection(name) { const d = main.querySelector(`.insp-sec[data-sec="${name}"]`); if (d && !d.open) d.open = true; }
+// Locate a setting: open its section, show it and put the cursor on it.
+function focusSetting(key) {
+    const targets = { members: ['members', '[data-pick="members.stud"], [data-f="members.stud"]'], 'members.stud': ['members', '[data-pick="members.stud"], [data-f="members.stud"]'],
+        'members.track': ['members', '[data-pick="members.track"]'], 'members.topTrack': ['members', '[data-pick="members.topTrack"]'],
+        'members.spacingIn': ['members', '[data-pick="members.spacingIn"], [data-f="members.spacingIn"]'], 'style.wall': ['members', '[data-style="wall"]'],
+        layoutStartIn: ['layout', '[data-f="layoutStartIn"]'], shape: ['panel', '#elev-head [data-f]'] };
+    const op = /^opening-style:(.+)$/.exec(key);
+    if (op) { selectTarget({ kind: 'opening', key: op[1] }); requestAnimationFrame(() => { const el = main.querySelector('[data-style="op"]'); el?.scrollIntoView({ block: 'center' }); el?.focus(); }); return; }
+    const [sec, q] = targets[key] || ['members', '#core-strip select, #core-strip input'];
+    openSection(sec);
+    requestAnimationFrame(() => { const el = main.querySelector(q); if (!el) return; el.scrollIntoView({ block: 'center', behavior: 'smooth' }); el.focus({ preventScroll: true }); el.closest('.mcard, label, .layout-group')?.classList.add('flash'); setTimeout(() => el.closest('.flash')?.classList.remove('flash'), 1500); });
+}
+// A command an issue or the properties offer (workspace.mjs issueActions).
+function runCommand(cmd, arg) {
+    if (cmd === 'select') selectTarget(arg, { locate: true });
+    else if (cmd === 'focus-setting') focusSetting(arg);
+    else if (cmd === 'open-framing') { const i = G.openingKeys(cur()).indexOf(arg); if (i >= 0) openFraming(i); }
+    else if (cmd === 'toggle-optimizer') { cur().optimizeOpenings = true; historyHint = { label: 'the opening optimizer' }; renderLayoutSec(); changed(); notice('Opening optimizer on: the studs on center start where every bay is within the spacing, with the fewest pieces.'); }
+    else if (cmd === 'open-catalog') openCatalog();
+    else if (cmd === 'set-view') setView(arg);
+}
+
+// --- Stud layout, stud facing (physical) and the viewing side (drawing only) kept apart -----------------------------
+function renderLayoutSec() {
+    const p = cur(), box = $('#layout-sec');
+    if (!p || !box) return;
+    const flips = (p.studFlips || []).length, intent = current.plan?.intent?.layout;
+    box.innerHTML = `<div class="layout-group"><h4>Stud layout <span class="muted">where the studs on center go</span></h4>
+            <div class="row seg-inline" role="group" aria-label="Start the layout from"><span class="muted">Start from</span>
+                <button data-act="layout-from" data-side="left" aria-pressed="${!p.layoutFromRight}">Left end</button><button data-act="layout-from" data-side="right" aria-pressed="${!!p.layoutFromRight}">Right end</button></div>
+            <label class="opt-toggle${p.optimizeOpenings ? ' on' : ''}" title="Start the studs on center where the openings take the fewest stud pieces (every bay within the spacing)">
+                <input type="checkbox" data-f="optimizeOpenings" ${p.optimizeOpenings ? 'checked' : ''}><span>Opening optimizer</span><small id="opt-info"></small></label>
+            <div class="row">${field('First stud at (from the start end)', 'layoutStartIn', p.layoutStartIn, { t: 'len', list: 'len', ph: intent ? `${inch(intent.startIn)} (${intent.startSource})` : 'automatic' })}
+                ${p.layoutStartIn ? '<button class="link" data-act="layout-reset">Automatic</button>' : ''}</div></div>
+        <div class="layout-group"><h4>Stud facing <span class="muted">which way the studs' webs face: physical</span></h4>
+            <label class="fd-check"><input type="checkbox" data-f="flipStuds" ${p.flipStuds ? 'checked' : ''}> Flip every stud on center (end studs and jambs still close their side)</label>
+            <p class="muted">${flips ? `${flips} stud${flips === 1 ? '' : 's'} flipped one by one <button class="link" data-act="flips-clear">Clear them</button>` : 'No stud flipped one by one.'} Select a stud (elevation, plan or cut list) to flip just that one.</p></div>
+        <div class="layout-group"><h4>Stud cutback <span class="muted">where studs meet the tracks, headers and sills</span></h4>
+            <div class="row">${field('Cut back', 'cutbackIn', G.cutbackOf(p) ?? '', { t: 'len', ph: '1/16" (the engine\'s seat)' })}
+                ${set.panels.length > 1 ? '<button class="link" data-act="cutback-all" title="The same cutback on every panel in the set">Every panel</button>' : ''}</div>
+            <p class="muted small">Every stud's cut length is its length less this (rounded down to 1/8"). New panels start at 1/32"; a panel without one (an older file, a model's) uses the engine's 1/16".</p></div>
+        <p class="muted small">The viewing side (A or B, over the views) changes the drawing only: never a member.</p>`;
+    renderLayoutInfo();
+}
+// The sheet's switches as the panel has them (kept for older callers).
+function syncToggles() { renderLayoutSec(); }
+
+// --- History: undo and redo over the whole set (workspace.mjs), the file state -------------------------------------
+let undoHistory = W.newHistory();
+let historyHint = null; // { label, mergeKey } for the next commit
+let lastSnapshot = null;
+const snapshotOf = () => JSON.stringify({ project: set.project, drawnBy: set.drawnBy, source: set.source, extra: set.extra, panels: set.panels });
+function commit(label = null) {
+    const snap = snapshotOf();
+    if (lastSnapshot != null && snap !== lastSnapshot) {
+        const hint = historyHint || (drag ? { label: 'the move', mergeKey: `drag:${dragSeq}` } : { label: label || 'the last change' });
+        undoHistory = W.record(undoHistory, lastSnapshot, hint.label, hint.mergeKey ?? null);
+    }
+    lastSnapshot = snap;
+    historyHint = null;
+}
+let dragSeq = 0;
+function applySnapshot(snap) {
+    const s = JSON.parse(snap), keep = set.current;
+    set = { ...s, panels: s.panels.map(G.cleanPanel), current: s.panels.some(p => p.id === keep) ? keep : s.panels[0]?.id ?? null };
+    lastSnapshot = snap;
+    sel = null; ask = null; selection = W.NONE; stylePending = null; checked.clear();
+    save(); renderAll(true);
+}
+function doUndo() { const r = W.undo(undoHistory, lastSnapshot); if (!r.snapshot) return; undoHistory = r.history; applySnapshot(r.snapshot); notice(`Undone: ${r.label}.`); }
+function doRedo() { const r = W.redo(undoHistory, lastSnapshot); if (!r.snapshot) return; undoHistory = r.history; applySnapshot(r.snapshot); notice(`Redone: ${r.label}.`); }
+const hashOf = (s) => sha256Hex(s || '');
+const isDirty = () => !!set.panels.length && load(KEYS.saved, null) !== hashOf(lastSnapshot ?? snapshotOf());
+const markExported = () => { store(KEYS.saved, hashOf(lastSnapshot ?? snapshotOf())); renderCommands(); };
+
+// --- Remembered presentation (never data) ------------------------------------------------------------------------------
+function storePrefs() { store(KEYS.prefs, prefs); }
+function applyPrefs() {
+    main.classList.toggle('nav-collapsed', !!prefs.navCollapsed);
+    main.querySelector('.nav-toggle')?.setAttribute('aria-expanded', String(!prefs.navCollapsed));
+    for (const d of main.querySelectorAll('.insp-sec')) if (prefs.sections[d.dataset.sec] != null) d.open = prefs.sections[d.dataset.sec];
+    for (const v of main.querySelectorAll('.view')) v.hidden = v.dataset.view !== prefs.view;
+}
+
+// --- Empty project ---------------------------------------------------------------------------------------------------
+function renderEmpty() {
+    main.classList.add('ws-is-empty');
+    selection = W.NONE; current = { panel: null, plan: null, layout: null, errors: [], notes: [] };
+    renderSet();
+    for (const v of main.querySelectorAll('.view')) v.hidden = true;
+    let empty = main.querySelector('#ws-empty');
+    if (!empty) { empty = Object.assign(document.createElement('div'), { id: 'ws-empty', className: 'ws-empty' }); main.querySelector('.views').append(empty); }
+    empty.hidden = false;
+    empty.innerHTML = `<h2>No panels yet</h2><p>Add a panel and draw or type it, or import a set: a JSON file exported here before, or a model's panels exported from Revit.</p>
+        <div class="row"><button data-act="new">+ New panel</button><button class="secondary" data-act="set-import">Import a set (JSON)</button></div>`;
+    $('#insp-context').innerHTML = '<div class="ctx-card"><h3>No panel</h3><p class="muted">Properties appear here for the panel you open.</p></div>';
+    $('#pv-check').innerHTML = '';
+    renderCommands();
+}
+function leaveEmpty() { main.classList.remove('ws-is-empty'); const e = main.querySelector('#ws-empty'); if (e) e.hidden = true; applyPrefs(); }
+
+// --- Engineering styles: the catalog, the project's selection, a panel's wall style and its doors' and windows' -------
+function loadEngineering() {
+    const raw = load(KEYS.engineering, null);
+    if (!raw?.text) return null;
+    try {
+        const read = SC.readStyleCatalog(raw.text);
+        let selection;
+        try { selection = raw.selection ? SC.readSelection(raw.selection) : SC.newSelection(read); } catch { selection = SC.newSelection(read); }
+        if (selection.catalog.catalogId !== read.catalog.catalogId) selection = SC.newSelection(read);
+        return { text: raw.text, read, selection };
+    } catch { return null; }
+}
+function saveEngineering() {
+    try { if (eng) localStorage.setItem(KEYS.engineering, JSON.stringify({ text: eng.text, selection: eng.selection })); else localStorage.removeItem(KEYS.engineering); }
+    catch { notice('The catalog is too large to keep in this browser: it stays open until you leave the page.', true); }
+}
+const engineeringFor = () => (eng ? { read: eng.read, selection: eng.selection } : null);
+const nowUtc = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+const ENGINEERING_STATES = { 'not-reviewed': ['Engineering: not from approved styles', ''], 'catalog-bound': ['Engineering: catalog styles, not approved', 'bound'], 'selection-approved': ['Engineering: approved project styles', 'ok'] };
+function engineeringBadge(p, plan) {
+    if (!eng && !p.style) return '';
+    const [text, cls] = ENGINEERING_STATES[plan?.states?.engineering] || ENGINEERING_STATES['not-reviewed'];
+    return ` <span class="eng-badge ${cls}" title="Whether the members come from the engineering catalog's styles, reviewed and approved for this project (a record of people checking the catalog, not a structural check)">${esc(text)}</span>`;
+}
+const ftText = (ft) => (Number.isFinite(ft) && ft > 0 ? formatLength(ft) : '—');
+function conditionsText(s) {
+    const t = (k) => SC.textOf(s.conditions, k), f = (k) => SC.feetOf(s.conditions, k);
+    if (s.styleType === 'Wall') return `${t('Finish')} · ${SC.wallDepthCode(s) || '?'} · up to ${ftText(f('MaximumHeightFeet'))}`;
+    if (s.styleType === 'Ceiling') return `${t('CeilingType')} ${t('Finish')} · span up to ${ftText(f('MaximumSpanFeet'))}`;
+    return `W ${ftText(f('MinimumOpeningWidthFeet')) === '—' ? '0' : ftText(f('MinimumOpeningWidthFeet'))} to ${ftText(f('MaximumOpeningWidthFeet'))} · wall ≤ ${ftText(f('MaximumWallHeightFeet'))} · above ≤ ${ftText(f('MaximumHeightAboveOpeningFeet'))} · ${t('WallStyleKey') ? `wall style ${t('WallStyleKey')}` : `${t('DepthCode') || 'any'} ${t('Finish')}`}`;
+}
+function outputsText(s) {
+    const t = (k) => SC.textOf(s.outputs, k).replace(/\s+/g, ' '), f = (k) => SC.feetOf(s.outputs, k);
+    if (s.styleType === 'Wall') return `${t('StudText')} @ ${Number.isFinite(f('SpacingFeet')) ? `${Math.round(f('SpacingFeet') * 12 * 100) / 100}"` : '?'} · track ${t('BottomTrackText')} · top ${t('TopTrackText')}`;
+    if (s.styleType === 'Ceiling') return `grid ${t('GridMemberText')} · perimeter ${t('PerimeterMemberText')}`;
+    return `HDR ${t('HeaderText')} · JMB ${t('JambText')} · SIL ${t('SillText')}`;
+}
+function catalogDialog() {
+    let d = document.getElementById('eng-dialog');
+    if (d) return d;
+    d = Object.assign(document.createElement('dialog'), { id: 'eng-dialog', className: 'eng-dialog' });
+    document.body.append(d);
+    d.addEventListener('click', engClick);
+    d.addEventListener('change', engChange);
+    d.addEventListener('input', engInput);
+    return d;
+}
+function openCatalog() { renderCatalog(); const d = catalogDialog(); if (!d.open) d.showModal(); }
+function renderCatalog() {
+    const d = catalogDialog(), reviewer = load(KEYS.reviewer, '');
+    if (!eng) {
+        d.innerHTML = `<div class="eng"><div class="eng-head"><b>Engineering catalog</b><span class="spacer"></span><button class="link" data-eng="close" aria-label="Close">✕</button></div>
+            <p>Open the catalog JSON the native Engineering Catalog keeps (CAS_FRAMING.Core StyleCatalog, schema 1). It is read here and never changed: pick the
+                project's styles from it, review and approve them, and pick a panel's wall style and its doors' and windows' styles from that subset.</p>
+            <div class="row"><button data-eng="open-catalog">Open a catalog (.json)…</button></div></div>`;
+        return;
+    }
+    const r = eng.read, c = r.catalog, sel = eng.selection, check = SC.checkSelection(r, sel), inSel = new Map(sel.styles.map(e => [e.keyId, e]));
+    const q = engView.search.trim().toLowerCase();
+    const rows = c.styles.filter(s => s.styleType === engView.tab && (!q || [s.displayCode, SC.textOf(s.conditions, 'Mark'), conditionsText(s), outputsText(s)].join(' ').toLowerCase().includes(q)))
+        .sort((a, b) => SC.ordinalIgnoreCase(a.displayCode, b.displayCode) || (a.KEY_ID < b.KEY_ID ? -1 : 1));
+    const status = (s) => check.styles.find(x => x.keyId === s.KEY_ID)?.status;
+    const approval = sel.approval.state === 'approved'
+        ? (check.approved ? `<span class="eng-badge ok">Approved by ${esc(sel.approval.by)} · ${esc(sel.approval.atUtc.slice(0, 10))}${sel.approval.reference ? ` · ${esc(sel.approval.reference)}` : ''}</span>` : '<span class="eng-badge warn">The approval no longer holds: approve again</span>')
+        : '<span class="eng-badge">Not approved</span>';
+    d.innerHTML = `<div class="eng">
+        <div class="eng-head"><b>Engineering catalog</b><span class="muted small">revision ${c.revision} · ${c.styles.length} styles · <span title="${esc(r.sha256)}">SHA-256 ${esc(r.sha256.slice(0, 10))}…</span></span>
+            <span class="spacer"></span><button class="link" data-eng="close" aria-label="Close">✕</button></div>
+        <div class="muted small">${c.sources.map(s => `${esc(s.tableName)} · ${esc(s.version)} · imported ${esc(s.importedUtc.slice(0, 10))}`).join(' | ')}${r.ignored.length ? ` · ${r.ignored.length} unknown field${r.ignored.length === 1 ? '' : 's'} skipped` : ''}</div>
+        <div class="row eng-actions"><button class="secondary" data-eng="open-catalog">Open another catalog…</button><button class="secondary" data-eng="open-selection">Open a selection…</button>
+            <button class="secondary" data-eng="export-selection">Export the selection</button><span class="spacer"></span><button class="link danger" data-eng="close-catalog">Close the catalog</button></div>
+        <div class="row eng-sel"><label>Project <input type="text" data-eng-f="project" value="${esc(sel.project)}" placeholder="Project name"></label>
+            <span>${sel.styles.length} style${sel.styles.length === 1 ? '' : 's'} in the project · ${approval}</span>
+            <label>Your name (reviews) <input type="text" data-eng-f="reviewer" value="${esc(reviewer)}" placeholder="Who reviews"></label></div>
+        ${check.issues.length ? `<ul class="plan-notes">${check.issues.map(i => `<li class="${i.severity}">${esc(i.message)}</li>`).join('')}</ul>` : ''}
+        <div class="row eng-tabs">${SC.STYLE_TYPES.map(t => `<button class="${t === engView.tab ? '' : 'secondary'}" data-eng="tab" data-v="${t}">${t} (${c.styles.filter(s => s.styleType === t).length})</button>`).join('')}
+            <input type="text" data-eng-f="search" placeholder="Search a code, a finish, a member…" value="${esc(engView.search)}" aria-label="Search styles"></div>
+        <div class="eng-table"><table><thead><tr><th>Project</th><th>Style</th><th>Conditions</th><th>Gives</th><th>Review</th></tr></thead><tbody>
+            ${rows.map(s => { const e = inSel.get(s.KEY_ID), st = status(s); return `<tr class="${s.isDeleted ? 'deleted' : ''}">
+                <td><input type="checkbox" data-eng="include" data-v="${s.KEY_ID}" ${e ? 'checked' : ''} ${s.isDeleted && !e ? 'disabled' : ''} aria-label="${esc(s.displayCode)} in the project"></td>
+                <td><b>${esc(s.displayCode)}</b><br><small class="muted" title="KEY_ID ${esc(s.KEY_ID)}">rev ${s.revision}${s.isDeleted ? ' · deleted' : ''}${st && st !== 'current' ? ` · ${esc(st)}` : ''}</small></td>
+                <td class="small">${esc(conditionsText(s))}</td><td class="small">${esc(outputsText(s))}</td>
+                <td>${e ? `<select data-eng="review" data-v="${s.KEY_ID}" aria-label="Review of ${esc(s.displayCode)}">${SC.REVIEW_STATES.map(x => `<option ${x === e.review.state ? 'selected' : ''}>${x}</option>`).join('')}</select>${e.review.by ? `<br><small class="muted">${esc(e.review.by)} · ${esc(e.review.atUtc.slice(0, 10))}</small>` : ''}` : ''}</td></tr>`; }).join('') || '<tr><td colspan="5" class="muted">No styles here.</td></tr>'}
+        </tbody></table></div>
+        <div class="row eng-approve"><label>Approved by <input type="text" data-eng-f="approver" value="${esc(engView.approver ?? reviewer)}"></label>
+            <label>Reference <input type="text" data-eng-f="reference" value="${esc(engView.reference)}" placeholder="a transmittal or letter"></label><button data-eng="approve">Approve the selection</button>
+            <span class="muted small">Records who approved this project's styles, against this catalog revision. Not a structural check by this tool, not an engineer's stamp.</span></div>
+    </div>`;
+}
+function afterEngineering() { stylePending = null; renderMemberCards(); refresh(true); }
+function pickText(accept, then) {
+    const input = Object.assign(document.createElement('input'), { type: 'file', accept });
+    input.addEventListener('change', async () => { const f = input.files?.[0]; if (f) then(await f.text(), f.name); });
+    input.click();
+}
+function loadCatalogText(text, name) {
+    try {
+        const read = SC.readStyleCatalog(text);
+        const keep = eng && eng.read.catalog.catalogId === read.catalog.catalogId ? eng.selection : SC.newSelection(read, { project: set.project || '' });
+        eng = { text, read, selection: keep };
+        saveEngineering(); renderCatalog(); afterEngineering();
+        notice(`${name}: catalog revision ${read.catalog.revision}, ${read.catalog.styles.length} styles${keep.styles.length ? ` (the project's ${keep.styles.length} kept, checked again)` : ''}.`);
+    } catch (err) { notice(`${name}: ${err.message} Nothing was loaded.`, true); }
+}
+function loadSelectionText(text, name) {
+    try {
+        const s = SC.readSelection(text);
+        if (s.catalog.catalogId !== eng.read.catalog.catalogId) throw new Error('This selection was made for another catalog.');
+        eng = { ...eng, selection: s }; saveEngineering(); renderCatalog(); afterEngineering();
+        notice(`${name}: ${s.styles.length} project style${s.styles.length === 1 ? '' : 's'}.`);
+    } catch (err) { notice(`${name}: ${err.message}`, true); }
+}
+function engClick(e) {
+    const b = e.target.closest('[data-eng]');
+    if (!b) { if (e.target === catalogDialog()) catalogDialog().close(); return; }
+    const a = b.dataset.eng;
+    if (a === 'close') catalogDialog().close();
+    else if (a === 'open-catalog') pickText('.json,application/json', loadCatalogText);
+    else if (a === 'open-selection') pickText('.json,application/json', loadSelectionText);
+    else if (a === 'export-selection') download(JSON.stringify(eng.selection, null, 2), `style-selection-${fileName(eng.selection.project || set.project || 'project')}-${today()}.json`, 'application/json');
+    else if (a === 'close-catalog') { eng = null; saveEngineering(); renderCatalog(); afterEngineering(); notice('Catalog closed: panels keep their style bindings (shown as not checked).'); }
+    else if (a === 'tab') { engView.tab = b.dataset.v; renderCatalog(); }
+    else if (a === 'approve') {
+        try {
+            eng.selection = SC.approveSelection(eng.selection, eng.read, { by: engView.approver ?? load(KEYS.reviewer, ''), atUtc: nowUtc(), reference: engView.reference });
+            saveEngineering(); renderCatalog(); afterEngineering(); notice('The project selection is approved (recorded with this catalog revision).');
+        } catch (err) { notice(err.message, true); }
+    }
+}
+function engChange(e) {
+    const el = e.target, a = el.dataset.eng;
+    if (a !== 'include' && a !== 'review') return;
+    try {
+        if (a === 'include') eng.selection = el.checked ? SC.includeStyle(eng.selection, eng.read, el.dataset.v) : SC.excludeStyle(eng.selection, el.dataset.v);
+        else eng.selection = SC.reviewStyle(eng.selection, eng.read, el.dataset.v, { state: el.value, by: load(KEYS.reviewer, ''), atUtc: nowUtc() });
+    } catch (err) { notice(/who made it/.test(err.message) ? 'Type your name (reviews) first: a review records who made it.' : err.message, true); }
+    saveEngineering(); renderCatalog(); afterEngineering();
+}
+function engInput(e) {
+    const f = e.target.dataset.engF;
+    if (!f) return;
+    if (f === 'search') { const at = e.target.selectionStart; engView.search = e.target.value; renderCatalog(); const s = catalogDialog().querySelector('[data-eng-f="search"]'); s.focus(); s.setSelectionRange(at, at); }
+    else if (f === 'project') { eng.selection = { ...eng.selection, project: e.target.value }; saveEngineering(); }
+    else if (f === 'reviewer') store(KEYS.reviewer, e.target.value);
+    else if (f === 'approver') engView.approver = e.target.value;
+    else if (f === 'reference') engView.reference = e.target.value;
+}
+// A panel's wall style: the tables' pick for its core, finish and height first, the project's other wall styles after.
+function wallStyleStrip(p) {
+    if (!eng) return p.style ? `<div class="style-strip"><b>Wall style</b> <span>${esc(p.style.displayCode)}</span><span class="muted small">bound; open the Engineering catalog to check it</span></div>` : '';
+    const r = eng.read, rows = SC.projectStyles(r, eng.selection, 'Wall').map(s => s.row), q = SC.wallQuery(p), m = SC.matchWallStyle(rows, q);
+    const bound = p.style ? SC.rowById(r, p.style.keyId) : null, picks = new Set((m.status === 'matched' ? [m.match] : m.status === 'ambiguous' ? m.candidates : []).map(x => x.KEY_ID));
+    const label = (s) => `${s.displayCode} · up to ${ftText(SC.feetOf(s.conditions, 'MaximumHeightFeet'))} · ${outputsText(s).split(' · ')[0]}`;
+    const opt = (s) => `<option value="${s.KEY_ID}" ${bound?.KEY_ID === s.KEY_ID ? 'selected' : ''}>${esc(label(s))}</option>`;
+    const finishes = [...new Set(rows.map(s => SC.textOf(s.conditions, 'Finish')).filter(Boolean))].sort(SC.ordinalIgnoreCase);
+    const depths = [...new Set(rows.map(SC.wallDepthCode).filter(Boolean))].sort();
+    const say = !rows.length ? 'No wall styles in the project yet: pick them in Engineering catalog…' : m.status === 'matched' ? `The tables pick ${m.match.displayCode}.` : m.detail;
+    return `<div class="style-strip"><b>Wall style</b>
+        <label>Finish <select data-style-q="finish"><option value="">Pick…</option>${finishes.map(f => `<option ${f === q.finish ? 'selected' : ''}>${esc(f)}</option>`).join('')}</select></label>
+        ${q.coreDepthIn ? '' : `<label>Core <select data-style-q="depthCode"><option value="">Pick…</option>${depths.map(x => `<option ${x === q.depthCode ? 'selected' : ''}>${esc(x)}</option>`).join('')}</select></label>`}
+        <select data-style="wall" aria-label="Wall style"><option value="">None (members picked here)</option>
+            ${picks.size ? `<optgroup label="The tables pick">${rows.filter(s => picks.has(s.KEY_ID)).map(opt).join('')}</optgroup>` : ''}
+            ${rows.some(s => !picks.has(s.KEY_ID)) ? `<optgroup label="Other project styles">${rows.filter(s => !picks.has(s.KEY_ID)).map(opt).join('')}</optgroup>` : ''}
+            ${bound && !rows.some(s => s.KEY_ID === bound.KEY_ID) ? `<optgroup label="Bound, not in the project">${opt(bound)}</optgroup>` : ''}
+            ${p.style && !bound ? `<option value="${esc(p.style.keyId)}" selected>${esc(p.style.displayCode)} (not in this catalog)</option>` : ''}</select>
+        <span class="muted small">${esc(say)}</span>${pendingChoices(p, 'wall')}</div>`;
+}
+const STYLE_LABELS = { stud: 'On-center studs', track: 'Bottom track', topTrack: 'Top track', spacingIn: 'Spacing', head: 'Header', jamb: 'Jambs', sill: 'Sill' };
+function pendingChoices(p, scope) {
+    const s = stylePending;
+    if (!s || s.panelId !== p.id || s.scope !== scope) return '';
+    return `${s.open.map(o => `<label class="style-pick">${STYLE_LABELS[o.key]}: one of <select data-style-pick="${o.key}"><option value="">Pick…</option>${o.choices.map(c => `<option ${s.picked?.[o.key] === c ? 'selected' : ''}>${esc(c)}</option>`).join('')}</select></label>`).join('')}
+        ${s.problems.length ? `<ul class="plan-notes">${s.problems.map(x => `<li class="warning">${esc(x.message)} The ${STYLE_LABELS[x.key].toLowerCase()} stays as picked here.</li>`).join('')}</ul>` : ''}`;
+}
+function replacePanel(next) { const i = set.panels.findIndex(x => x.id === next.id); set.panels[i] = next; }
+function styleChange(el) {
+    const p = cur();
+    if (el.dataset.styleQ) { p.styleQuery = { finish: '', depthCode: '', ...(p.styleQuery || {}), [el.dataset.styleQ]: el.value }; renderMemberCards(); changed(); return; }
+    const scope = el.dataset.stylePick ? stylePending?.scope : el.dataset.style === 'wall' ? 'wall' : Number(el.dataset.i);
+    const keyId = el.dataset.stylePick ? stylePending?.keyId : el.value;
+    if (!keyId) { // None: the members stay, now the user's
+        if (scope === 'wall') { delete p.style; if (p.provenance) for (const k of Object.keys(p.provenance)) if (p.provenance[k] === 'style') p.provenance[k] = 'user'; }
+        else delete p.openings[scope].style;
+        stylePending = null; renderMemberCards(); changed(); return;
+    }
+    const row = SC.rowById(eng.read, keyId);
+    if (!row) return;
+    const picked = el.dataset.stylePick ? { ...(stylePending.picked || {}), [el.dataset.stylePick]: el.value } : {};
+    try {
+        const res = scope === 'wall' ? SC.applyWallStyle(p, eng.read, row, picked) : SC.applyOpeningStyle(p, scope, eng.read, row, picked);
+        replacePanel(res.panel);
+        if (scope !== 'wall') ask = null; // its members are given now
+        stylePending = res.open.length || res.problems.length ? { scope, panelId: p.id, keyId, open: res.open, problems: res.problems, picked } : null;
+        renderMemberCards(); changed();
+        if (!el.dataset.stylePick) notice(`${row.displayCode} applied${res.open.length ? `: pick ${res.open.map(o => STYLE_LABELS[o.key].toLowerCase()).join(' and ')} (the style gives alternatives)` : ''}.`);
+    } catch (err) { notice(err.message, true); }
 }
 
 // --- The set: every panel here, checked ones for PDF / members / delete -------------------------------------------------
+// --- The navigator: the set's panels (find, check, open), the set's fields and actions --------------------------------
+let navQuery = '';
 function renderSet() {
-    const box = $('#set-card'), groups = [...new Set(set.panels.map(p => p.group || ''))].sort();
-    box.innerHTML = `<div class="row"><h2 style="margin:0">Panel set <span class="muted">· ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'}${set.project ? ` · ${esc(set.project)}` : ''} · kept in this browser</span></h2>
-            <span class="spacer"></span><button class="secondary" data-act="set-import">Import JSON</button><button class="secondary" data-act="set-export">Export JSON</button></div>
-        <div class="fields set-fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name', cls: 'wide' })}
+    const box = $('#set-card'), toggle = main.querySelector('.nav-toggle');
+    if (toggle) toggle.textContent = `◧ Panels (${set.panels.length})${cur() ? ` · ${cur().mark}` : ''}`;
+    const groups = [...new Set(set.panels.map(p => p.group || ''))].sort();
+    const q = navQuery.trim().toLowerCase();
+    const shown = set.panels.filter(p => !q || [p.mark, p.group, p.wallType, p.level].join(' ').toLowerCase().includes(q));
+    const byGroup = new Map();
+    for (const p of shown) { const g = p.group || ''; (byGroup.get(g) || byGroup.set(g, []).get(g)).push(p); }
+    const item = (p) => {
+        const { errors, layout, plan } = framed(p), on = p.id === cur()?.id, open = openChoices(plan).length;
+        const state = errors.length ? '<span class="check-failed">Not framed</span>' : layout.issues.length ? '<span class="check-failed">Check failed</span>'
+            : open ? `<span class="eng-badge warn">Preliminary (${open})</span>` : '<span class="check-passed">✓ Framed</span>';
+        return `<li class="nav-item ${on ? 'on' : ''}"><label class="set-check"><input type="checkbox" data-check="${esc(p.id)}" ${checked.has(p.id) ? 'checked' : ''} aria-label="Check ${esc(p.mark)}"></label>
+            <button class="nav-open" data-act="open" data-id="${esc(p.id)}" title="${esc(`Open ${p.mark}${p.wallType ? ` · ${p.wallType}` : ''}`)}" ${on ? 'aria-current="true"' : ''}>
+                <span class="thumb">${layout ? thumbnailSvg(layout) : ''}</span><b>${esc(p.mark)}${G.isFromModel(p) ? ' 🔒' : ''}</b>
+                <span class="muted">${layout ? `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')} · ${esc(G.openingsSummary(p.openings))}</span>
+                <span class="nav-state">${state}</span></button></li>`;
+    };
+    box.innerHTML = `<div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
             ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div>
-        <div class="row set-tools"><button class="link" data-act="set-check-all">Check all</button><button class="link" data-act="set-check-none">Check none</button>
-            ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}
-            <span id="set-actions"></span></div>
-        <div class="set-grid">${set.panels.map(p => {
-            const { errors, layout } = framed(p), on = p.id === cur().id;
-            return `<div class="card set-item ${on ? 'on' : ''}"><label class="set-check"><input type="checkbox" data-check="${esc(p.id)}" ${checked.has(p.id) ? 'checked' : ''} aria-label="Check ${esc(p.mark)}"></label>
-                <button class="set-open" data-act="open" data-id="${esc(p.id)}" title="Open ${esc(p.mark)}">
-                    <div class="thumb">${layout ? thumbnailSvg(layout) : ''}</div>
-                    <b>${esc(p.mark)}</b>${p.group ? ` <span class="chip">${esc(p.group)}</span>` : ''}
-                    <span class="muted">${layout ? `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)} · ${esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')}` : 'Inputs to fix'}</span>
-                    <span class="muted">${esc(p.members.stud)} @ ${esc(p.members.spacingIn)}" · ${esc(G.openingsSummary(p.openings))}</span>
-                    ${errors.length ? '<span class="check-failed">Inputs to fix</span>' : layout.issues.length ? '<span class="check-failed">Check failed</span>' : '<span class="check-passed">✓ Check passed</span>'}
-                </button></div>`;
-        }).join('')}</div>`;
+        ${set.panels.length ? `<input type="search" class="nav-search" data-nav-search placeholder="Find a panel (mark, group, wall type)" value="${esc(navQuery)}" aria-label="Find a panel">
+        <div class="nav-actions"><button class="link" data-act="set-check-all">Check all</button><button class="link" data-act="set-check-none">Check none</button>
+            ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}</div>
+        <div>${[...byGroup].map(([g, list]) => `${groups.length > 1 ? `<div class="nav-group">${esc(g || 'No group')}</div>` : ''}<ul class="nav-list">${list.map(item).join('')}</ul>`).join('') || '<p class="muted small">No panel matches.</p>'}</div>
+        <div id="set-actions" class="nav-actions"></div>
+        <div class="nav-actions"><button class="secondary" data-act="set-export-plan" title="The resolved framing plans: every physical member, the cut list and what is still to decide (for the native CAS_FRAMING editor)">Export framing plan</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
     renderSetActions();
 }
 function renderSetActions() {
     const el = main.querySelector('#set-actions');
     if (!el) return;
     const n = chosen().length, some = checked.size > 0;
-    el.innerHTML = `<button data-act="set-pdf">Download PDF (${some ? `${n} checked` : `all ${n}`})</button>
-        ${some ? `<button class="secondary" data-act="set-assign" title="Give the checked panels the members of the panel open above">Give ${checked.size} checked this panel's members</button>
-        <button class="link danger" data-act="set-delete">Delete ${checked.size} checked</button>` : '<span class="muted">Check panels to give them the same members, print them together or delete them.</span>'}
+    el.innerHTML = `<button data-act="set-pdf">PDF (${some ? `${n} checked` : `all ${n}`})</button>
+        ${some ? `<button class="secondary" data-act="set-assign" title="Give the checked panels the members of the panel open now">Give ${checked.size} checked these members</button>
+        <button class="link danger" data-act="set-delete">Delete ${checked.size} checked</button>` : ''}
         <button class="link" data-act="set-clear" title="Start over: remove every panel here">Start a new set</button>`;
 }
 const chosen = () => (checked.size ? set.panels.filter(p => checked.has(p.id)) : set.panels);
@@ -1362,16 +2497,17 @@ function assign(p) {
 }
 function deletePanels() {
     const list = set.panels.filter(p => checked.has(p.id));
-    if (!list.length || !confirm(`Delete ${list.map(p => p.mark).join(', ')}? This can't be undone (export the set first to keep a copy).`)) return;
+    if (!list.length || !confirm(`Delete ${list.map(p => p.mark).join(', ')}? (Undo brings ${list.length === 1 ? 'it' : 'them'} back.)`)) return;
+    historyHint = { label: `deleting ${list.length} panel${list.length === 1 ? '' : 's'}` };
     set.panels = set.panels.filter(p => !checked.has(p.id));
     checked.clear();
-    if (!set.panels.length) set.panels.push(G.newPanel());
     sel = null; ask = null;
     save(); renderAll();
 }
 function clearSet() {
-    if (!confirm('Start a new set? Every panel in this browser is removed (export the set first to keep a copy). Your remembered sizes and combos stay.')) return;
-    set = { project: set.project, drawnBy: set.drawnBy, panels: [G.newPanel()], current: null };
+    if (!confirm('Start a new set? Every panel here is removed (Undo brings them back; Export keeps a file). Your remembered sizes, combos and profiles stay.')) return;
+    historyHint = { label: 'starting a new set' };
+    set = { project: set.project, drawnBy: set.drawnBy, panels: [], current: null };
     checked.clear(); sel = null; ask = null;
     save(); renderAll();
 }
@@ -1438,15 +2574,40 @@ async function downloadPdf(panels) {
     notice([`${items.length} sheet${items.length === 1 ? '' : 's'} downloaded.`, skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '',
         failed.length ? `Framing check failed on ${failed.join(', ')}: marked DO NOT RELEASE.` : ''].filter(Boolean).join(' '), !!(skipped.length || failed.length));
 }
+// The resolved framing plans (cas-framing-plan-set): physical members, cut lists, issues and states, per panel.
+function exportPlanJson() {
+    const out = FP.exportPlans(set, engineeringFor()), ready = out.plans.filter(q => q.states.canPreview).length;
+    download(JSON.stringify(out, null, 2), `framing-plans-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
+    notice(`Exported ${out.plans.length} resolved plan${out.plans.length === 1 ? '' : 's'} (${ready} drawn; the rest list what is still to choose or fix).`);
+}
 function exportJson() {
     download(JSON.stringify(G.exportSet(set), null, 2), `panel-set-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
+    markExported();
     notice(`Exported ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} as JSON. Import the file here (any browser) to carry on.`);
+}
+// Replace, Add or Cancel (Cancel never adds). reason: why Add is not offered.
+function chooseImport(name, count, reason) {
+    return new Promise(resolve => {
+        const d = document.createElement('dialog');
+        d.className = 'import-dialog';
+        d.innerHTML = `<form method="dialog"><p><b>${esc(name)}</b>: ${count} panel${count === 1 ? '' : 's'}.</p>${reason ? `<p class="muted small">${esc(reason)}</p>` : ''}
+            <div class="row"><button value="replace">Replace the panels here</button><button value="add" class="secondary" ${reason ? 'disabled' : ''}>Add to the panels here</button><span class="spacer"></span><button value="" class="link">Cancel</button></div></form>`;
+        document.body.append(d);
+        d.addEventListener('close', () => { resolve(d.returnValue || null); d.remove(); });
+        d.showModal();
+    });
 }
 async function importJson(file) {
     try {
         const { set: incoming, warnings } = G.importSet(await file.text());
         if (!incoming.panels.length) { notice(`No panels read from ${file.name}. ${warnings.join(' ')}`, true); return; }
-        const replace = confirm(`${file.name}: ${incoming.panels.length} panel${incoming.panels.length === 1 ? '' : 's'}.\n\nOK: replace the panels here with these.\nCancel: add them to the panels here.`);
+        // One model per set: panels from another model's export are never added under this set's source.
+        const here = set.source?.documentId ?? null, there = incoming.source?.documentId ?? null;
+        const otherModel = set.panels.length && here !== there && (here || there);
+        const choice = await chooseImport(file.name, incoming.panels.length, !otherModel ? '' : !here ? 'These panels are from a model; the panels here are not: replace them, or keep the model\'s panels in a set of their own.'
+            : !there ? 'These panels are not from a model; the panels here are: replace them, or keep them in a set of their own.' : 'These panels are from another model than the panels here: replace them, or keep each model in its own set.');
+        if (!choice) { notice(`Nothing imported from ${file.name}.`); return; }
+        const replace = choice === 'replace';
         const marks = replace ? [] : set.panels.map(p => p.mark);
         const added = incoming.panels.map(p => {
             let mark = p.mark;
@@ -1456,9 +2617,14 @@ async function importJson(file) {
         });
         // A model's export: its source, grids and levels kept with the set (written back on Export JSON).
         const context = Object.fromEntries(['source', 'grids', 'levels'].map(k => [k, incoming[k] ?? (replace ? undefined : set[k])]).filter(([, v]) => v != null));
-        set = { project: set.project || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, panels: replace ? added : [...set.panels, ...added], current: added[0].id };
-        checked.clear(); sel = null; ask = null;
+        // Unknown fields of the file (a newer exporter's) ride along to Export JSON.
+        const extra = replace ? incoming.extra : { ...(incoming.extra || {}), ...(set.extra || {}) };
+        set = { project: (replace ? incoming.project : set.project) || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, ...(extra && Object.keys(extra).length ? { extra } : {}),
+            panels: replace ? added : [...set.panels, ...added], current: added[0].id };
+        checked.clear(); sel = null; ask = null; selection = W.NONE;
+        historyHint = { label: `importing ${file.name}` };
         save(); renderAll();
+        if (replace) markExported(); // what is here now is that file
         notice(`${replace ? 'Replaced with' : 'Added'} ${added.length} panel${added.length === 1 ? '' : 's'} from ${file.name}.${warnings.length ? ` ${warnings.join(' ')}` : ''}`, warnings.length > 0);
     } catch (err) { notice(`Could not read ${file.name}: ${err.message}`, true); }
 }
@@ -1490,4 +2656,42 @@ openLinkedPanel();
 window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p=')) { openLinkedPanel(); sel = null; ask = null; renderAll(); } }); // a link pasted into this tab
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
+// The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
+const NO_PANEL_ACTS = new Set(['new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
+const NOT_EDITS = new Set(['open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'sch-pick', 'sch-check-all',
+    'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
+const ACT_LABELS = { 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
+    'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
+    'clip-here': 'the clip', 'clip-del': 'removing the clip', 'clip-top': 'the clips', 'clip-mid': 'the clips', 'clip-all': 'the clips', 'clip-clear': 'removing the clips',
+    'mirror-op': 'mirroring the opening', 'copy-op': 'copying the opening', center: 'centering the opening', 'peri-finish': 'the perimeter', 'set-assign': 'giving the members', 'set-delete': 'deleting panels',
+    'rule-use': 'the opening rule', 'op-alt': 'the rule alternative', 'op-rule-member': 'back to the rule', 'op-arrange': 'the arrangement',
+    'man-unlock': 'unlocking the member', 'man-lock': 'locking the member', 'man-unlock-all': 'unlocking every member', 'man-lock-all': 'locking every member',
+    'man-nudge': 'the move', 'man-copy': 'the copy', 'man-mirror': 'the mirrored copy', 'man-remove': 'removing the member' };
+main.addEventListener('click', (e) => {
+    const vt = e.target.closest('[data-view-tab]');
+    if (vt) { setView(vt.dataset.viewTab); return; }
+    const bt = e.target.closest('[data-bottom-tab]');
+    if (bt) { prefs.bottom = bt.dataset.bottomTab; prefs.bottomOpen = true; storePrefs(); renderBottom(current); main.querySelector(`[data-bottom-tab="${prefs.bottom}"]`)?.focus(); return; }
+    const ia = e.target.closest('[data-issue-act]');
+    if (ia) { const [n, k] = ia.dataset.issueAct.split(':').map(Number), issue = current.plan?.issues?.[n]; const a = W.issueActions(current.plan, issue, { modelLinked: G.isFromModel(cur()) }).actions[k]; if (a) runCommand(a.command, a.arg); return; }
+    const ctx = e.target.closest('[data-ctx]');
+    if (ctx) { const c = ctx.dataset.ctx; if (c === 'clear') selectTarget(W.NONE); else if (c === 'select-opening') selectTarget({ kind: 'opening', key: ctx.dataset.v }, { locate: true }); else if (c === 'framing') runCommand('open-framing', ctx.dataset.v); return; }
+    const row = e.target.closest('tr[data-mark]');
+    if (row) { selectTarget({ kind: 'mark', key: row.dataset.mark }); return; }
+    const iss = e.target.closest('[data-issue]');
+    if (iss && !e.target.closest('button')) { selectTarget({ kind: 'issue', key: Number(iss.dataset.issue) }); return; }
+    const hit = e.target.closest('.member-hit[data-i]');
+    if (hit) { const keys = current.plan?.graphics?.[Number(hit.dataset.i)]?.memberKeys || []; if (keys.length) selectTarget({ kind: 'member', key: keys[0] }); }
+});
+main.addEventListener('keydown', (e) => {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches?.('tr[data-mark]')) { e.preventDefault(); selectTarget({ kind: 'mark', key: e.target.dataset.mark }); return; }
+    const tab = e.target.closest?.('[role="tab"]');
+    if (tab && /^(ArrowLeft|ArrowRight|Home|End)$/.test(e.key)) { // tabs: arrows move and choose
+        const tabs = [...tab.parentElement.querySelectorAll('[role="tab"]:not(:disabled)')], i = tabs.indexOf(tab);
+        const next = e.key === 'Home' ? tabs[0] : e.key === 'End' ? tabs[tabs.length - 1] : tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        e.preventDefault(); next.click(); main.querySelector(`[role="tab"][aria-selected="true"]${next.dataset.viewTab ? '[data-view-tab]' : '[data-bottom-tab]'}`)?.focus();
+    }
+});
+main.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('.insp-sec')) { prefs.sections[d.dataset.sec] = d.open; storePrefs(); } }, true);
+applyPrefs();
 renderAll();

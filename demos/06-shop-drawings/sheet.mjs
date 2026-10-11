@@ -42,6 +42,46 @@ const FUNC_COLOR = { TTOP: '#f2d64b', TBOT: '#f2d64b', HDD: '#f4a7a0', HDW: '#f4
 const SCALES = [[1 / 8, '1 1/2" = 1\'-0"'], [1 / 12, '1" = 1\'-0"'], [1 / 16, '3/4" = 1\'-0"'], [1 / 24, '1/2" = 1\'-0"'], [1 / 32, '3/8" = 1\'-0"'],
     [1 / 48, '1/4" = 1\'-0"'], [1 / 64, '3/16" = 1\'-0"'], [1 / 96, '1/8" = 1\'-0"'], [1 / 128, '3/32" = 1\'-0"'], [1 / 192, '1/16" = 1\'-0"']];
 
+// A built-up header or sill seen from the face, part by part (wall inches; a single member is its outline):
+//   - each track's leg (a header's track under it has its legs up, the one over it legs down; a sill's the other way
+//     round): the leg's edge, a visible line;
+//   - each stud's lips: behind its web (box) or behind the tracks' legs, so hidden (dashed), at the lip's depth from the
+//     top and the bottom;
+//   - legs and lips stop at the rough opening's edges: past them, where the member runs over its jamb studs, the
+//     flanges and legs are cut back and only the webs lap the jambs (whose edges are drawn hidden behind: lapLines).
+// opening: the layout opening it frames ({ left, right }), for those edges; without it the lines run its full length.
+const LIP_IN = { 125: 0.1875, 137: 0.375, 162: 0.5, 200: 0.625, 250: 0.625, 300: 0.625, 350: 1 }; // SSMA nominal
+const partOf = (name) => { const r = /^(\d{3,4})([A-Z]{1,3})(\d{3})-\d{2,3}$/.exec(String(name || '').trim().toUpperCase());
+    return r ? { stud: /^(S|CS|CT)$/.test(r[2]), flangeIn: Number(r[3]) / 100, lipIn: LIP_IN[r[3]] ?? 0.5 } : null; };
+const isHeadOrSill = (m) => m.orient === 'h' && (m.role === 'head track' || m.role === 'sill track');
+const inchesText = (v) => { const n = Math.round(v * 16), w = Math.floor(n / 16), f = n % 16; if (!f) return `${w}"`; let a = f, b = 16; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
+const H_OPACITY = 0.6; // tracks, headers and sills: a little see-through, so the studs and jambs they run over show
+export function partLines(m, opening = null) {
+    if (!isHeadOrSill(m) || !m.parts?.length) return [];
+    const parts = m.parts.map(p => ({ qty: p.qty || 1, ...partOf(p.name) })).filter(p => p.flangeIn != null);
+    const studs = parts.filter(p => p.stud), studQty = studs.reduce((n, p) => n + p.qty, 0), tracks = parts.filter(p => !p.stud), trackQty = tracks.reduce((n, p) => n + p.qty, 0);
+    if (!studQty) return [];
+    const x1 = opening ? Math.max(m.x, opening.left) : m.x, x2 = opening ? Math.min(m.x + m.w, opening.right) : m.x + m.w;
+    if (x2 <= x1) return [];
+    const out = [], head = m.role === 'head track', bottom = m.y, top = m.y + m.h;
+    if (trackQty) {
+        const leg = Math.min(tracks[0].flangeIn, m.h / 2), low = bottom + leg, high = top - leg;
+        for (const y of head ? [low, ...(trackQty > 1 ? [high] : [])] : [high, ...(trackQty > 1 ? [low] : [])]) out.push({ x1, y1: y, x2, y2: y, part: 'track leg', hidden: false });
+    }
+    const lip = Math.min(studs[0].lipIn, m.h / 4);
+    for (const y of [bottom + lip, top - lip]) out.push({ x1, y1: y, x2, y2: y, part: 'stud lip', hidden: true });
+    return out;
+}
+export function lapLines(m, members) {
+    if (!isHeadOrSill(m)) return [];
+    const y0 = m.y, y1 = m.y + m.h, out = [];
+    for (const v of members) {
+        if (v.orient !== 'v' || v.y + v.h <= y0 + 1e-6 || v.y >= y1 - 1e-6) continue;
+        for (const x of [v.x, v.x + v.w]) if (x > m.x + 1e-6 && x < m.x + m.w - 1e-6) out.push({ x1: x, y1: Math.max(y0, v.y), x2: x, y2: Math.min(y1, v.y + v.h) });
+    }
+    return out;
+}
+
 export function pickScale(lengthIn, heightIn, maxW = 10.4, maxH = 5.2) {
     const fit = Math.min(maxW / lengthIn, maxH / heightIn);
     return SCALES.find(([s]) => s <= fit) || SCALES[SCALES.length - 1];
@@ -91,10 +131,12 @@ function toSvg(ops, box = null) {
     const body = ops.map(o => {
         if (o.t === 'text') return `<text x="${n(o.x)}" y="${n(o.y)}" font-size="${o.size}" text-anchor="${o.anchor}" font-weight="${o.weight}" fill="${o.fill}"${o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : ''}>${esc(o.s)}</text>`;
         if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
-        if (o.t === 'rect') return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
-        if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}" stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
+        const op = o.opacity != null ? ` fill-opacity="${o.opacity}"` : '';
+        if (o.t === 'rect') return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill}"${op} stroke="${o.stroke}" stroke-width="${o.width}"/>`;
+        if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}"${op} stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
         if (o.t === 'circle') return `<circle cx="${n(o.cx)}" cy="${n(o.cy)}" r="${o.r}" fill="none" stroke="${o.stroke}" stroke-width="${o.width}"/>`;
         if (o.t === 'hit') return `<rect class="prefab-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="#1f5fbf" fill-opacity="0" style="cursor:pointer" data-prefab-step="${esc(o.step)}"><title>${esc(o.title)}</title></rect>`;
+        if (o.t === 'mhit') return `<rect class="member-hit" x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" data-i="${o.i}"><title>${esc(o.title)}</title></rect>`;
         if (o.t === 'image') return o.href ? `<image href="${esc(o.href)}" x="${n(o.x)}" y="${n(o.y)}" width="${o.w}" height="${o.h}" preserveAspectRatio="xMidYMid meet"/>` : '';
         return '';
     }).join('\n');
@@ -121,9 +163,16 @@ export function renderSheet(layout, info) {
 
 // One part of the sheet as its own SVG: 'elevation' (the elevation with its ordinates, levels and context, and the two
 // track plans), for the web view beside the prefab lengths table (core/client/panel.js).
+// Also 'planTop' and 'planBottom' (each track plan with its ordinates), for the workspace's Plan view.
 export function renderSheetRegion(layout, info, region = 'elevation') {
     const ops = sheetOps(layout, info), [x0, y0, x1, y1] = ops.regions[region];
     return toSvg(ops, [x0, y0, x1 - x0, y1 - y0]);
+}
+// The 3D view on its own, at a size of its own (inches; the SVG scales like an image): the sheet's isoView, nothing new.
+export function renderIsoView(layout, { widthIn = 9, heightIn = 6, highlight = null } = {}) {
+    const ops = isoView(layout, { x: 0.15, y: 0.15, w: widthIn - 0.3, h: heightIn - 0.3 }, { highlight });
+    ops.size = { W: widthIn, H: heightIn };
+    return toSvg(ops);
 }
 
 // Vector PDF (bytes). logo: { jpeg: Uint8Array, width, height } in pixels, or null.
@@ -144,7 +193,10 @@ export function sheetOps(layout, info) {
     const [s, scaleLabel] = pickScale(L, HT, areaW - 1.65, maxH); // leaves 0.8" each side for the elevation ordinates
     const tbY = H - 1.45, tbH = 1.2; // title block
     const out = [];
-    const hi = (m) => info.highlight != null && (m.mark === info.highlight || !!m.marks?.includes(info.highlight));
+    // The highlighted marks (one, or several: a selection's members): their members and cut list rows are colored.
+    const hiSet = info.highlight == null ? null : new Set(info.highlight instanceof Set ? info.highlight : [].concat(info.highlight));
+    const hi = (m) => !!hiSet && (hiSet.has(m.mark) || !!m.marks?.some(k => hiSet.has(k)));
+    const hits = []; // info.memberHits (on screen only): a click target over each member, by its index in layout.members
     const tagOf = (m) => (m.marks?.length > 1 ? m.marks.join('+') : m.mark); // a built-up member: every part's label
     const T = layout.top || null, topY = (x) => topAt(T, x, HT); // a sloped top (framing.mjs wallTop)
 
@@ -174,7 +226,7 @@ export function sheetOps(layout, info) {
     for (const c of cutList) {
         const p = info.prefab?.[c.mark], st = prefabState(c, p), y0 = cy;
         if (st) prefabSet = true;
-        row([c.mark, String(c.qty), c.func || '', c.type, fmtFtIn(c.lengthIn), st ? fmtFtIn(p) : ''], false, c.mark === info.highlight ? COLORS.hiRow : 'none',
+        row([c.mark, String(c.qty), c.func || '', c.type, fmtFtIn(c.lengthIn), st ? fmtFtIn(p) : ''], false, hiSet?.has(c.mark) ? COLORS.hiRow : 'none',
             st ? { 5: { fill: PREFAB_COLORS[`${st}Fill`], color: PREFAB_COLORS[st] } } : {});
         // On screen only (info.prefabEdit, never in an export): click the left of the cell for 1/8" shorter, the right
         // for 1/8" longer ('hit' areas the page binds; the PDF skips them).
@@ -236,6 +288,16 @@ export function sheetOps(layout, info) {
         }
         if (issues.length > 8) { ly += 0.12; out.push(text(cx, ly, `+ ${issues.length - 8} MORE (SEE THE PANEL PAGE)`, { size: 0.068, weight: 'bold', fill: '#b00020' })); }
     }
+    // Choices still open (info.unresolved: the resolved plan's needs-resolution messages): the sheet is marked
+    // PRELIMINARY, on screen and in the PDF alike, so it never reads as completed framing.
+    const open = info.unresolved || [];
+    if (open.length) {
+        ly += 0.34;
+        out.push(rect(cx - 0.04, ly - 0.16, tableW + 0.08, 0.23, { fill: '#c25e00', stroke: 'none', width: 0 }));
+        out.push(text(cx + 0.05, ly, `PRELIMINARY - ${open.length} CHOICE${open.length === 1 ? '' : 'S'} OPEN - NOT FOR FABRICATION`, { size: 0.1, weight: 'bold', fill: '#ffffff' }));
+        for (const msg of open.slice(0, 6)) for (const ln of wrap(String(msg).toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#8a4100' })); }
+        if (open.length > 6) { ly += 0.12; out.push(text(cx, ly, `+ ${open.length - 6} MORE`, { size: 0.068, weight: 'bold', fill: '#8a4100' })); }
+    }
 
     // --- 3D view of the panel in the rest of the column, down to the title block (when there is room for it)
     const isoTop = ly + 0.42, isoBottom = tbY - 0.2;
@@ -264,6 +326,7 @@ export function sheetOps(layout, info) {
     };
     const taken = members.filter(m => m.orient === 'h').map(m => textBox(X(m.x + m.w / 2), hTagY(m), tagOf(m), 0.075, 'middle'));
     const isFree = (bx) => !taken.some(t => bx.x0 < t.x1 && t.x0 < bx.x1 && bx.y0 < t.y1 && t.y0 < bx.y1);
+    const ink = []; // what else is drawn in the elevation (tags, notes, dimension lines): the panel mark goes clear of it
     // The first of the candidate spots [x, anchor] where the text misses everything placed so far; null if none.
     const place = (str, size, y, spots) => {
         for (const [x, anchor] of spots) {
@@ -321,25 +384,48 @@ export function sheetOps(layout, info) {
         if (o.requested) { // framed out to the stud layout: the rough opening as asked for, inside
             out.push(rect(X(o.requested.left), Y(o.top), (o.requested.right - o.requested.left) * s, (o.top - o.bottom) * s, { stroke: COLORS.openingDim, width: 0.007 }));
             out.push(text(X(o.requested.left) + 0.04, Y(o.top) + 0.1, `RO ${fmtFtIn(o.requested.right - o.requested.left)}`, { size: 0.06, weight: 'bold', fill: COLORS.openingDim })); // in its corner: clear of the tags on the header and sill
+            ink.push(textBox(X(o.requested.left) + 0.04, Y(o.top) + 0.1, `RO ${fmtFtIn(o.requested.right - o.requested.left)}`, 0.06, 'start'));
+        }
+        // Its size inside it (as typed: the clear opening) and the rough opening as + the framing offset each side.
+        {
+            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, off = o.clear ? Math.round((o.clear.left - o.left) * 16) / 16 : 0;
+            const lines = [o.through ? `${fmtFtIn(w)} WIDE` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`, ...(off > 0 ? [`R.O. +${inchesText(off)}`] : [])];
+            const size = Math.min(0.07, ((o.right - o.left) * s * 0.9) / (Math.max(...lines.map(l => l.length)) * 0.62));
+            if (size >= 0.04) {
+                const cx = X((o.left + o.right) / 2), cy = Y(o.bottom + (o.top - o.bottom) * 0.3);
+                const bw = Math.max(...lines.map(l => textWidth(l, size, true))) + 0.04, bh = lines.length * size * 1.25 + 0.02;
+                out.push(rect(cx - bw / 2, cy - size - 0.01, bw, bh, { fill: '#ffffff', stroke: 'none', width: 0 }));
+                lines.forEach((l, k) => out.push(text(cx, cy + k * size * 1.25, l, { size, anchor: 'middle', weight: k ? 'normal' : 'bold', fill: COLORS.openingDim })));
+                ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - size - 0.01, y1: cy - size - 0.01 + bh });
+            }
         }
         // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
         const kind = openingKind(o);
         if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(OPENING_KINDS[kind], 0.06, true) + 0.08) { // when the name fits across it
             out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(OPENING_KINDS[kind], 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(OPENING_KINDS[kind], 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
             out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), OPENING_KINDS[kind], { size: 0.06, anchor: 'middle', weight: 'bold', fill: COLORS.openingDim }));
+            ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), OPENING_KINDS[kind], 0.06, 'middle'));
         }
     }
     // Members, colored by function like the CAS legend (on screen, info.prefabMembers: a mark with a prefab length in
     // blue when longer, green when shorter)
     const rowOf = new Map(cutList.map(c => [c.mark, c]));
     const prefabOf = (m) => (info.prefabMembers && rowOf.has(m.mark) ? prefabState(rowOf.get(m.mark), info.prefab?.[m.mark]) : null);
-    for (const m of members) {
+    // Headers and sills last: they run over their jamb studs (the jambs' edges dashed behind them), their parts' lines on them.
+    const drawOrder = [...members.entries()].sort(([, a], [, b]) => Number(a.orient === 'h') - Number(b.orient === 'h') || Number(isHeadOrSill(a)) - Number(isHeadOrSill(b)));
+    for (const [i, m] of drawOrder) {
         const st = prefabOf(m);
         const look = hi(m) ? { fill: COLORS.hi, stroke: COLORS.hiStroke, width: 0.012 }
             : st ? { fill: PREFAB_COLORS[`${st}Member`], stroke: PREFAB_COLORS[st], width: 0.012 }
-                : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006 };
+                : { fill: FUNC_COLOR[m.func] || COLORS.stud, stroke: m.orient === 'h' ? COLORS.trackStroke : COLORS.studStroke, width: 0.006, ...(m.orient === 'h' ? { opacity: H_OPACITY } : {}) };
         // Under a sloped top: the member's outline (its top cut to the slope).
         out.push(m.pts ? { t: 'poly', pts: m.pts.map(([x, y]) => [X(x), Y(y)]), ...look } : rect(X(m.x), Y(m.y + m.h), m.w * s, m.h * s, look));
+        for (const l of lapLines(m, members)) out.push(line(X(l.x1), Y(l.y1), X(l.x2), Y(l.y2), { stroke: COLORS.studStroke, width: 0.004, dash: '0.025 0.015' }));
+        for (const l of partLines(m, openings.find(o => o.key && o.key === m.of))) out.push(line(X(l.x1), Y(l.y1), X(l.x2), Y(l.y2), { stroke: look.stroke, width: l.hidden ? 0.004 : 0.005, ...(l.hidden ? { dash: '0.02 0.012' } : {}) }));
+        if (info.memberHits) {
+            const ys = m.pts ? m.pts.map(q => q[1]) : [m.y, m.y + m.h], top = Math.max(...ys), bot = Math.min(...ys), pad = 0.03;
+            hits.push({ t: 'mhit', x: X(m.x) - pad, y: Y(top) - pad, w: m.w * s + 2 * pad, h: (top - bot) * s + 2 * pad, i, title: `${tagOf(m)} · ${m.role} · ${m.type}` });
+        }
     }
     for (const c of layout.clips || []) {
         const w = 1.25, x0 = c.side === 'R' ? c.x : c.x - w;
@@ -362,21 +448,27 @@ export function sheetOps(layout, info) {
         };
         const right = gap(-1) < 0.08 && gap(1) > gap(-1);
         if (level) {
-            out.push(text(right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025, my + 0.025, tagOf(m), { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
+            const tx = right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025;
+            out.push(text(tx, my + 0.025, tagOf(m), { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
+            ink.push(textBox(tx, my + 0.025, tagOf(m), 0.075, right ? 'start' : 'end'));
         } else {
             // Rotated a quarter turn, the letters stand to the left of the baseline.
-            out.push(text(right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, my, tagOf(m), { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
+            const tx = right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, half = textWidth(tagOf(m), 0.075, true) / 2 + 0.02;
+            out.push(text(tx, my, tagOf(m), { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
+            ink.push({ x0: tx - 0.075, x1: tx + 0.02, y0: my - half, y1: my + half });
         }
     }
     // Horizontals: centered on the member (hTagY: outside the panel for its tracks, inside the opening for heads and sills).
     for (const m of members.filter(m => m.orient === 'h')) {
         out.push(text(X(m.x + m.w / 2), hTagY(m), tagOf(m), { size: 0.075, anchor: 'middle', weight: 'bold', fill: hi(m) ? COLORS.hiStroke : COLORS.trackStroke }));
+        ink.push(textBox(X(m.x + m.w / 2), hTagY(m), tagOf(m), 0.075, 'middle'));
     }
     // A sloped top: the height at each peak or break, and each sloped run's pitch along it (a third of the way along,
     // clear of the track's tag in the middle).
     for (const [x, h] of T ? T.slice(1, -1) : []) {
         out.push(line(X(x), Y(h) - 0.05, X(x), Y(h) - 0.13, { stroke: COLORS.dim, width: 0.006 }));
         out.push(text(X(x), Y(h) - 0.16, fmtFtIn(h), { size: 0.08, anchor: 'middle', weight: 'bold', fill: COLORS.dim }));
+        ink.push(textBox(X(x), Y(h) - 0.16, fmtFtIn(h), 0.08, 'middle'));
     }
     for (let i = 1; T && i < T.length; i++) {
         const [x0, h0] = T[i - 1], [x1, h1] = T[i], k = (h1 - h0) / (x1 - x0);
@@ -384,10 +476,6 @@ export function sheetOps(layout, info) {
         const at = x0 + (x1 - x0) / 3;
         out.push(text(X(at), Y(topY(at)) - 0.06, `SLOPE ${pitchText(k)}`, { size: 0.065, anchor: 'middle', rotate: (-Math.atan(k) * 180) / Math.PI, fill: COLORS.dim }));
     }
-    // Panel mark, above mid-height so it does not cover the stud tags there
-    const pmX = X(L / 2), pmY = Y((T ? topY(L / 2) : HT) * 0.72);
-    out.push(rect(pmX - 0.55, pmY - 0.14, 1.1, 0.22, { fill: 'white', stroke: '#000', width: 0.008 }));
-    out.push(text(pmX, pmY + 0.03, info.mark, { size: 0.13, anchor: 'middle', weight: 'bold' }));
 
     // --- Elevation ordinates (Revit style): the elevation of every horizontal member from the base of the wall, on an
     // extension line out past the panel end: tracks at both ends; heads and sills at the end nearer to them.
@@ -414,13 +502,51 @@ export function sheetOps(layout, info) {
             const y = Y(e.y);
             below = Math.abs(lastY - y) < 0.13 ? !below : false; // two close values: one above its line, one below
             lastY = y;
-            if (e.fromX != null) out.push(line(X(e.fromX), y, edge, y, { stroke: COLORS.dim, width: 0.004, dash: '0.03 0.02' })); // across the panel
+            if (e.fromX != null) { // across the panel
+                out.push(line(X(e.fromX), y, edge, y, { stroke: COLORS.dim, width: 0.004, dash: '0.03 0.02' }));
+                ink.push({ x0: Math.min(X(e.fromX), edge), x1: Math.max(X(e.fromX), edge), y0: y - 0.012, y1: y + 0.012 });
+            }
             out.push(line(edge + dir * 0.04, y, edge + dir * reach, y, { stroke: COLORS.dim, width: 0.005 }));
             out.push(text(edge + dir * reach, below ? y + 0.1 : y - 0.03, fmtFtIn(e.y), { size: 0.08, anchor: side === 'left' ? 'start' : 'end', fill: COLORS.dim }));
         }
     };
     ordColumn('left');
     ordColumn('right');
+
+    // Panel mark: where it covers nothing. Inside the panel, nearest the upper middle, clear of every member, tag, note
+    // and dimension line, and of the openings (a smaller size before giving up); then just outside the panel, under it
+    // or over it; then inside over an opening's dashed X; failing all that, the upper middle as before.
+    {
+        const memberBoxes = members.map(m => { const ys = m.pts ? m.pts.map(q => q[1]) : [m.y, m.y + m.h];
+            return { x0: X(m.x) - 0.012, x1: X(m.x + m.w) + 0.012, y0: Y(Math.max(...ys)) - 0.012, y1: Y(Math.min(...ys)) + 0.012 }; });
+        const clipBoxes = (layout.clips || []).map(c => ({ x0: X(c.x) - 0.2, x1: X(c.x) + 0.2, y0: Y(c.y + 1.5) - 0.02, y1: Y(c.y - 1.5) + 0.02 }));
+        const hard = [...taken, ...ink, ...memberBoxes, ...clipBoxes];
+        const soft = openings.map(o => ({ x0: X(o.left), x1: X(o.right), y0: Y(o.top), y1: Y(o.bottom) }));
+        const hit = (b, list) => list.reduce((a, t) => a + Math.max(0, Math.min(b.x1, t.x1) - Math.max(b.x0, t.x0)) * Math.max(0, Math.min(b.y1, t.y1) - Math.max(b.y0, t.y0)), 0);
+        const prefX = X(L / 2), prefY = Y((T ? topY(L / 2) : HT) * 0.72);
+        const boxAt = (cx, cy, w, h) => ({ x0: cx - w / 2, x1: cx + w / 2, y0: cy - h / 2, y1: cy + h / 2 });
+        const search = (size, allowSoft, ys) => {
+            const w = textWidth(info.mark, size, true) + 0.1, h = size + 0.09, step = Math.max(0.025, (X(L) - X(0)) / 160);
+            let best = null;
+            for (const cy of ys(h)) for (let cx = X(0) + w / 2 + 0.02; cx <= X(L) - w / 2 - 0.02; cx += step) {
+                const b = boxAt(cx, cy, w, h);
+                if (T && b.y0 < Math.max(Y(topY((b.x0 - ex) / s)), Y(topY((b.x1 - ex) / s))) + 0.02) continue; // under a sloped top
+                if (hit(b, hard) > 0) continue;
+                const softHit = hit(b, soft);
+                if (softHit > 0 && !allowSoft) continue;
+                const d = (cx - prefX) ** 2 + (cy - prefY) ** 2 + softHit * 40;
+                if (!best || d < best.d) best = { cx, cy, w, h, size, d };
+            }
+            return best;
+        };
+        const inside = (h) => { const list = []; for (let cy = Y(T ? Math.min(...T.map(p => p[1])) : HT) + h / 2 + 0.02; cy <= Y(0) - h / 2 - 0.02; cy += 0.025) list.push(cy); return list; };
+        const outside = (h) => [Y(0) + 0.12 + h / 2, Y(T ? Math.max(...T.map(p => p[1])) : HT) - 0.12 - h / 2];
+        const at = search(0.13, false, inside) || search(0.11, false, inside) || search(0.095, false, inside) || search(0.13, false, outside)
+            || search(0.1, false, outside) || search(0.13, true, inside) || search(0.11, true, inside)
+            || { cx: prefX, cy: prefY, w: textWidth(info.mark, 0.13, true) + 0.1, h: 0.22, size: 0.13 };
+        out.push(rect(at.cx - at.w / 2, at.cy - at.h / 2, at.w, at.h, { fill: 'white', stroke: '#000', width: 0.008 }));
+        out.push(text(at.cx, at.cy + at.size * 0.36, info.mark, { size: at.size, anchor: 'middle', weight: 'bold' }));
+    }
 
     // --- Track plans above and below the elevation, with ordinates from the left end to every stud (and, on the
     // bottom plan, to the edges of every opening).
@@ -431,7 +557,8 @@ export function sheetOps(layout, info) {
     // A C stud in plan: web across the track, flanges along its two faces, lips turned in. The web goes on the side of
     // the opening or panel end the stud closes (jamb and end studs), else on its left face.
     const studSymbol = (m, y0) => {
-        const fw = Math.max(m.w * s, 0.035), inset = stripH * 0.12, top = y0 + inset, bot = y0 + stripH - inset;
+        // The stud fills the track (its depth is the wall's, the track's legs just outside its flanges).
+        const fw = Math.max(m.w * s, 0.035), top = y0, bot = y0 + stripH; // the stud as deep as the track it stands in
         const lip = Math.min(0.03, (bot - top) * 0.22);
         const webRight = webOnRight(m, layout);
         const xw = webRight ? X(m.x + m.w) : X(m.x), xf = webRight ? xw - fw : xw + fw;
@@ -442,8 +569,12 @@ export function sheetOps(layout, info) {
     const ordinate = (x) => fmtFtIn(layout.layoutFromRight && !layout.flipped ? L - x : x);
     const plan = (y0, atTop) => {
         const segs = atTop ? members.filter(m => m.role === 'top track' && (T || m.y + m.h >= HT - 0.01)) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
-        for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke }));
-        for (const m of studsAt(atTop)) out.push(...studSymbol(m, y0));
+        for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke, width: 0.006 }));
+        for (const m of studsAt(atTop)) {
+            out.push(...studSymbol(m, y0));
+            if (hi(m)) out.push(rect(X(m.x) - 0.01, y0 - 0.01, m.w * s + 0.02, stripH + 0.02, { fill: 'none', stroke: COLORS.hiStroke, width: 0.012 }));
+            if (info.memberHits) hits.push({ t: 'mhit', x: X(m.x) - 0.03, y: y0 - 0.02, w: m.w * s + 0.06, h: stripH + 0.04, i: members.indexOf(m), title: `${tagOf(m)} · ${m.role} · ${m.type}` });
+        }
         out.push(text(X(0) - 0.08, y0 + stripH / 2 + 0.03, atTop ? 'TOP' : 'BTM', { size: 0.075, anchor: 'end', weight: 'bold' }));
         // Ordinates: both wall ends, the studs (left face), and on the bottom plan the opening edges. Where two would
         // overlap, the wall end wins, then the opening edge, then the stud.
@@ -485,7 +616,9 @@ export function sheetOps(layout, info) {
     plan(botStrip, false);
 
     // The elevation's region (renderSheetRegion): with its ordinates either side and the track plans' ordinates.
-    out.regions = { elevation: [Math.max(0.25, X(0) - 0.95), Math.max(0.25, topStrip - 0.75), Math.min(W - 0.25, X(L) + 0.95), Math.min(tbY - 0.05, botStrip + stripH + 0.7)] };
+    out.regions = { elevation: [Math.max(0.25, X(0) - 0.95), Math.max(0.25, topStrip - 0.75), Math.min(W - 0.25, X(L) + 0.95), Math.min(tbY - 0.05, botStrip + stripH + 0.7)],
+        planTop: [Math.max(0.25, X(0) - 0.95), Math.max(0.25, topStrip - 0.75), Math.min(W - 0.25, X(L) + 0.95), topStrip + stripH + 0.08],
+        planBottom: [Math.max(0.25, X(0) - 0.95), botStrip - 0.08, Math.min(W - 0.25, X(L) + 0.95), Math.min(tbY - 0.05, botStrip + stripH + 0.58)] }; // the ordinates, not the view title
 
     // View title under the drawing
     const titleY = Math.min(botStrip + stripH + 0.85, tbY - 0.3);
@@ -542,10 +675,16 @@ export function sheetOps(layout, info) {
         if (info.qrUrl) out.push(text(W - 2.77, tbY + 1.1, 'QR CODE: BESIDE THE LEGEND', { size: 0.05, fill: '#555' }));
     }
     out.push(text(W - 1.55, tbY + 0.2, 'SHEET', { size: 0.065, fill: '#555' }));
-    out.push(text(W - 0.95, tbY + 0.7, info.mark, { size: 0.2, anchor: 'middle', weight: 'bold' }));
+    // The mark as large as the cell takes: a long one shrinks, then wraps (up to three lines), never past the border.
+    const markW = 1.25;
+    let ms = 0.2;
+    while (ms > 0.09 && textWidth(info.mark, ms, true) > markW) ms = Math.round((ms - 0.01) * 100) / 100;
+    const markLines = textWidth(info.mark, ms, true) > markW ? wrap(info.mark, ms, markW * 0.92).slice(0, 3) : [info.mark];
+    markLines.forEach((ln, i) => out.push(text(W - 0.95, tbY + 0.7 - (markLines.length - 1) * ms * 0.6 + i * ms * 1.2, ln, { size: ms, anchor: 'middle', weight: 'bold' })));
     out.push(text(W - 0.95, tbY + 0.95, `SCALE ${scaleLabel}`, { size: 0.065, anchor: 'middle' }));
     out.push(text(W - 0.95, tbY + 1.1, size.label, { size: 0.065, anchor: 'middle' }));
 
+    out.push(...hits); // on top of everything, so a click finds the member
     out.size = size; // the sheet these ops are drawn on
     return out;
 }

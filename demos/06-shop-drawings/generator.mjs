@@ -18,7 +18,8 @@
 //   (its jambs moved out to the nearest layout studs, which then serve as its jambs), revit (kept as it came: the model's wall this panel is, its place by the grids;
 //   see docs/panel-exchange.md) }.
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, source, grids, levels, panels: [panel] }.
-import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight } from '../common/framing.mjs';
+import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight, relabel, floor8 } from '../common/framing.mjs';
+import { readExchange } from './exchange.mjs';
 const inchText = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 import { parseDesignator, parseMemberSpec, parseFeetInches } from '../02-takeoff/criteria.mjs';
 
@@ -166,7 +167,30 @@ export const openingBox = (o, H = Infinity) => {
 // MEP opening) and under it (a window, MEP opening or steel penetration), so its frame or sleeve fits. Typed per
 // opening (offsetIn; 0 frames it as typed); these are the defaults.
 export const FRAMING_OFFSETS = { door: 2.25, window: 0.5, mep: 0.5, steel: 0.5 };
-export const offsetOf = (o) => { const v = o?.offsetIn; return v === '' || v == null || !Number.isFinite(Number(v)) ? FRAMING_OFFSETS[kindOf(o)] : Math.max(0, Number(v)); };
+// A model's opening (locked) defaults to 0: its cut in the wall is the rough opening, and the model owns it; an offset
+// typed on it frames wider without changing the opening.
+export const offsetOf = (o) => { const v = o?.offsetIn; return v === '' || v == null || !Number.isFinite(Number(v)) ? (o?.locked ? 0 : FRAMING_OFFSETS[kindOf(o)]) : Math.max(0, Number(v)); };
+// A model's opening smaller than 6" either way (a pipe or conduit penetration): not framed by this tool (the 6" rule
+// stands); reported, with any member it runs into, by the resolved plan (framing-plan.mjs). One typed here is an error.
+export const MIN_FRAMED_OPENING_IN = 6;
+export const isSmallPenetration = (panel, o) => !!(o?.locked && isFromModel(panel)) &&
+    (!(Number(o.widthIn) >= MIN_FRAMED_OPENING_IN) || (kindOf(o) !== 'steel' && !(Number(o.heightIn) >= MIN_FRAMED_OPENING_IN)));
+// Each opening's stable key: a model's opening by its insert's UniqueId (matched by where it is: the rough opening's
+// left and bottom), else by its geometry alone (a model opening with no proven insert: a notch in the outline, or one
+// the export lists without an insert); one added here by its id
+// (or its place in the list, for an opening entered before ids).
+export function openingKeys(panel) {
+    const inserts = isFromModel(panel) && Array.isArray(panel.revit.inserts) ? panel.revit.inserts : [];
+    return (panel.openings || []).map((o, i) => {
+        if (typeof o.key === 'string' && o.key) return o.key; // given by the resolved plan's snapshot (framing-plan.mjs)
+        const bottom = kindOf(o) === 'door' ? 0 : Number(o.sillIn) || 0;
+        if (o.locked && isFromModel(panel)) {
+            const hits = inserts.filter(ins => ins?.uniqueId && Array.isArray(ins.at) && Math.abs(ins.at[0] - o.leftIn) < 1 / 32 && Math.abs(ins.at[1] - bottom) < 1 / 32);
+            return hits.length === 1 ? `insert:${hits[0].uniqueId}` : `geometry:${kindOf(o)}:${round16(o.leftIn)},${round16(bottom)}`;
+        }
+        return o.id ? `opening:${o.id}` : `opening#${i + 1}`;
+    });
+}
 // The rough opening: the opening as typed with its framing offset (what the members frame around).
 export function roughOpening(o, H = Infinity) {
     const b = openingBox(o, H), d = offsetOf(o);
@@ -191,9 +215,12 @@ export function openingFraming(panel, o, H = shapeTop(panel.shape).heightIn) {
     const jamb = specParts(memberFor(panel, o, 'jamb').spec), head = types.includes('head') ? specParts(memberFor(panel, o, 'head').spec) : null;
     const sill = types.includes('sill') ? specParts(memberFor(panel, o, 'sill').spec) : null;
     const plies = Math.max(1, Math.min(4, jamb.studQty || 1));
-    return { offsetIn: offsetOf(o), ro: roughOpening(o, H), plies, jambStyle: JAMB_STYLES[o.jambStyle] ? o.jambStyle : 'box',
-        head: head && { spec: memberFor(panel, o, 'head').spec, style: head.studQty ? (o.headStyle === 'back' ? 'back' : 'box') : 'track', depthIn: head.studQty ? head.depthIn : 0 },
-        sill: sill && { spec: memberFor(panel, o, 'sill').spec, style: sill.studQty ? (o.sillStyle === 'back' ? 'back' : 'box') : 'track', depthIn: sill.studQty ? sill.depthIn : 0 },
+    // ...Set: the arrangement was chosen (Framing details, or the file); otherwise the drawing assumes box and the
+    // resolved plan reports it as unresolved for 2+ studs.
+    return { offsetIn: offsetOf(o), ro: roughOpening(o, H), plies, jambStyle: JAMB_STYLES[o.jambStyle] ? o.jambStyle : 'box', jambStyleSet: !!JAMB_STYLES[o.jambStyle],
+        head: head && { spec: memberFor(panel, o, 'head').spec, style: head.studQty ? (o.headStyle === 'back' ? 'back' : 'box') : 'track', styleSet: o.headStyle === 'box' || o.headStyle === 'back', depthIn: head.studQty ? head.depthIn : 0, parts: specParts(memberFor(panel, o, 'head').spec) },
+        sill: sill && { spec: memberFor(panel, o, 'sill').spec, style: sill.studQty ? (o.sillStyle === 'back' ? 'back' : 'box') : 'track', styleSet: o.sillStyle === 'box' || o.sillStyle === 'back', depthIn: sill.studQty ? sill.depthIn : 0, parts: specParts(memberFor(panel, o, 'sill').spec) },
+        jamb: { spec: memberFor(panel, o, 'jamb').spec, parts: jamb },
         bearing: o.headBearing === 'jacks' && plies >= 2 && head ? 'jacks' : 'between', crippleEnds: !!o.crippleEnds };
 }
 
@@ -352,22 +379,29 @@ export function specText(spec) {
 // What is wrong with a panel's inputs, in plain words: [{ where, message }] (empty: it can be framed).
 export function panelErrors(panel) {
     const errors = [], { lengthIn: L, heightIn: H, top } = shapeTop(panel.shape);
-    const add = (where, message) => errors.push({ where, message });
-    if (!(L >= 12)) add('shape', 'Give the panel a length (at least 1\'-0").');
-    if (!(H >= 12)) add('shape', 'Give the panel a height (at least 1\'-0").');
+    // code: a stable issue code (the resolved plan keeps it); where: shape, members or opening-<index>.
+    const add = (where, message, code = 'input.invalid') => errors.push({ where, message, code });
+    if (!(L >= 12)) add('shape', 'Give the panel a length (at least 1\'-0").', 'input.shape');
+    if (!(H >= 12)) add('shape', 'Give the panel a height (at least 1\'-0").', 'input.shape');
     if (panel.shape?.kind === 'custom') {
         const xs = (panel.shape.points || []).map(p => p[0]);
-        if (xs.some((x, i) => i && x <= xs[i - 1])) add('shape', 'Each point of the top must be further right than the one before it (a step is two panels).');
+        if (xs.some((x, i) => i && x <= xs[i - 1])) add('shape', 'Each point of the top must be further right than the one before it (a step is two panels).', 'input.shape');
     }
-    const m = panel.members || {};
+    const m = panel.members || {}, model = isFromModel(panel);
     const stud = parseMember(m.stud), track = m.track ? parseMember(m.track) : null;
-    if (!stud || !isStud(stud)) add('members', `Can't read the on-center stud "${m.stud || ''}": type an SSMA stud such as 362S162-33.`);
-    if (m.track && !isTrack(track)) add('members', `Can't read the bottom track "${m.track}": type an SSMA track such as 362T125-33.`);
-    if (m.topTrack && !isTrack(parseMember(m.topTrack))) add('members', `Can't read the top track "${m.topTrack}": type an SSMA track such as 362T200-33, or keep it as the bottom track.`);
+    // A model's panel: a member or spacing the model did not give (or gave as something that is not one member, like
+    // VARIES) is never assumed: it waits for a choice here (detailing), and nothing is framed until then.
+    const unresolved = (label, value, example) => (model
+        ? add('members', `The model gives the ${label} as "${value || 'nothing'}": pick the ${label} for this panel (it is not assumed).`, 'detailing.member_unresolved')
+        : add('members', `Can't read the ${label} "${value || ''}": type an SSMA ${example}.`, 'member.unreadable'));
+    if (!stud || !isStud(stud)) unresolved('on-center stud', m.stud, 'stud such as 362S162-33');
+    if (m.track && !isTrack(track)) unresolved('bottom track', m.track, 'track such as 362T125-33');
+    if (m.topTrack && !isTrack(parseMember(m.topTrack))) unresolved('top track', m.topTrack, 'track such as 362T200-33, or keep it as the bottom track');
     const sp = Number(m.spacingIn);
-    if (!(sp >= 4 && sp <= 48)) add('members', 'Stud spacing should be between 4" and 48" (16" o.c. is typical).');
+    if (model && !(sp > 0)) add('members', 'The model\'s export gives no stud spacing: pick the spacing for this panel (it is not assumed).', 'detailing.spacing_missing');
+    else if (!(sp >= 4 && sp <= 48)) add('members', 'Stud spacing should be between 4" and 48" (16" o.c. is typical).', 'member.spacing');
     for (const [k, label] of [['header', 'Headers'], ['jamb', 'Jambs'], ['sill', 'Sills']]) {
-        if (m[k] && !isSame(m[k]) && !specOf(m[k])) add('members', `${label}: can't read "${m[k]}". Type it like (2) 362S162-43 WITH (1) 362T125-43.`);
+        if (m[k] && !isSame(m[k]) && !specOf(m[k])) add('members', `${label}: can't read "${m[k]}". Type it like (2) 362S162-43 WITH (1) 362T125-43.`, 'member.unreadable');
     }
     // One depth through the wall: every track, header, jamb and sill part as deep as the studs.
     if (stud) {
@@ -379,7 +413,7 @@ export function panelErrors(panel) {
         for (const [label, text, k] of named) {
             const parts = (specOf(text)?.parts || []).filter(p => !((k === 'head' || k === 'sill') && isStud(parseMember(p.name))));
             const off = parts.find(p => depthOf(p.name) != null && Math.abs(depthOf(p.name) - stud.depthIn) > 1e-6);
-            if (off) add('members', `The ${label} (${off.name}) is ${fmtFtIn(depthOf(off.name)).replace(/^0'-/, '')} deep but the studs are ${fmtFtIn(stud.depthIn).replace(/^0'-/, '')}: use one depth through the wall.`);
+            if (off) add('members', `The ${label} (${off.name}) is ${fmtFtIn(depthOf(off.name)).replace(/^0'-/, '')} deep but the studs are ${fmtFtIn(stud.depthIn).replace(/^0'-/, '')}: use one depth through the wall.`, 'member.depth_mismatch');
         }
     }
     if (errors.some(e => e.where === 'shape')) return errors;
@@ -387,31 +421,42 @@ export function panelErrors(panel) {
     const boxes = (panel.openings || []).map(o => roughOpening(o, H)); // with their framing offsets
     (panel.openings || []).forEach((o, i) => {
         const n = openingName(panel.openings, i), b = boxes[i], kind = kindOf(o), where = `opening-${i}`;
-        for (const k of OPENING_TYPES[kind].members) if (o[k] && !isSame(o[k]) && !specOf(o[k])) add(where, `${n} ${MEMBER_LABELS[k].toLowerCase()}: can't read "${o[k]}".`);
-        if (!(Number(o.widthIn) >= 6) || (kind !== 'steel' && !(Number(o.heightIn) >= 6))) { add(where, `${n}: give it a width${kind === 'steel' ? '' : ' and a height'} (at least 6").`); return; }
+        for (const k of OPENING_TYPES[kind].members) if (o[k] && !isSame(o[k]) && !specOf(o[k])) add(where, `${n} ${MEMBER_LABELS[k].toLowerCase()}: can't read "${o[k]}".`, 'member.unreadable');
+        if (isSmallPenetration(panel, o)) return; // a model's penetration under 6": not framed; the resolved plan reports it
+        if (!(Number(o.widthIn) >= 6) || (kind !== 'steel' && !(Number(o.heightIn) >= 6))) { add(where, `${n}: give it a width${kind === 'steel' ? '' : ' and a height'} (at least 6").`, 'opening.size'); return; }
         const typed = openingBox(o, H), off = offsetOf(o), withOff = off > 0 ? ` (with its ${inch(off)} framing offset)` : '';
-        if (typed.left < 0 || typed.right > L) add(where, `${n} runs past the ${typed.left < 0 ? 'left' : 'right'} end of the panel.`);
-        else if (b.left < 0 || b.right > L) add(where, `${n}'s rough opening${withOff} runs past the ${b.left < 0 ? 'left' : 'right'} end of the panel: move it in, or make the offset smaller.`);
+        if (typed.left < 0 || typed.right > L) add(where, `${n} runs past the ${typed.left < 0 ? 'left' : 'right'} end of the panel.`, 'opening.bounds');
+        else if (b.left < 0 || b.right > L) add(where, `${n}'s rough opening${withOff} runs past the ${b.left < 0 ? 'left' : 'right'} end of the panel: move it in, or make the offset smaller.`, 'opening.rough_opening_bounds');
         const fr = openingFraming(panel, o, H), headH = Math.max(leg, fr.head?.depthIn || 0), sillH = Math.max(leg, fr.sill?.depthIn || 0);
-        if (o.headBearing === 'jacks' && fr.plies < 2) add(where, `${n}: a header on jack studs needs 2 or more jamb studs each side (one is the jack under it, the next the king).`);
+        if (o.headBearing === 'jacks' && fr.plies < 2) add(where, `${n}: a header on jack studs needs 2 or more jamb studs each side (one is the jack under it, the next the king).`, 'opening.jacks_need_plies');
         if (kind === 'steel') {
             const lowTop = topMin(top, Math.max(0, b.left), Math.min(L, b.right), H);
-            if (lowTop - b.bottom < 6) add(where, `${n}: its sill (${fmtFtIn(typed.bottom)}${off > 0 ? `, ${fmtFtIn(b.bottom)} with its framing offset` : ''}) needs to be at least 6" below the top of the wall (${fmtFtIn(lowTop)} there).`);
+            if (lowTop - b.bottom < 6) add(where, `${n}: its sill (${fmtFtIn(typed.bottom)}${off > 0 ? `, ${fmtFtIn(b.bottom)} with its framing offset` : ''}) needs to be at least 6" below the top of the wall (${fmtFtIn(lowTop)} there).`, 'opening.steel_sill');
         } else {
             const under = underMin(top, Math.max(0, b.left), Math.min(L, b.right), H, leg);
-            if (b.top > under + 1 / 32) add(where, `${n}'s top${withOff ? ` with its framing offset` : ''} (${fmtFtIn(b.top)}) is above the underside of the top track there (${fmtFtIn(under)}).`);
+            if (b.top > under + 1 / 32) add(where, `${n}'s top${withOff ? ` with its framing offset` : ''} (${fmtFtIn(b.top)}) is above the underside of the top track there (${fmtFtIn(under)}).`, 'opening.above_top_track');
             // Its header: a track's leg above the opening, a stud flange past each side, under the top track (or the
             // opening runs up to the top track: no header).
             else if (b.top < under - 1) {
                 const room = underMin(top, Math.max(0, b.left - flange), Math.min(L, b.right + flange), H, leg) - b.top;
-                if (room < headH - 1 / 32) add(where, `${n}: no room for its header under the top track (${inch(Math.max(0, room))} above it, ${inch(headH)} needed${headH > leg ? ` for its ${inch(headH)} deep header` : ''}). Lower it, use a shallower header, or raise it to the top track.`);
+                if (room < headH - 1 / 32) add(where, `${n}: no room for its header under the top track (${inch(Math.max(0, room))} above it, ${inch(headH)} needed${headH > leg ? ` for its ${inch(headH)} deep header` : ''}). Lower it, use a shallower header, or raise it to the top track.`, 'opening.header_room');
             }
         }
-        if (kind !== 'door' && b.bottom < leg + sillH) add(where, `${n}: its sill is too low for a sill${sillH > leg ? ` ${inch(sillH)} deep` : ' track'}${kind === 'steel' ? '' : '; make it a door, or raise the sill'}.`);
+        if (kind !== 'door' && b.bottom < leg + sillH) add(where, `${n}: its sill is too low for a sill${sillH > leg ? ` ${inch(sillH)} deep` : ' track'}${kind === 'steel' ? '' : '; make it a door, or raise the sill'}.`, 'opening.sill_low');
         boxes.forEach((c, j) => {
-            if (j > i && Math.min(b.right, c.right) - Math.max(b.left, c.left) > 0 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
-                add(where, `${n} overlaps ${openingName(panel.openings, j)}.`);
+            if (j <= i || isSmallPenetration(panel, panel.openings[j])) return;
+            if (Math.min(b.right, c.right) - Math.max(b.left, c.left) > 0 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
+                add(where, `${n} overlaps ${openingName(panel.openings, j)}.`, 'opening.overlap');
+                return;
             }
+            // Side by side: the pier between their rough openings must take both openings' jamb studs (each jamb runs the
+            // wall's height, cut around the openings), else they would run into each other. Not when either is framed out to
+            // the stud layout (checked below) or they share a jamb line (stacked: their widths overlap).
+            const [lo, hi, a, z] = b.right <= c.left ? [b, c, o, panel.openings[j]] : [c, b, panel.openings[j], o];
+            const pier = hi.left - lo.right;
+            if (pier < 0 || o.toLayout || panel.openings[j].toLayout) return;
+            const need = (openingFraming(panel, a, H).plies + openingFraming(panel, z, H).plies) * flange;
+            if (pier < need - 1 / 32) add(where, `${openingName(panel.openings, panel.openings.indexOf(a))} and ${openingName(panel.openings, panel.openings.indexOf(z))}: ${inch(pier)} between their rough openings; their jamb studs need ${inch(need)}. Move them apart, or frame them as one opening.`, 'opening.pier_narrow');
         });
     });
     // Openings framed out to the stud layout: the framed opening must not run into another one.
@@ -421,7 +466,7 @@ export function panelErrors(panel) {
             if (!b.requested) return;
             framed.forEach((c, j) => {
                 if (j !== i && Math.min(b.right, c.right) - Math.max(b.left, c.left) > 1 / 16 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
-                    add(`opening-${i}`, `${openingName(panel.openings, i)} framed out to the stud layout runs into ${openingName(panel.openings, j)}: turn off "Jambs on the layout" for one of them, or move it.`);
+                    add(`opening-${i}`, `${openingName(panel.openings, i)} framed out to the stud layout runs into ${openingName(panel.openings, j)}: turn off "Jambs on the layout" for one of them, or move it.`, 'opening.layout_overlap');
                 }
             });
         });
@@ -435,8 +480,8 @@ export function frameInputs(panel) {
     const stud = parseMember(m.stud) || parseMember(DEFAULT_MEMBERS.stud);
     const track = parseMember(m.track) || parseMember(trackFor(stud.name));
     const topTrack = m.topTrack ? parseMember(m.topTrack) : null;
-    const { lengthIn, heightIn, top } = shapeTop(panel.shape);
-    const openings = (panel.openings || []).map(o => {
+    const { lengthIn, heightIn, top } = shapeTop(panel.shape), keys = openingKeys(panel);
+    const openings = (panel.openings || []).map((o, i) => {
         const framing = {};
         for (const k of OPENING_TYPES[kindOf(o)].members) {
             const parts = specOf(memberFor(panel, o, k).spec)?.parts;
@@ -445,12 +490,13 @@ export function frameInputs(panel) {
         const fr = openingFraming(panel, o, heightIn);
         Object.assign(framing, { jambPlies: fr.plies, jambStyle: fr.jambStyle, ...(fr.head?.depthIn ? { headDepthIn: fr.head.depthIn } : {}), ...(fr.sill?.depthIn ? { sillDepthIn: fr.sill.depthIn } : {}),
             ...(fr.bearing === 'jacks' ? { headBearing: 'jacks' } : {}), ...(fr.crippleEnds ? { crippleEnds: true } : {}) });
-        return { ...fr.ro, ...(fr.offsetIn > 0 ? { clear: openingBox(o, heightIn) } : {}), ...(o.toLayout ? { toLayout: true } : {}), framing: { ...framing, source: 'entered' } };
+        return { ...fr.ro, key: keys[i], ...(fr.offsetIn > 0 ? { clear: openingBox(o, heightIn) } : {}), ...(o.toLayout ? { toLayout: true } : {}), framing: { ...framing, source: 'entered' } };
     });
     const inputs = { lengthIn, heightIn, top, openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
-        trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) || 16 };
+        trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) > 0 ? Number(m.spacingIn) : 16 }; // (no spacing: panelErrors stops framing first)
     if (panel.layoutFromRight) inputs.layoutFromRight = true;
     if (panel.flipStuds) inputs.flipStuds = true;
+    if (cutbackOf(panel) != null) inputs.cutbackIn = cutbackOf(panel);
     if (panel.studFlips?.length) inputs.studFlips = [...panel.studFlips];
     const sp = inputs.spacingIn, framedOut = (start) => openingsToLayout(inputs.openings, { L: lengthIn, start, spacing: sp, fromRight: !!panel.layoutFromRight, flange: inputs.flangeIn });
     const start = panel.layoutStartIn > 0 ? panel.layoutStartIn : panel.optimizeOpenings ? bestLayoutStart(inputs, framedOut) : sp;
@@ -467,19 +513,26 @@ const pieces = (lay) => lay.members.filter(m => m.orient === 'v').length;
 // Stud bays wider than the spacing: at each height (every 6"), between neighbouring verticals with no opening between
 // them; a bay beside a jamb may be up to 3" + a flange wider (the engine leaves out a layout stud that close to a jamb).
 // Counted once per pair. A shifted layout never gets more of them than the standard one.
-export function wideBays(lay, spacing, flange = 1.625) {
-    const vs = lay.members.filter(m => m.orient === 'v'), wide = new Set();
+// The bays wider than the spacing (center to center; next to a jamb, the jamb's own width more), checked every 6" up
+// the panel: [{ left, right, widthIn, allowanceIn, members: [layout member indexes] }], left to right.
+export function wideBayList(lay, spacing, flange = 1.625) {
+    const vs = lay.members.map((m, i) => ({ m, i })).filter(({ m }) => m.orient === 'v'), wide = new Map();
     for (let y = 6; y < lay.heightIn - 3; y += 6) {
-        const at = vs.filter(m => m.y <= y && m.y + m.h >= y).map(m => ({ c: m.x + m.w / 2, jamb: m.role === 'jamb stud' })).sort((a, b) => a.c - b.c);
+        const at = vs.filter(({ m }) => m.y <= y && m.y + m.h >= y).map(({ m, i }) => ({ c: m.x + m.w / 2, half: m.w / 2, jamb: m.role === 'jamb stud', i })).sort((a, b) => a.c - b.c || a.i - b.i);
         const gaps = lay.openings.filter(o => o.bottom <= y && o.top >= y);
+        // A header's or sill's band (a header on jack studs sits between the kings, above the opening): no stud belongs there.
+        const bands = lay.members.filter(m => (m.role === 'head track' || m.role === 'sill track') && m.y <= y && m.y + m.h >= y);
         for (let i = 1; i < at.length; i++) {
-            const a = at[i - 1], b = at[i];
+            const a = at[i - 1], b = at[i], allowanceIn = a.jamb || b.jamb ? 3 + flange : 0;
             if (gaps.some(o => o.left >= a.c - 1e-6 && o.right <= b.c + 1e-6)) continue;
-            if (b.c - a.c > spacing + (a.jamb || b.jamb ? 3 + flange : 0) + 1 / 16) wide.add(`${a.c.toFixed(2)}|${b.c.toFixed(2)}`);
+            if (bands.some(m => m.x <= a.c + a.half + 1e-6 && m.x + m.w >= b.c - b.half - 1e-6)) continue; // face to face
+            const key = `${a.c.toFixed(2)}|${b.c.toFixed(2)}`;
+            if (b.c - a.c > spacing + allowanceIn + 1 / 16 && !wide.has(key)) wide.set(key, { left: a.c, right: b.c, widthIn: b.c - a.c, allowanceIn, members: [a.i, b.i] });
         }
     }
-    return wide.size;
+    return [...wide.values()].sort((p, q) => p.left - q.left || p.right - q.right);
 }
+export const wideBays = (lay, spacing, flange = 1.625) => wideBayList(lay, spacing, flange).length;
 const layoutCost = (lay, sp) => (lay.issues.length ? 1e9 : 0) + wideBays(lay, sp) * 1e6 + pieces(lay) * 1000 + lay.members.filter(m => m.orient === 'v').reduce((n, m) => n + m.lengthIn, 0) / 12;
 const bestCache = new Map();
 // openingsFor(start): the openings for a layout starting there (those framed out to the layout move with it).
@@ -531,9 +584,93 @@ export function toLayoutEffect(panel, i) {
 export const toLayoutSaving = (panel, i) => toLayoutEffect(panel, i).pieces;
 
 // The panel framed: the layout as drawn (side B: mirrored), with a note for each built-up opening member.
+// --- Member keys: one stable name per physical member of a layout (the resolved plan's memberKey) -------------------
+// From the engine's tags (end stud, jamb ply, cripple at an end, a stud on the layout, a track, a header or sill); the
+// pieces of one vertical numbered bottom to top, of one horizontal left to right. A member placed by hand keeps the key
+// it was given (m.key).
+export function memberKeysOf(members) {
+    const base = (m) => {
+        if (m.orient === 'v') {
+            if (m.end) return `end:${m.end}`;
+            if (m.jamb) return `${m.of ?? 'opening'}:jamb:${m.jamb}:ply${m.ply || 1}`;
+            if (m.crippleEnd) return `${m.of ?? 'opening'}:cripple-end:${m.crippleEnd}`;
+            if (m.layout != null) return `layout:${m.layout}`;
+            return `vertical@${m.x}`;
+        }
+        if (m.role === 'bottom track') return 'track:bottom';
+        if (m.role === 'top track') return 'track:top';
+        if (m.role === 'head track') return `${m.of ?? 'opening'}:head`;
+        if (m.role === 'sill track') return `${m.of ?? 'opening'}:sill`;
+        return `${m.role}@${m.x},${m.y}`;
+    };
+    const keys = members.map(m => m.key || null), groups = new Map();
+    members.forEach((m, i) => { if (keys[i]) return; const b = base(m); (groups.get(b) || groups.set(b, []).get(b)).push(i); });
+    for (const [b, list] of groups) {
+        if (list.length === 1) { keys[list[0]] = b; continue; }
+        const sorted = [...list].sort((a, c) => (members[a].orient === 'h' ? members[a].x - members[c].x : members[a].y - members[c].y) || a - c);
+        sorted.forEach((idx, n) => { keys[idx] = `${b}:${members[idx].orient === 'h' ? '' : 'p'}${n + 1}`; });
+    }
+    return keys;
+}
+
+// --- Manual edits: members unlocked and placed by hand ------------------------------------------------------------------
+// panel.manual = { members: { [memberKey]: { x, y, w, h } | { deleted: true } }, added: [{ id, from, x, y, w, h, mirrored }] }
+// (side A, wall inches). An unlocked member keeps the place and size given here and no longer follows the framing rules;
+// its type, role and size follow the panel as usual. A copy is a member like the one it was copied from (from), placed
+// here; mirrored, it faces the other way. Everything else is framed as usual. An edit whose member is not in the layout
+// any more (the panel changed under it) is not applied: reported (layout.manual.stale), never guessed onto another.
+const MANUAL_ID = /^[a-z0-9-]{1,24}$/i;
+const box16 = (b) => Object.fromEntries(['x', 'y', 'w', 'h'].map(k => [k, round16(Number(b[k]))]));
+const okBox = (b) => !!b && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(Number(b[k]))) && Number(b.w) > 0 && Number(b.h) > 0;
+export function cleanManual(m) {
+    if (!m || typeof m !== 'object') return null;
+    const members = {};
+    for (const [k, v] of Object.entries(m.members || {})) {
+        if (!k || k.length > 120) continue;
+        if (v?.deleted === true) members[k] = { deleted: true };
+        else if (okBox(v)) members[k] = box16(v);
+    }
+    const added = (Array.isArray(m.added) ? m.added : []).filter(a => MANUAL_ID.test(String(a?.id || '')) && typeof a.from === 'string' && a.from && okBox(a))
+        .map(a => ({ id: String(a.id), from: a.from, ...box16(a), ...(a.mirrored ? { mirrored: true } : {}) }));
+    return Object.keys(members).length || added.length ? { members, ...(added.length ? { added } : {}) } : null;
+}
+// A member at another place and size: its outline (a sloped piece's points) moved with it, its cut length changed by
+// what its length changed (the engine's own allowance kept).
+function placed(m, b) {
+    const dx = b.x - m.x, dy = b.y - m.y, grow = m.orient === 'v' ? b.h - m.h : b.w - m.w;
+    return { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
+}
+export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
+    const keys = memberKeysOf(layout.members);
+    layout.members.forEach((m, i) => { m.key = keys[i]; });
+    const edits = cleanManual(manual);
+    if (!edits) return layout;
+    const byKey = new Map(layout.members.map(m => [m.key, m])), stale = [], members = [];
+    for (const m of layout.members) {
+        const e = edits.members[m.key];
+        if (!e) members.push(m);
+        else if (!e.deleted) members.push({ ...placed(m, e), manual: 'moved' });
+    }
+    for (const k of Object.keys(edits.members)) if (!byKey.has(k)) stale.push({ key: k, message: `${k} was edited by hand but is no longer in the framing (the panel changed): the edit is not applied.` });
+    for (const a of edits.added || []) {
+        const src = byKey.get(a.from);
+        if (!src) { stale.push({ key: `manual:${a.id}`, message: `A copy of ${a.from} was added by hand, but ${a.from} is no longer in the framing: the copy is not applied.` }); continue; }
+        const copy = { ...placed(src, a), key: `manual:${a.id}`, manual: 'added', from: a.from };
+        delete copy.full; // a piece of its own: never the full height by rule
+        if (a.mirrored) copy.flipWeb = !src.flipWeb;
+        members.push(copy);
+    }
+    layout.members = members;
+    relabel(layout, { flangeIn });
+    const n = members.filter(m => m.manual).length, gone = Object.values(edits.members).filter(e => e.deleted).length;
+    layout.manual = { count: n, deleted: gone, stale };
+    if (n || gone) layout.notes.push(`Placed by hand: ${n} member${n === 1 ? '' : 's'}${gone ? `, ${gone} removed` : ''} (they do not follow the framing rules).`);
+    return layout;
+}
+
 export function panelLayout(panel) {
     const inputs = frameInputs(panel);
-    const layout = frameWall(inputs);
+    const layout = applyManual(frameWall(inputs), panel.manual, { flangeIn: inputs.flangeIn });
     const builtUp = new Set();
     (panel.openings || []).forEach((o) => {
         const type = OPENING_TYPES[kindOf(o)];
@@ -639,10 +776,13 @@ function unlinked(panel) {
 
 // A new panel: the previous one's level, wall type, group, shape and members (the next mark), so a run of similar
 // panels is quick to enter; the first one a plain 10 ft x 10 ft wall. Never linked to a model's wall.
+// Studs cut back where they meet the tracks, headers and sills (a new panel's; the engine's own is its 1/16" seat).
+export const NEW_CUTBACK_IN = 1 / 32;
+export const cutbackOf = (panel) => (Number.isFinite(Number(panel?.cutbackIn)) && Number(panel.cutbackIn) >= 0 && Number(panel.cutbackIn) <= 1 ? Number(panel.cutbackIn) : null);
 export function newPanel(prev = null, marks = []) {
     let mark = prev ? nextMark(prev.mark) : 'P-101';
     while (marks.includes(mark)) mark = nextMark(mark);
-    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
+    if (!prev) return { id: rid(), mark, level: '', wallType: '', group: '', sideB: false, optimizeOpenings: false, cutbackIn: NEW_CUTBACK_IN, shape: { kind: 'rect', lengthIn: 120, heightIn: 120 }, openings: [], members: { ...DEFAULT_MEMBERS } };
     const { layoutStartIn, ...rest } = unlinked(prev);
     return { ...rest, id: rid(), mark, openings: [] };
 }
@@ -661,10 +801,17 @@ export function assignMembers(panels, ids, members) {
 
 // The set as a JSON file, and a file read back (this format; or a plain list of panels or of wall outlines, e.g. from a
 // model export: { mark, outline: [[x, y], ...], openings, members }). Returns { set, warnings }.
+// Unknown fields (a newer exporter's, or namespaced extensions) ride along untouched: the set's, each panel's and each
+// opening's (extra); the fields this tool knows always win.
 export function exportSet(set, { framing = true } = {}) {
     const context = Object.fromEntries(['source', 'grids', 'levels'].filter(k => set[k] != null).map(k => [k, structuredClone(set[k])]));
-    return { format: FORMAT, version: VERSION, project: set.project || '', drawnBy: set.drawnBy || '', savedAt: new Date().toISOString(), ...context,
-        panels: (set.panels || []).map(p => { const c = cleanPanel(p); return framing ? { ...c, framing: framingOf(c) } : c; }) };
+    return { ...structuredClone(set.extra || {}), format: FORMAT, version: VERSION, project: set.project || '', drawnBy: set.drawnBy || '', savedAt: new Date().toISOString(), ...context,
+        panels: (set.panels || []).map(p => { const c = exportPanel(p); return framing ? { ...c, framing: framingOf(p) } : c; }) };
+}
+// One panel as written to a file: its unknown fields back where they came from.
+export function exportPanel(panel) {
+    const { extra, ...c } = cleanPanel(panel);
+    return { ...structuredClone(extra || {}), ...c, openings: c.openings.map(({ extra: oe, ...o }) => ({ ...structuredClone(oe || {}), ...o })) };
 }
 // A panel's framing as this tool lays it out (side A; inches from the left end and the bottom), for the model side to
 // compare with or place from; ignored when read back (it is computed again). null when the inputs need fixing.
@@ -679,31 +826,70 @@ export function framingOf(panel) {
         cutList: lay.cutList.map(({ mark, qty, type, lengthIn, func }) => ({ mark, qty, type, lengthIn, func })), issues: lay.issues.map(i => i.message),
         ...(() => { const c = placeClips(lay, panel.clips); return c.clips.length ? { clips: c.clips.map(({ i, ...k }) => ({ ...k, member: lay.members[k.member]?.mark || '' })), clipList: c.clipList } : {}; })() };
 }
+// A cas-panel-shops file (format given) is read strictly: version 1, inches, internal or shared coordinates, else it is
+// refused (nothing half-read). A file without a format (hand-written, or a plain list of walls) is read forgivingly.
+const ROOT_KEYS = new Set(['format', 'version', 'project', 'drawnBy', 'savedAt', 'source', 'grids', 'levels', 'panels', 'walls']);
 export function importSet(json) {
     const warnings = [];
-    const data = typeof json === 'string' ? JSON.parse(json) : json;
+    const parsed = typeof json === 'string' ? JSON.parse(json) : json;
+    // A cas-panel-shops file goes through the strict boundary (exchange.mjs): refused whole with the reason.
+    const strict = parsed && !Array.isArray(parsed) && parsed.format != null;
+    if (strict) { try { readExchange(typeof json === 'string' ? json : parsed); } catch (e) { throw new Error(`${e.message} This file was not read.`); } }
+    const data = parsed;
     const list = Array.isArray(data) ? data : Array.isArray(data?.panels) ? data.panels : Array.isArray(data?.walls) ? data.walls : null;
     if (!list) throw new Error('No panels in this file (expected "panels": [...]).');
-    if (data?.format && data.format !== FORMAT) warnings.push(`This file says it is "${data.format}", not ${FORMAT}; read what could be read.`);
     const panels = [];
     list.forEach((raw, i) => {
         const name = `Panel ${i + 1}${raw?.mark ? ` (${raw.mark})` : ''}`;
-        if (raw?.outline) { // a wall outline: its notches are its doors and steel penetrations
+        // A wall outline alone (fresh from the model's exporter): its notches are its doors and steel penetrations. A panel
+        // with a shape too was written by this tool: its shape and openings are as edited; the outline is kept as the
+        // model's own geometry (read again it would add its notches twice).
+        if (raw?.outline && !raw?.shape) {
             const r = perimeterToPanel(raw.outline);
             if (r.errors.length) { warnings.push(`${name}: ${r.errors[0]} Skipped.`); return; }
             const fromModel = raw.revit && typeof raw.revit === 'object';
-            panels.push(cleanPanel({ ...raw, shape: r.shape, openings: [...r.openings, ...(raw.openings || [])].map(o => (fromModel ? { ...o, locked: true } : o)) }));
+            panels.push(cleanPanel({ ...raw, provenance: provenanceOf(raw), shape: r.shape, openings: [...r.openings, ...(raw.openings || [])].map(o => (fromModel ? { ...o, locked: true } : o)) }));
             return;
         }
         if (!raw?.shape) { warnings.push(`${name}: no shape or outline; skipped.`); return; }
-        panels.push(cleanPanel(raw));
+        panels.push(cleanPanel({ ...raw, provenance: raw.provenance || provenanceOf(raw) }));
     });
     const context = Object.fromEntries(['source', 'grids', 'levels'].filter(k => data?.[k] != null).map(k => [k, structuredClone(data[k])])); // a model's export: kept for the trip back
-    return { set: { project: String(data?.project || ''), drawnBy: String(data?.drawnBy || ''), ...context, panels }, warnings };
+    const extra = data && !Array.isArray(data) ? Object.fromEntries(Object.entries(data).filter(([k]) => !ROOT_KEYS.has(k)).map(([k, v]) => [k, structuredClone(v)])) : {};
+    return { set: { project: String(data?.project || ''), drawnBy: String(data?.drawnBy || ''), ...context, ...(Object.keys(extra).length ? { extra } : {}), panels }, warnings };
+}
+// Where each member setting of a panel read from a file came from: 'source' (the model gave a readable value), 'missing'
+// (it gave none: a stud or spacing is then never assumed), 'unresolved' (it gave something that is not one member, like
+// VARIES), 'inherit' (blank: a track follows the stud). A panel typed here has none ('default' / 'user' as edited).
+export function provenanceOf(raw) {
+    if (!(raw?.revit && typeof raw.revit === 'object')) return undefined;
+    const m = raw.members || {}, out = {};
+    for (const k of ['stud', 'track', 'topTrack']) {
+        const v = String(m[k] ?? '').trim();
+        out[k] = !v ? (k === 'stud' ? 'missing' : 'inherit') : parseMember(v) ? 'source' : 'unresolved';
+    }
+    out.spacingIn = Number(m.spacingIn) > 0 ? 'source' : 'missing';
+    return out;
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-// A panel with only the fields this tool uses, lengths as inches (typed text like 10'-6" is read too).
+const PANEL_KEYS = new Set(['id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+    'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
+const OPENING_KEYS = new Set(['id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
+    'headBearing', 'crippleEnds', 'extra']);
+const extrasOf = (obj, known) => ({ ...(obj?.extra && typeof obj.extra === 'object' ? structuredClone(obj.extra) : {}),
+    ...Object.fromEntries(Object.entries(obj || {}).filter(([k]) => !known.has(k)).map(([k, v]) => [k, structuredClone(v)])) });
+const PROVENANCE = new Set(['source', 'missing', 'unresolved', 'inherit', 'user', 'default', 'style']);
+// An engineering style a panel or opening was given from the catalog (style-catalog.mjs): known by its KEY_ID and the row
+// revision applied, in its catalog; the display code is for people. Anything else is dropped (never guessed into one).
+const GUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+export function cleanBinding(b) {
+    if (!b || typeof b !== 'object' || !GUID_RE.test(b.catalogId || '') || !GUID_RE.test(b.keyId || '') || !(Number.isSafeInteger(b.rowRevision) && b.rowRevision > 0)) return null;
+    return { catalogId: b.catalogId.toLowerCase(), keyId: b.keyId.toLowerCase(), rowRevision: b.rowRevision, displayCode: String(b.displayCode ?? '').slice(0, 200) };
+}
+// A panel with only the fields this tool uses, lengths as inches (typed text like 10'-6" is read too). Unknown fields
+// are kept in extra (exportPanel writes them back). A model's panel keeps its outline as the model gave it, and its
+// spacing stays empty when the model gave none (never the 16" of a new panel).
 export function cleanPanel(p = {}) {
     const s = p.shape || {}, kind = SHAPES.some(k => k.kind === s.kind) ? s.kind : 'rect';
     const shape = { kind, lengthIn: len(s.lengthIn) ?? 120 };
@@ -712,23 +898,38 @@ export function cleanPanel(p = {}) {
     if (kind === 'gable') { shape.peakIn = len(s.peakIn) ?? shape.leftIn + 24; shape.peakAtIn = len(s.peakAtIn) ?? shape.lengthIn / 2; }
     if (kind === 'custom') shape.points = (s.points || []).map(pt => [len(pt?.[0]) ?? 0, len(pt?.[1]) ?? 0]);
     const str = (v, n = 80) => String(v ?? '').trim().slice(0, n);
+    const model = !!(p.revit && typeof p.revit === 'object');
     const members = { ...DEFAULT_MEMBERS, ...Object.fromEntries(Object.entries(p.members || {}).map(([k, v]) => [k, k === 'spacingIn' ? Number(v) || 16 : str(v)])) };
+    if (model && !(Number(p.members?.spacingIn) > 0)) members.spacingIn = null;
+    if (model && !String(p.members?.stud ?? '').trim()) members.stud = '';
+    const provenance = p.provenance && typeof p.provenance === 'object'
+        ? Object.fromEntries(Object.entries(p.provenance).filter(([k, v]) => ['stud', 'track', 'topTrack', 'spacingIn'].includes(k) && PROVENANCE.has(v))) : null;
+    const extra = extrasOf(p, PANEL_KEYS);
     return {
         id: str(p.id, 40) || rid(), mark: str(p.mark, 40) || 'P-101', level: str(p.level), wallType: str(p.wallType, 120), group: str(p.group), sideB: !!p.sideB,
         optimizeOpenings: !!p.optimizeOpenings, // the opening optimizer: off unless asked for
-        ...(Number(p.layoutStartIn) > 0 ? { layoutStartIn: round16(Number(p.layoutStartIn)) } : {}), ...(p.layoutFromRight ? { layoutFromRight: true } : {}), ...(p.flipStuds ? { flipStuds: true } : {}),
+        ...(Number(p.layoutStartIn) > 0 ? { layoutStartIn: round16(Number(p.layoutStartIn)) } : {}), ...(p.layoutFromRight ? { layoutFromRight: true } : {}), ...(p.flipStuds ? { flipStuds: true } : {}), ...(cutbackOf(p) != null ? { cutbackIn: Math.round(cutbackOf(p) * 64) / 64 } : {}),
         ...(Array.isArray(p.studFlips) && p.studFlips.length ? { studFlips: [...new Set(p.studFlips.map(Number).filter(Number.isFinite).map(round16))] } : {}),
         ...(Array.isArray(p.clips) && p.clips.length ? { clips: p.clips.filter(c => Number.isFinite(len(c?.x)) && Number.isFinite(len(c?.y))).map(c => ({ type: str(c.type, 60) || CLIP_TYPES[0], x: round16(len(c.x)), y: round16(len(c.y)) })) } : {}),
         ...(p.revit && typeof p.revit === 'object' ? { revit: structuredClone(p.revit) } : {}), // the model's wall: kept as it came, for the trip back
+        ...(model && Array.isArray(p.outline) ? { outline: p.outline.map(pt => [Number(pt?.[0]), Number(pt?.[1])]) } : {}),
+        ...(provenance && Object.keys(provenance).length ? { provenance } : {}), ...(Object.keys(extra).length ? { extra } : {}),
+        ...(cleanBinding(p.style) ? { style: cleanBinding(p.style) } : {}), ...(cleanManual(p.manual) ? { manual: cleanManual(p.manual) } : {}),
+        ...(p.context && typeof p.context === 'object' ? { context: structuredClone(p.context) } : {}), // level and grid lines (context-lines.mjs: drawing only)
+        ...(p.styleQuery && (str(p.styleQuery.finish) || str(p.styleQuery.depthCode)) ? { styleQuery: { finish: str(p.styleQuery.finish), depthCode: str(p.styleQuery.depthCode, 8) } } : {}),
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
         openings: (p.openings || []).map(o => {
             const kind = kindOf(o), size = OPENING_TYPES[kind].size, H = shapeTop(shape).heightIn;
-            return { kind, leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? size.widthIn, heightIn: kind === 'steel' ? 0 : len(o?.heightIn) ?? size.heightIn,
+            const oe = extrasOf(o, OPENING_KEYS);
+            return { ...(o?.id ? { id: str(o.id, 40) } : {}), kind, leftIn: len(o?.leftIn) ?? 0, widthIn: len(o?.widthIn) ?? size.widthIn, heightIn: kind === 'steel' ? 0 : len(o?.heightIn) ?? size.heightIn,
                 sillIn: kind === 'door' ? 0 : len(o?.sillIn) ?? size.sillIn ?? Math.max(0, H - 24),
                 head: kind === 'steel' ? '' : str(o?.head), jamb: str(o?.jamb), sill: kind === 'door' ? '' : str(o?.sill), ...(o?.locked && p.revit ? { locked: true } : {}), ...(o?.toLayout ? { toLayout: true } : {}),
                 ...(o?.offsetIn !== '' && o?.offsetIn != null && Number.isFinite(len(o.offsetIn)) ? { offsetIn: round16(Math.max(0, len(o.offsetIn))) } : {}),
-                ...(JAMB_STYLES[o?.jambStyle] && o.jambStyle !== 'box' ? { jambStyle: o.jambStyle } : {}), ...(o?.headStyle === 'back' && kind !== 'steel' ? { headStyle: 'back' } : {}),
-                ...(o?.sillStyle === 'back' && kind !== 'door' ? { sillStyle: 'back' } : {}), ...(o?.headBearing === 'jacks' && kind !== 'steel' ? { headBearing: 'jacks' } : {}), ...(o?.crippleEnds ? { crippleEnds: true } : {}) };
+                // An arrangement given (box included) is a choice made: kept, so it is not mistaken for the drawing's assumption.
+                ...(JAMB_STYLES[o?.jambStyle] ? { jambStyle: o.jambStyle } : {}), ...((o?.headStyle === 'back' || o?.headStyle === 'box') && kind !== 'steel' ? { headStyle: o.headStyle } : {}),
+                ...((o?.sillStyle === 'back' || o?.sillStyle === 'box') && kind !== 'door' ? { sillStyle: o.sillStyle } : {}), ...(o?.headBearing === 'jacks' && kind !== 'steel' ? { headBearing: 'jacks' } : {}), ...(o?.crippleEnds ? { crippleEnds: true } : {}),
+                ...((kind === 'door' || kind === 'window') && cleanBinding(o?.style) ? { style: cleanBinding(o.style) } : {}),
+                ...(Object.keys(oe).length ? { extra: oe } : {}) };
         }),
     };
 }
@@ -753,7 +954,7 @@ export function encodePanel(panel) {
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
         trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : '',
             o.offsetIn ?? '', o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : ''])), '', p.optimizeOpenings ? 1 : '',
-        p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '']);
+        p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '']);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -763,8 +964,8 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = []] = data;
-    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn,
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = ''] = data;
+    return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn, ...(cutbackIn === '' ? {} : { cutbackIn }),
         clips: Array.isArray(clips) ? clips.map(([type, x, y]) => ({ type, x, y })) : [], studFlips: Array.isArray(studFlips) ? studFlips : [],
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),

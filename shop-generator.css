@@ -295,5 +295,182 @@ ul.errors { margin: 6px 0 0; padding-left: 20px; color: var(--warn); }
 .fd-ro { fill: none; stroke: #a01818; stroke-width: 1.4px; stroke-dasharray: 5 3; }
 .fd-clear { fill: rgba(27,106,165,.06); stroke: #1b6aa5; stroke-width: 1px; }
 .fd-floor { stroke: #777; stroke-width: 1px; }
+.fd-part { stroke: #6b2e1f; stroke-width: 1px; }
+.fd-hidden { stroke: #333; stroke-width: 1px; stroke-dasharray: 4 3; }
 .fd-foot { display: flex; align-items: center; gap: 8px; padding: 10px 14px; border-top: 1px solid var(--line); }
 @media (max-width: 820px) { .fd-body { grid-template-columns: 1fr; } .fd-svg svg { height: 40vh; } }
+/* The opening's drawings: Opening (the elevation above), Header, Jambs, Sill (details.mjs: as an engineer details them). */
+.fd-tabs { display: flex; flex-wrap: wrap; gap: 4px; }
+.fd-tabs button { padding: 4px 12px; font-size: 13px; border-radius: 6px; border: 1px solid var(--line); background: #fff; color: var(--ink); }
+.fd-tabs button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fd-detail { display: flex; flex-direction: column; gap: 8px; max-height: min(62vh, 600px); overflow: auto; }
+.dt-pair { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+.dt-pair.one { grid-template-columns: minmax(0, 1fr); }
+.dt-fig { margin: 0; border: 1px solid var(--line); border-radius: 6px; background: #fff; padding: 6px 8px; min-width: 0; }
+.dt-fig figcaption { font-weight: 700; font-size: 12px; letter-spacing: .02em; text-transform: uppercase; text-decoration: underline; text-align: center; margin-bottom: 4px; }
+.dt-svg { display: block; width: 100%; height: auto; max-height: 330px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+.dt-pair.one .dt-svg { max-height: 300px; }
+.dt-notes { margin: 6px 0 0; padding-left: 18px; font-size: 11.5px; line-height: 1.35; color: #333; }
+.dt-stud, .dt-jamb-c { fill: none; stroke: #111; stroke-linejoin: miter; }
+.dt-track { fill: none; stroke: #9a7400; stroke-linejoin: miter; }
+.dt-svg .dt-finish, .dt-svg .dt-beyond, .dt-svg .dt-dim line, .dt-svg .dt-leader, .dt-svg .dt-key, .dt-svg .dt-v, .dt-svg .dt-jamb, .dt-svg .dt-head, .dt-svg .dt-leg,
+.dt-svg .dt-hidden, .dt-svg .dt-ro, .dt-svg .dt-cut, .dt-svg .dt-clash, .dt-svg .dt-screw line { vector-effect: non-scaling-stroke; }
+.dt-finish { fill: none; stroke: #8b8f94; stroke-width: 1px; stroke-dasharray: 6 4; }
+.dt-beyond { stroke: #6b7076; stroke-width: 1px; stroke-dasharray: 8 5; }
+.dt-dim line { stroke: #1f5fbf; stroke-width: 1px; }
+.dt-dim text { fill: #1f5fbf; }
+.dt-leader { stroke: #666; stroke-width: .8px; }
+.dt-key { fill: #fff; stroke: #111; stroke-width: 1.1px; }
+.dt-keyn { fill: #111; font-weight: 700; }
+.dt-screw line { stroke: #b00020; stroke-width: 1.6px; }
+.dt-v { fill: #fff; stroke: #333; stroke-width: 1px; }
+.dt-jamb { fill: #9fc0de; stroke: #333; stroke-width: 1px; }
+.dt-head { fill: #f4a7a0; stroke: #111; stroke-width: 1.4px; }
+.dt-leg { stroke: #111; stroke-width: 1px; }
+.dt-hidden { stroke: #111; stroke-width: 1px; stroke-dasharray: 5 3; }
+.dt-ro { fill: none; stroke: #a01818; stroke-width: 1.2px; stroke-dasharray: 6 4; }
+.dt-cut { stroke: #111; stroke-width: 1.2px; stroke-dasharray: 9 4; }
+.dt-cutbar { fill: #111; }
+.dt-cutn { font-weight: 700; fill: #111; }
+.dt-clash { fill: rgba(176, 0, 32, .12); stroke: #b00020; stroke-width: 1.4px; }
+.dt-label { fill: #a01818; }
+.dt-arr { margin: 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.dt-arr button { padding: 2px 8px; font-size: 12px; }
+.dt-choose > p { margin: 0 0 8px; font-size: 13px; }
+.dt-opts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+.dt-opt { margin: 0; display: flex; flex-direction: column; gap: 4px; padding: 6px; border: 1.5px dashed #c25e00; border-radius: 6px;
+    background: repeating-linear-gradient(135deg, #fff 0 10px, #fff6ee 10px 20px); }
+.dt-opt .dt-svg { max-height: 200px; opacity: .9; }
+.dt-opt figcaption { font-size: 12.5px; }
+.dt-caveat { margin: 0; font-size: 11.5px; color: var(--muted); }
+.dt-bad { margin: 0; color: var(--warn); font-weight: 600; font-size: 12.5px; }
+@media (max-width: 820px) { .dt-pair { grid-template-columns: minmax(0, 1fr); } }
+
+/* The resolved plan's notes under the sheet's check; the import choice. */
+.plan-notes { list-style: none; margin: 4px 0 8px; padding: 0; font-size: 13.5px; }
+.plan-notes li { padding: 3px 8px; border-left: 3px solid #c9a227; margin: 2px 0; background: #fffaf0; }
+.plan-notes li.needs-resolution { border-left-color: #d2691e; background: #fff4ec; }
+.plan-notes li b { margin-right: 6px; }
+.import-dialog { border: 0; border-radius: 10px; padding: 14px 16px; max-width: 520px; box-shadow: 0 18px 60px rgba(0,0,0,.35); }
+.import-dialog::backdrop { background: rgba(20, 30, 40, .45); }
+.import-dialog .row { gap: 8px; align-items: center; }
+.sk-op.small rect { fill: #ffebee; stroke: #c62828; stroke-width: 2px; stroke-dasharray: 2 2; }
+
+/* Framing details, simple: a profile per member (glyph, list, what it comes to); the detailed editor only for Custom. */
+.fd-simple .fd-body { grid-template-columns: minmax(0, 1fr) minmax(0, 1.05fr); }
+.fd-prof { display: flex; gap: 10px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.fd-prof-main { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+.fd-prof-main label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13.5px; }
+.fd-prof-main label span { width: 58px; }
+.fd-prof-main select { flex: 1; min-width: 0; font-size: 13.5px; padding: 4px; font-weight: 400; }
+.fd-prof-main small { color: var(--muted); font-size: 12.5px; margin-left: 66px; }
+.fd-prof-main .link.small { align-self: flex-start; margin-left: 66px; font-size: 12px; padding: 0; }
+.fd-glyph { width: 52px; height: 38px; flex: none; background: #fafbfc; border: 1px solid var(--line); border-radius: 6px; }
+.fd-glyph path { fill: none; stroke: #2f4f6f; stroke-width: 1.6; stroke-linejoin: round; }
+.fd-glyph .g-op { stroke: #a01818; stroke-width: 1.2; stroke-dasharray: 3 2; }
+.fd-glyph text { font-size: 14px; fill: var(--muted); }
+.fd-custom { margin: -4px 0 2px 62px; padding: 6px 10px; border-left: 3px solid #9fc0de; background: #f6f9fc; border-radius: 0 6px 6px 0; }
+.fd-save { margin-top: 6px; }
+.fd-save input { min-width: 180px; }
+.fd-ro-line { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 13.5px; padding: 2px 2px; }
+.fd-ro-line input.mini { width: 70px; font-size: 13px; padding: 3px 6px; }
+.fd-more summary { cursor: pointer; font-size: 13px; color: var(--muted); }
+.fd-more .fd-check { margin: 6px 0 0 4px; }
+.fd-legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12px; color: var(--muted); }
+.fd-legend span::before { content: ''; display: inline-block; width: 12px; height: 10px; margin-right: 4px; vertical-align: -1px; border: 1px solid #333; }
+.fd-legend .lg-jamb::before { background: #9fc0de; }
+.fd-legend .lg-head::before, .fd-legend .lg-sill::before { background: #f4a7a0; }
+.fd-legend .lg-ro::before { border: 1.4px dashed #a01818; background: none; }
+.fd-custom .fd-line > span:first-child { width: 64px; }
+.fd-custom .fd-save { margin-left: 0; }
+/* The selected opening's profiles beside the elevation. */
+.op-profiles { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; }
+.op-prof { display: flex; gap: 8px; align-items: center; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #fff; }
+.op-prof .fd-glyph { width: 44px; height: 32px; }
+.op-prof-main { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.op-prof-main label { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 13px; }
+.op-prof-main select { flex: 1; min-width: 0; font-size: 13px; padding: 3px; font-weight: 400; }
+.op-prof-main small { color: var(--muted); font-size: 12px; }
+.op-profiles > .muted { margin: 2px 0; }
+.op-profiles > button { align-self: flex-start; }
+/* Engineering styles: the catalog dialog, a panel's wall style and an opening's style, the state on the sheet. */
+.eng-dialog { border: 0; border-radius: 10px; padding: 0; width: min(1100px, 96vw); max-height: 92vh; box-shadow: 0 18px 60px rgba(0,0,0,.35); }
+.eng-dialog::backdrop { background: rgba(20, 30, 40, .45); }
+.eng { display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; max-height: 92vh; overflow: auto; }
+.eng-head { display: flex; gap: 10px; align-items: baseline; font-size: 15px; }
+.eng-sel { gap: 14px; flex-wrap: wrap; align-items: center; }
+.eng-sel input, .eng-approve input { padding: 3px 6px; }
+.eng-tabs input { flex: 1 1 16em; max-width: 26em; padding: 4px 8px; }
+.eng-table { overflow: auto; border: 1px solid var(--line); border-radius: 6px; }
+.eng-table table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.eng-table th { position: sticky; top: 0; background: #f4f6f8; text-align: left; padding: 4px 6px; font-weight: 600; }
+.eng-table td { border-top: 1px solid var(--line); padding: 4px 6px; vertical-align: top; }
+.eng-table tr.deleted td { color: #999; }
+.eng-approve { gap: 10px; flex-wrap: wrap; align-items: center; border-top: 1px solid var(--line); padding-top: 8px; }
+.eng-badge { display: inline-block; border: 1px solid var(--line); border-radius: 10px; padding: 0 8px; font-size: 12px; color: var(--muted); background: #fff; }
+.eng-badge.ok { border-color: #8bc29a; color: #1e6b33; background: #f1faf3; }
+.eng-badge.bound { border-color: #9fc0de; color: #1f3b57; background: #f2f7fc; }
+.eng-badge.warn { border-color: #e0a23c; color: #8a4b00; background: #fff8ec; }
+.style-strip { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 8px; padding: 6px 10px; border: 1px dashed #9fc0de; border-radius: 8px; background: #f8fbfe; font-size: 13.5px; }
+.style-strip select { max-width: 100%; font-size: 13px; padding: 3px; }
+.style-strip label { display: inline-flex; gap: 4px; align-items: center; }
+.style-strip .plan-notes { flex-basis: 100%; margin: 2px 0; }
+.op-style { margin: 6px 0; }
+.arr-open { color: #c25e00; font-weight: 600; }
+/* An opening's members by the engineering rule: the rule card (what it reads, the schedule, what it gives) and one row
+   per member (in force, from where, the rule's alternatives, the arrangement, back to the rule). */
+.rule-card { border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; background: #fff; display: flex; flex-direction: column; gap: 6px; margin: 6px 0; }
+.rule-card.off { background: #fafbfc; }
+.rule-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.rule-say { margin: 0; font-size: 13px; display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.rule-say.ok { color: #1e7b34; }
+.rule-say.warn { color: #9a4a00; }
+.rule-say button { padding: 2px 10px; font-size: 12.5px; }
+.rule-table { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+.rule-table th, .rule-table td { border: 1px solid var(--line); padding: 3px; text-align: center; vertical-align: top; }
+.rule-table thead th { background: #f4f6f8; font-weight: 600; }
+.rule-table tbody th { background: #f4f6f8; font-weight: 600; white-space: nowrap; }
+.rule-table th small, .rule-cell small { display: block; font-weight: 400; color: var(--muted); }
+.rule-cell { display: block; width: 100%; padding: 3px 4px; border: 1px solid transparent; border-radius: 5px; background: #fff; color: var(--ink); font-size: 11.5px; line-height: 1.25; text-align: center; overflow-wrap: anywhere; }
+.rule-cell.covers { border-color: #1f5fbf; cursor: pointer; }
+.rule-cell.covers:hover { background: #eaf2fd; }
+.rule-cell.misses { opacity: .55; cursor: not-allowed; }
+.rule-cell.match { box-shadow: inset 0 0 0 2px #1f5fbf; }
+.rule-cell.on { background: #dff3e4; border-color: #1e7b34; box-shadow: inset 0 0 0 2px #1e7b34; }
+.mrow { display: flex; gap: 8px; align-items: flex-start; border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; background: #fff; margin-bottom: 6px; }
+.mrow .fd-glyph { flex: 0 0 40px; width: 40px; height: 30px; }
+.mrow-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.mrow-head { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: baseline; }
+.mrow .mval { font-family: ui-monospace, Consolas, monospace; font-size: 12.5px; overflow-wrap: anywhere; }
+.mrow select { width: 100%; }
+.alt-row, .arr-row { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; }
+.alt-row .chip { padding: 2px 8px; font-size: 12px; border-radius: 12px; border: 1px solid #1f5fbf; background: #fff; color: #1f5fbf; }
+.alt-row .chip.on { background: #1f5fbf; color: #fff; }
+.arr-row .seg button { padding: 2px 8px; font-size: 12px; }
+.rule-diff { margin: 0; font-size: 12px; color: #9a4a00; }
+
+/* Levels and grids in the sketch (context only), and their inspector section. */
+.sk-level, .sk-gridline { pointer-events: none; }
+.sk-level line { stroke: #0f6b6b; stroke-width: 1.2px; stroke-dasharray: 10 3 2 3; vector-effect: non-scaling-stroke; }
+.sk-level-mark { fill: #0f6b6b; }
+.sk-level-t { fill: #0f6b6b; font-weight: 700; }
+.sk-level-s { fill: #3f7f7f; }
+.sk-gridline line { stroke: #6a4fa3; stroke-width: 1px; stroke-dasharray: 10 3 2 3; vector-effect: non-scaling-stroke; }
+.sk-gridline circle { fill: #fff; stroke: #6a4fa3; stroke-width: 1.2px; vector-effect: non-scaling-stroke; }
+.sk-grid-t { fill: #4b3478; font-weight: 700; }
+.ctx-level { display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; margin: 6px 0; }
+.ctx-level b { min-width: 84px; font-size: 12.5px; }
+.ctx-level input.mini { width: 72px; }
+.ctx-level .seg button { padding: 2px 8px; font-size: 12px; }
+.ctx-grids { display: flex; flex-wrap: wrap; gap: 4px 8px; align-items: center; margin-top: 6px; font-size: 12.5px; }
+.ctx-grid { display: inline-flex; gap: 3px; align-items: center; }
+.ctx-grid input.mini { width: 58px; }
+.ctx-grid input.mini:first-child { width: 34px; }
+
+/* Clips: the align line (bold while a new clip snaps to it) and where the next one goes. */
+.sk-align { pointer-events: none; }
+.sk-align line { stroke: #0b7a75; stroke-width: 1px; stroke-dasharray: 6 4; vector-effect: non-scaling-stroke; opacity: .55; }
+.sk-align.on line { stroke-width: 2px; opacity: 1; }
+.sk-align-t { fill: #0b7a75; font-weight: 700; }
+.sk-clip.ghost { fill: rgba(11, 122, 117, .35); stroke: #0b7a75; pointer-events: none; }
+.clip-align { gap: 6px; align-items: center; flex-wrap: wrap; }

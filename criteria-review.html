@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Criteria Review · CAS BIM</title>
+    <!-- Standalone tool: an engineering criteria workbook read in this browser for review (demos/common/xlsx.mjs,
+         demos/06-shop-drawings/criteria-workbook.mjs). Nothing is uploaded or kept: close the page and it is gone. -->
+    <link rel="stylesheet" href="panel.css">
+    <link rel="stylesheet" href="criteria-review.css">
+</head>
+<body>
+    <header class="bar cr-bar"><a class="brand" href="home.html">CAS BIM</a><b>Criteria Review</b>
+        <span class="cr-tag">Open an engineering criteria workbook: read in this browser, nothing uploaded or kept.</span></header>
+    <main id="cr">
+        <section class="card">
+            <div class="row"><label class="button" for="cr-file">Open a workbook (.xlsx)</label><input type="file" id="cr-file" accept=".xlsx" hidden>
+                <label class="button secondary" for="cr-compare" id="cr-compare-label" hidden>Compare with another copy…</label><input type="file" id="cr-compare" accept=".xlsx" hidden>
+                <button class="secondary" id="cr-export" hidden>Export the review (JSON)</button></div>
+            <p class="muted small">Candidate evidence for review, not approved engineering. Each row keeps its source name and cells as authored, what was read
+                from them (with units and states), its dropdown label (presentation only) and its identity (a KEY_ID from the workbook's metadata columns, or none:
+                browse only). Disagreements between a name and its columns are shown, never settled here.</p>
+            <div id="cr-summary"></div>
+        </section>
+        <section class="card" id="cr-issues-card" hidden><h2>To check</h2><div id="cr-issues"></div></section>
+        <section class="card" id="cr-compare-card" hidden><h2>Compared by KEY_ID</h2><div id="cr-diff"></div></section>
+        <section class="card" id="cr-rows-card" hidden>
+            <div class="row cr-tabs" id="cr-tabs" role="tablist"></div>
+            <div class="row cr-filter"><input type="text" id="cr-search" placeholder="Search a code, a name, a member…" aria-label="Search rows">
+                <label class="cr-check"><input type="checkbox" id="cr-review-only"> Only rows to check</label></div>
+            <div id="cr-rows"></div>
+        </section>
+    </main>
+    <script type="module" src="criteria-review.js"></script>
+</body>
+</html>
