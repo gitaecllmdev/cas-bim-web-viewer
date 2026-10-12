@@ -9,9 +9,8 @@
 import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/shop-output.mjs';
 import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, renderLabelsPdf } from './demos/06-shop-drawings/sheet.mjs';
-import { labelPieces } from './demos/06-shop-drawings/labels.mjs';
-import { projectFromShop, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
+import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines } from './demos/06-shop-drawings/sheet.mjs';
+import { projectFromShop, STOCK as LABEL_STOCK, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
 import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
@@ -347,7 +346,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); },
         'fs-apply': () => applyFramingSettings(),
         'fs-reset': () => { fsDraft = null; renderSetDialog(); },
-        'sd-labels': () => downloadLabels(),
+        'sd-labels': () => openLabelMaker(),
         'sd-label-maker': () => openLabelMaker(),
         'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
         'sd-rules': () => rulesOnChecked(),
@@ -3209,14 +3208,14 @@ function rulesOnChecked() {
 // Shop-floor output: one drawing sheet per panel with bookmarks, and separate member labels.
 function floorTab(list) {
     const { items, skipped } = setItems(list), skip = typicalSkips(list);
-    const pieces = labelPieces(items), sheets = Math.ceil(pieces.length / 30);
+    const labels = projectFromShop(items, {project:set.project||''}), count=labels.rows.reduce((n,r)=>n+r.qty,0);
     return `<p class="export-print-tip">PDFs download to your browser Downloads folder. Open the PDF and print at 100% / actual size. Sheet and label PDFs use checked panels; with none checked, all panels are included.</p>${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
         <div class="sd-cards">
             <section class="sd-card"><h3>Shop drawing sheets (.pdf)</h3><p class="small">One sheet per panel, with a bookmark for each. Stock and purchasing information stays in the separate CSV downloads.</p>
                 <div class="acts"><button data-act="set-pdf" ${items.length?'':'disabled'}>Download shop sheets PDF (${items.length} sheet${items.length === 1 ? '' : 's'})</button>
                 ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size})</button>` : ''}</div></section>
-            <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
-                <div class="acts"><button data-act="sd-labels" ${pieces.length?'':'disabled'}>Download label PDF: ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button><button class="secondary" data-act="sd-label-maker" ${pieces.length?'':'disabled'}>Design QR labels (2 × 4 inch / QR)</button></div></section>
+            <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">The same Label Maker output: 2 &times; 4 inch labels, ${LABEL_STOCK.cols*LABEL_STOCK.rows} per Letter sheet. Panel, mark, project, notes and logo; QR code when a link is supplied. No cut length.</p><p class="small">${count} labels. Open the labels, enter drawing links if needed, then Download PDF.</p>
+                <div class="acts"><button data-act="sd-label-maker" ${count?'':'disabled'}>Open labels &amp; download PDF</button></div></section>
             <section class="sd-card"><h3>Framing config (.json)</h3><p class="small">All ${set.panels.length} panels, regardless of checks: resolved members, cut lists, issues and review states for CAS Revit.</p><button class="secondary" data-act="set-export-plan">Download framing config</button></section>
             <section class="sd-card"><h3>Editable project (.json)</h3><p class="small">All ${set.panels.length} panels and settings. Reopen with Import project to continue editing.</p><button class="secondary" data-act="set-export">Save project file</button></section>
             <section class="sd-card"><h3>Cut lists (.csv)</h3><p class="small">What to buy, how each bar is cut, the set's cut list: CSV for a spreadsheet or the saw.</p>
@@ -3255,13 +3254,6 @@ function openLabelMaker() {
         dialog.showModal();
         notice(`Label Maker opened for ${items.length} panels.${skipped.length ? ` Left out (inputs to fix): ${skipped.join(', ')}.` : ''} Review status is carried with each row.`);
     } catch (err) { notice(`Label Maker could not open: ${err.message}`, true); }
-}
-function downloadLabels() {
-    const { items } = setItems(chosen());
-    if (!items.length) return;
-    const pieces = labelPieces(items);
-    download(renderLabelsPdf(pieces, { project: set.project || '', title: `${set.project || 'Panel'} member labels` }), `member-labels-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
-    notice(`${pieces.length} labels downloaded (${Math.ceil(pieces.length / 30)} sheet${pieces.length > 30 ? 's' : ''} of 30): print at actual size.${items.some(x => x.review) ? ' Preliminary or failed panels have DO NOT FABRICATE on every label.' : ''}`);
 }
 // Framing settings for every panel (universal): the studs' cutback and whether cripples and jacks are seated in the
 // tracks that receive them; how headers and sills end at the jambs (overlap or flush, with a cutback at each flush end).
