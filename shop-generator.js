@@ -3228,7 +3228,18 @@ function openLabelMaker() {
                 if (e.origin === location.origin && e.source === dialog.querySelector('iframe').contentWindow && e.data?.type === 'cas-label-maker:close') dialog.close();
             });
         }
-        dialog.querySelector('iframe').src = 'label-maker.html?from=shop&embedded=1';
+        const frame = dialog.querySelector('iframe');
+        frame.onload = () => {
+            if (!dialog.open || frame.getAttribute('src') === 'about:blank') return;
+            const groups = items.map(item => {
+                const p = set.panels.find(p => p.id === item.id), f = framed(p);
+                return { panel: item.panel, source: 'Panel Shop Generator',
+                    text: item.cutList.map(c => `${c.mark} ${c.qty}`).join('\n'),
+                    preview: 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(renderSheet(item.layout, sheetInfoFor(p, f))) };
+            });
+            frame.contentWindow.postMessage({ type: 'cas-label-maker:shop-context', groups }, location.origin);
+        };
+        frame.src = 'label-maker.html?from=shop&embedded=1';
         dialog.showModal();
         notice(`Label Maker opened for ${items.length} panels.${skipped.length ? ` Left out (inputs to fix): ${skipped.join(', ')}.` : ''} Review status is carried with each row.`);
     } catch (err) { notice(`Label Maker could not open: ${err.message}`, true); }

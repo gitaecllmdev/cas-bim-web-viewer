@@ -361,3 +361,4 @@ td .oc { display: block; margin: 3px 0 0; }
 .quick-bar .qb-more:not([open]) .qb-menu { display: none; }
 .quick-bar .qb-menu .qb-f { flex-wrap: wrap; }
 .quick-bar .qb-menu select { max-width: 100%; }
+.label-maker-dialog { width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important; }

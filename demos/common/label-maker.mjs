@@ -22,7 +22,8 @@ export function cleanProject(value = {}) {
     for(const k of ['offsetXmm','offsetYmm'])design[k]=bounded(d[k],-3,3,0);
     if(value.rows && (!Array.isArray(value.rows)||value.rows.length>5000))throw new Error('Use at most 5,000 table rows.');
     const rows=(value.rows || []).map(r=>({panel:str(r.panel).slice(0,100),mark:str(r.mark).slice(0,100),qty:Number(r.qty ?? 1),
-        url:str(r.url),notes:str(r.notes).slice(0,500),project:str(r.project).slice(0,200),review:str(r.review).slice(0,200),panelOnly:r.panelOnly===true}));
+        url:str(r.url),notes:str(r.notes).slice(0,500),project:str(r.project).slice(0,200),review:str(r.review).slice(0,200),panelOnly:r.panelOnly===true,ready:r.ready!==false,
+        panelOrigin:str(r.panelOrigin).slice(0,240),sourcePanel:str(r.sourcePanel||r.panel).slice(0,100)}));
     const logo=value.logo;
     const validLogo=logo && /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(logo.href || '') && logo.href.length<1500000 &&
         Array.isArray(logo.px) && logo.px.length===2 && logo.px.every(v=>Number.isInteger(v)&&v>0&&v<=2000);
@@ -32,6 +33,7 @@ export function cleanProject(value = {}) {
 export function rowValue(row,project) {
     return {...row,panel:row.panel || project.defaultPanel,url:row.url || project.defaultUrl,project:row.project || project.project};
 }
+export function printProject(project,{panel=''}={}){return {...project,rows:project.rows.filter(r=>r.ready!==false&&(!panel||rowValue(r,project).panel===panel))};}
 export function validateProject(project) {
     const errors=[],warnings=[]; let count=0;
     if(!project.rows.length)errors.push('Add or import at least one member row.');
@@ -89,6 +91,7 @@ export function rowsFromTable(table,{panel='',project='',url='',cutList=false}={
         const value=header?{panel:get('panel',panel),mark:get('mark'),qty:indexes.qty>=0?Number(get('qty')):1,url:get('url',url),notes:get('notes'),project:get('project',project),review:get('review')}:
             cutList?{panel,mark:str(r[0]),qty:Number(r[1]),url,notes:'',project,review:''}:
             {panel:str(r[0])||panel,mark:str(r[1]),qty:1,url:str(r[2])||url,notes:str(r[3]),project:str(r[4])||project,review:''};
+        value.panelOrigin=header&&indexes.panel>=0&&str(r[indexes.panel])?'Imported panel column':!header&&!cutList&&str(r[0])?'Imported panel column':'Default panel';
         if(!value.mark){
             if(value.panel && !cutList){value.panelOnly=true;issues.push(`Input row ${i+(header?2:1)} is panel-only (no member mark). Kept as supplied; check that it is intentional.`);}
             else {issues.push(`Input row ${i+(header?2:1)} has no mark; it was left out.`);continue;}
@@ -107,7 +110,7 @@ export function rowsFromTable(table,{panel='',project='',url='',cutList=false}={
 export function rowsFromOcr(text,{panel='',project='',url=''}={}) {
     const rows=[],issues=[];
     for(const ln of String(text).split(/\r?\n/)) {
-        if(!ln.trim()||/^(LABEL|MARK|QTY|QUANTITY|GRAND TOTAL|TOTAL)\b/i.test(ln.trim()))continue;
+        if(!ln.trim()||/^(LABEL|MARK|QTY|QUANTITY|GRAND TOTAL|TOTAL|PANEL)\b/i.test(ln.trim())||/\b(?:FRAMING\s+)?CUT\s*LIST\b/i.test(ln))continue;
         const m=/^\s*([A-Z]{1,4}\d{0,4})\s*[|:]?\s+(\d+)\b(.*)$/i.exec(ln);
         if(m){const mark=m[1].toUpperCase();rows.push({panel,mark,qty:Number(m[2]),url,notes:'',project,review:''});
             if(/^[A-Z]+$/.test(mark)&&!['AC','HC','CT'].includes(mark))issues.push(`${mark}: letters-only mark may be an OCR misread (for example CO / C0). Compare with the source; no substitution was made.`);}
@@ -117,7 +120,7 @@ export function rowsFromOcr(text,{panel='',project='',url=''}={}) {
 }
 export function projectFromShop(items,{project='',urls={}}={}) {
     return cleanProject({project,rows:items.flatMap(it=>(it.cutList||[]).map(c=>({panel:it.panel,mark:c.mark,qty:c.qty,
-        url:urls[it.panel]||'',notes:'',review:it.review||''}))) });
+        url:urls[it.panel]||'',notes:'',review:it.review||'',panelOrigin:'Resolved cut list · Panel Shop Generator',sourcePanel:it.panel}))) });
 }
 export function expandedCsv(project,{header=true}={}) {
     const rows=expandRows(project).map(p=>[p.panel,p.mark,p.url,[p.notes,p.review].filter(Boolean).join(' | '),p.project]);
