@@ -363,4 +363,17 @@ td .oc { display: block; margin: 3px 0 0; }
 .quick-bar .qb-menu select { max-width: 100%; }
 .label-maker-dialog { width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important; }
 
+.sketch-member-bar { display:flex;flex-wrap:wrap;align-items:center;gap:6px;padding:6px 8px;background:#f5f0fc;border-bottom:1px solid #d8c7ed;font-size:12px; }
+.sketch-member-bar[hidden] { display:none; }
+.sketch-member-bar button { padding:3px 7px;font-size:12px; }
+.sketch-member-bar label { display:flex;align-items:center;gap:4px; }
+.sketch-member-bar input { width:7em;padding:3px 5px;min-height:28px; }
+.sk-cl .custom { stroke:#7b3fbf;stroke-width:1; }
+.sk-mem-hit:focus { stroke:#7b3fbf!important;stroke-opacity:.4!important;outline:none; }
+.framing-scope { display:flex;flex-wrap:wrap;gap:8px 16px;align-items:center;padding:8px 10px;background:#edf4fb;border-radius:6px; }
+.framing-scope label { display:flex;align-items:center;gap:5px; }
+.framing-source { padding:7px 10px;border-left:3px solid #2468a8;background:#f4f7fa;font-size:12px; }
+.fs-grid .mini-field small { display:block;color:var(--muted);font-weight:normal; }
+@media(max-width:600px) { .sketch-member-bar input { font-size:16px; } .framing-scope label { min-height:32px; } }
+
 .nav-export { margin-top:6px;padding:10px;background:#fff;border:1px solid #b8c9da;border-top:3px solid #2468a8;border-radius:6px; }.nav-export h3 { margin:0 0 6px;font-size:15px; }.export-help,.export-block p { margin:4px 0 8px;font-size:11px;line-height:1.4;color:#566b80; }.export-block { padding:9px 0;border-top:1px solid #e0e6ed; }.export-block strong { font-size:12px; }.export-block button { display:block;width:100%;margin-top:5px;text-align:left;padding:6px 7px;font-size:12px; }.export-block:last-child { padding-bottom:0; }.export-print-tip { padding:10px 12px;background:#edf4fb;border-left:3px solid #2468a8;font-size:13px;line-height:1.5; }

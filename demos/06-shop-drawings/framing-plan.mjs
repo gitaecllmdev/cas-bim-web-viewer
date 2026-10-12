@@ -78,6 +78,7 @@ export function detailingFromPanel(panel) {
         members: { stud: p.members.stud, track: p.members.track, topTrack: p.members.topTrack, spacingIn: p.members.spacingIn ?? null,
             header: p.members.header, jamb: p.members.jamb, sill: p.members.sill },
         provenance: p.provenance ? { ...p.provenance } : null,
+        ...(p.revit?.framingSettings ? { sourceFraming: { template: p.revit.framingSettings.template || null, origins: { ...p.framingOrigins } } } : {}),
         layout: { startIn: p.layoutStartIn ?? null, fromRight: !!p.layoutFromRight, optimize: !!p.optimizeOpenings },
         studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), ...(p.deflectionGapIn != null ? { deflectionGapIn: p.deflectionGapIn } : {}), seatPieces: p.seatPieces !== false, seatTop: p.seatTop !== false },
         ...(p.headEnds === 'flush' ? { heads: { ends: 'flush', cutbackIn: p.headCutbackIn ?? 0 } } : {}), ...(p.sillEnds === 'flush' ? { sills: { ends: 'flush', cutbackIn: p.sillCutbackIn ?? 0 } } : {}),
@@ -310,6 +311,7 @@ function intentOf(panel, snapshot, detailing) {
         members: { stud: { setting: m.stud, value: stud, source: src('stud', m.stud, 'missing') }, track: { setting: m.track, value: track, source: src('track', m.track, 'inherit:stud') },
             topTrack: { setting: m.topTrack, value: topTrack, source: src('topTrack', m.topTrack, 'inherit:track') },
             spacingIn: { setting: detailing.members?.spacingIn ?? null, value: m.spacingIn ?? null, source: prov.spacingIn || (detailing.members?.spacingIn != null ? 'detailing' : snapshot.kind === 'model' ? 'missing' : 'default') } },
+        ...(detailing.sourceFraming ? { sourceFraming: structuredClone(detailing.sourceFraming) } : {}),
         layout: null, studs: { flipAll: !!panel.flipStuds, flips: [...panel.studFlips], ...(Number(panel.deflectionGapIn) > 0 ? { deflectionGapIn: panel.deflectionGapIn, topCutback: 'replaced-by-deflection-gap' } : {}) }, view: { side: detailing.view?.side === 'B' ? 'B' : 'A', note: 'projection only: side B mirrors the drawing, never the members' },
         openings,
     };
@@ -358,11 +360,12 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
         const record = (rec) => { push({ role: m.role, ...rec }, m); graphic.memberKeys.push(rec.memberKey); };
         if (m.orient === 'v') {
             const xc = m.x + m.w / 2, right = webOnRight(m, layout);
-            const y0 = m.topAxis ? m.topAxis[0] : m.full ? 0 : m.y, y1 = m.topAxis ? m.topAxis[1] : m.full ? (T ? topAt(T, xc, H) : H) : m.pts ? underAt(T, xc, H, LEG) : m.y + m.h;
+            const axis = m.manualAxis || m.topAxis;
+            const y0 = axis ? axis[0] : m.full ? 0 : m.y, y1 = axis ? axis[1] : m.full ? (T ? topAt(T, xc, H) : H) : m.pts ? underAt(T, xc, H, LEG) : m.y + m.h;
             const fr = m.of ? framingOf.get(m.of) : null;
             const jambUnresolved = m.jamb && fr && fr.plies > 1 && !fr.jambStyleSet;
             if (jambUnresolved) unresolvedAssemblies.set(`${m.of}:jamb:${m.jamb}`, `${m.of}: ${fr.plies} jamb studs each side, but how they sit (boxed, back to back or same way) was not chosen: the drawing assumes boxed.`);
-            const assembly = m.jamb && fr && fr.plies > 1 ? { assemblyKey: `${m.of}:jamb:${m.jamb}`, partKey: `ply${m.ply || 1}${/:p\d+$/.test(memberKey) ? memberKey.slice(memberKey.lastIndexOf(':')) : ''}` } : { assemblyKey: '', partKey: '' };
+            const assembly = m.jamb && fr && fr.plies > 1 ? { assemblyKey: m.manual === 'added' ? `${memberKey}:jamb:${m.jamb}` : `${m.of}:jamb:${m.jamb}`, partKey: `ply${m.ply || 1}${/:p\d+$/.test(memberKey) ? memberKey.slice(memberKey.lastIndexOf(':')) : ''}` } : { assemblyKey: '', partKey: '' };
             const parts = m.parts?.length ? m.parts : [{ qty: 1, name: m.type }];
             const marks = m.marks?.length ? m.marks : [m.mark];
             parts.forEach((part, j) => {

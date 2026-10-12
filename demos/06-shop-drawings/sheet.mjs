@@ -110,6 +110,7 @@ export function lapLines(m, members) {
 const over = (t, m) => t.orient === 'h' && t.x < m.x + m.w - 1e-6 && t.x + t.w > m.x + 1e-6;
 export function seatOf(m, members) {
     if (m.orient !== 'v' || !(m.lengthIn > 0)) return null;
+    if (m.manualAxis) return { y0: m.manualAxis[0], y1: m.manualAxis[1] };
     if (m.topAxis) return { y0: m.topAxis[0], y1: m.topAxis[1] };
     // A piece seated by the engine (m.seat: how far into the track under it and over it): down into the one, its cut
     // length up from there (the cutback short of the other's web).

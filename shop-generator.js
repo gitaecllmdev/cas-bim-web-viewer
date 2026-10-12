@@ -9,7 +9,7 @@
 import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/shop-output.mjs';
 import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
 import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
-import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines } from './demos/06-shop-drawings/sheet.mjs';
+import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, seatOf } from './demos/06-shop-drawings/sheet.mjs';
 import { projectFromShop, STOCK as LABEL_STOCK, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
 import { sha256Hex } from './demos/common/sha256.mjs';
@@ -17,6 +17,7 @@ import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
 import * as FP from './demos/06-shop-drawings/framing-plan.mjs';
 import { resolvePlanBatch } from './demos/06-shop-drawings/batch-framing.mjs';
+import { FRAMING_FIELDS as SOURCE_FRAMING_FIELDS, sourceFraming, framingOrigin } from './demos/06-shop-drawings/source-framing.mjs';
 import * as P from './demos/06-shop-drawings/profiles.mjs';
 import * as DT from './demos/06-shop-drawings/details.mjs';
 import * as R from './demos/06-shop-drawings/opening-rules.mjs';
@@ -310,7 +311,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'man-unlock': () => manualEdit((q, lay) => MAN.unlock(q, lay, b.dataset.key), 'Unlocked: it stays where you put it and no longer follows the framing rules.'),
         'man-lock': () => manualEdit((q) => MAN.lock(q, b.dataset.key), 'Locked: it follows the framing rules again.', { keep: !MAN.isAdded(b.dataset.key) }),
         'man-unlock-all': () => manualEdit((q, lay) => MAN.unlockAll(q, lay), 'Every member unlocked: the framing rules no longer move any of them.'),
-        'man-lock-all': () => { if (confirm('Lock every member? Everything placed by hand goes back to the framing rules, and the copies are removed.')) manualEdit((q) => MAN.lockAll(q), 'Every member follows the framing rules again.'); },
+        'man-lock-all': () => { if (confirm('Lock every member? Everything placed by hand goes back to the framing rules, and the copies are removed.')) manualEdit((q) => MAN.lockAll(q), 'Every member follows the framing rules again.', { allowUnframed: true }); },
         'man-nudge': () => manualNudge(Number(b.dataset.dx) * manualStep(), Number(b.dataset.dy) * manualStep()),
         'man-copy': () => manualCopy(b.dataset.key),
         'oc-add': () => addOpeningFromInsert(p, b.dataset.uid),
@@ -347,6 +348,11 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); },
         'fs-apply': () => applyFramingSettings(),
         'fs-reset': () => { fsDraft = null; renderSetDialog(); },
+        'fs-source': () => {
+            const p = cur(), source = sourceFraming(p); if (!source) return;
+            const q = structuredClone(p); for (const k of Object.keys(source.values)) { delete q[k]; if (q.framingOrigins) delete q.framingOrigins[k]; }
+            replacePanel(G.cleanPanel(q)); fsDraft = null; changed(); renderAll(); renderSetDialog(); notice('Revit framing values restored on the open panel.');
+        },
         'sd-labels': () => openLabelMaker(),
         'sd-label-maker': () => openLabelMaker(),
         'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
@@ -971,10 +977,10 @@ function renderSketch() {
 let laid = { key: '', at: 0, lay: null };
 const ROLE_NAMES = { stud: 'Stud on center', 'end stud': 'End stud', 'jamb stud': 'Jamb', cripple: 'Cripple' };
 function centerlines(p, H, top) {
-    const key = JSON.stringify([p.shape, p.openings, p.members, p.optimizeOpenings, p.layoutStartIn, p.layoutFromRight, p.flipStuds, p.studFlips]);
+    const key = JSON.stringify(p);
     if (key !== laid.key && (!drag || Date.now() - laid.at > 120)) {
         let lay = null;
-        try { if (!G.panelErrors(p).length) lay = frameWall(G.frameInputs(p)); } catch { /* inputs to fix */ }
+        try { lay = framed(p).plan?.layout || null; } catch { /* inputs to fix */ }
         laid = { key, at: Date.now(), lay };
     }
     if (!laid.lay) return '';
@@ -982,9 +988,9 @@ function centerlines(p, H, top) {
     const lines = [], hits = [], cs = [];
     lay.members.forEach((m, k) => {
         if (m.orient !== 'v') return;
-        const cx = m.x + m.w / 2, y2 = m.pts ? underAt(top, cx, H, leg) : m.y + m.h;
-        lines.push(`<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="${m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`);
-        hits.push(`<line x1="${cx}" y1="${-m.y}" x2="${cx}" y2="${-y2}" class="sk-mem-hit" data-hover="mem:${k}"><title>${esc(`${ROLE_NAMES[m.role] || m.role}: ${m.type}, ${fmtFtIn(m.lengthIn)} · right-click for its options`)}</title></line>`);
+        const cx = m.x + m.w / 2, seated = seatOf(m, lay.members), y1 = seated?.y0 ?? m.y, y2 = seated?.y1 ?? (m.pts ? underAt(top, cx, H, leg) : m.y + m.h);
+        lines.push(`<line x1="${cx}" y1="${-y1}" x2="${cx}" y2="${-y2}" class="${m.manual ? 'custom' : m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`);
+        hits.push(`<line x1="${cx}" y1="${-y1}" x2="${cx}" y2="${-y2}" class="sk-mem-hit" data-hover="mem:${k}" data-member-key="${esc(m.key)}" role="button" tabindex="0" aria-label="Select ${esc(m.mark)} ${esc(m.role)}"><title>${esc(`${ROLE_NAMES[m.role] || m.role}: ${m.type}, ${fmtFtIn(m.lengthIn)} · click to edit`)}</title></line>`);
         if (m.y <= leg + 0.5) { // on the bottom track: its C in plan under it, the web on the side it is (Flip studs turns the studs on center)
             const ya = u * 0.6, yb = ya + Math.max(u * 1.3, 2.5), lip = (yb - ya) * 0.3, [open, web] = webOnRight(m, lay) ? [m.x, m.x + m.w] : [m.x + m.w, m.x];
             cs.push(`<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="sk-c"/>`);
@@ -1013,8 +1019,14 @@ function rectBox({ a, b }) {
     return { left: snap(left), right: snap(right), bottom: snap(bottom), top: snap(Math.min(upper, Math.max(H, upper))), kind };
 }
 function bindSketch(svg) {
+    const selectMember = (hit, keyboard = false) => {
+        const key = hit?.dataset.memberKey, rec = current.plan?.members?.find(m => m.memberKey === key || m.memberKey.startsWith(`${key}:`));
+        if (rec) { selectTarget({ kind: 'member', key: rec.memberKey }); if (keyboard) document.querySelector('#sketch-member-tools button')?.focus(); }
+    };
+    svg.addEventListener('keydown', e => { if (['Enter',' '].includes(e.key) && e.target.matches('[data-member-key]')) { e.preventDefault(); selectMember(e.target,true); } });
     svg.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // a right-click opens the sketch's menu instead
+        if (tool === 'select' && e.target.closest('[data-member-key]')) { e.preventDefault(); selectMember(e.target.closest('[data-member-key]')); return; }
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
         svg.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -1935,7 +1947,8 @@ function renderSidePick(p) {
 function renderActiveView(p, f) {
     if (!p) return;
     const id = prefs.view, host = main.querySelector(`#view-${id}`);
-    if (!host || id === 'sketch') return;
+    if (!host) return;
+    if (id === 'sketch') { renderSketch(); renderSketchMemberBar(p, f); return; }
     const layout = f.layout, open = openChoices(f.plan), pre = open.length ? `<div class="preliminary">PRELIMINARY: ${open.length} choice${open.length === 1 ? '' : 's'} open</div>` : '';
     if (id === 'drawing') {
         document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : ''}`;
@@ -2084,9 +2097,9 @@ function layoutKeyOf(memberKey) {
 }
 const sideB = () => !!cur()?.sideB;
 const viewX = (m, L) => (sideB() ? L - m.x - m.w : m.x);
-function manualEdit(fn, say = '', { keep = true } = {}) {
+function manualEdit(fn, say = '', { keep = true, allowUnframed = false } = {}) {
     const p = cur(), lay = layoutA();
-    if (!p || !lay) return;
+    if (!p || (!lay && !allowUnframed)) return;
     replacePanel(fn(p, lay));
     if (!keep && selection.kind === 'member') selection = W.NONE;
     changed(); renderWorkspace();
@@ -2132,11 +2145,11 @@ function manualBlock(p, memberKey) {
     if (!m) return '';
     if (!MAN.isUnlocked(p, key)) return `<div class="man-card"><span class="set-state inherited">follows the framing rules</span>
         <button class="secondary" data-act="man-unlock" data-key="${esc(key)}" title="It stays where it is and no longer follows the framing rules; then move, copy, mirror or remove it">✎ Unlock to place by hand</button>${typeRow(p, key, m)}</div>`;
-    const L = lay.lengthIn, len = m.orient === 'v' ? m.h : m.w, f = (label, k, v) => `<label>${label}<input type="text" class="mini" data-man-f="${k}" data-key="${esc(key)}" value="${esc(lenText(v))}" autocomplete="off"></label>`;
+    const L = lay.lengthIn, axis = seatOf(m, lay.members), len = m.lengthIn, f = (label, k, v) => `<label>${label}<input type="text" class="mini" data-man-f="${k}" data-key="${esc(key)}" data-physical="true" value="${esc(lenText(v))}" autocomplete="off"></label>`;
     const nb = (t, dx, dy, title) => `<button class="secondary" data-act="man-nudge" data-dx="${dx}" data-dy="${dy}" title="${title}">${t}</button>`;
     return `<div class="man-card on"><div class="man-head"><span class="set-state overridden">✎ placed by hand${MAN.isAdded(key) ? ' (a copy)' : ''}</span>
             <button class="link" data-act="man-lock" data-key="${esc(key)}" title="${MAN.isAdded(key) ? 'Remove this copy' : 'Back to where the framing rules put it'}">${MAN.isAdded(key) ? 'Remove the copy' : '🔒 Lock (back to the rules)'}</button></div>
-        <div class="man-fields">${f('From left end', 'x', viewX(m, L))}${f('From bottom', 'y', m.y)}${f(m.orient === 'v' ? 'Height' : 'Length', 'len', len)}</div>
+        <div class="man-fields">${f('From left end', 'x', viewX(m, L))}${f('From bottom', 'y', axis?.y0 ?? m.y)}${f(m.orient === 'v' ? 'Cut height' : 'Cut length', 'len', len)}</div>
         <div class="man-nudge"><span class="muted small">Nudge by ${esc(fine(manualStep()))}</span>${nb('←', -1, 0, 'Left')}${nb('→', 1, 0, 'Right')}${nb('↓', 0, -1, 'Down')}${nb('↑', 0, 1, 'Up')}<span class="muted small">(the step is set in the bar over the view)</span></div>
         <div class="acts"><button class="secondary" data-act="man-copy" data-key="${esc(key)}">Copy</button><button class="secondary" data-act="man-mirror" data-key="${esc(key)}" title="A copy across the panel's middle, facing the other way">Mirror</button>
             ${MAN.isAdded(key) ? '' : `<button class="secondary danger" data-act="man-remove" data-key="${esc(key)}">Remove</button>`}</div>${typeRow(p, key, m)}</div>`;
@@ -2455,10 +2468,27 @@ function editBar(p, f) {
 // Typed place and length (side A once typed).
 function manualField(el) {
     const key = el.dataset.key, v = G.parseLength(el.value), lay = layoutA(), m = lay?.members.find(x => x.key === key);
-    if (v == null || !m) return;
-    const L = lay.lengthIn, box = el.dataset.manF === 'x' ? { x: sideB() ? L - v - m.w : v } : el.dataset.manF === 'y' ? { y: v } : m.orient === 'v' ? { h: v } : { w: v };
+    if (!m) return;
+    if (v == null || (el.dataset.manF === 'len' && v <= 0)) { notice('Type a valid member dimension; length must be greater than zero.', true); renderWorkspace(); return; }
+    if (m.pts && el.dataset.physical === 'true' && el.dataset.manF !== 'x') { notice('Sloped member end edits need a reviewed cut shape. Move sideways or reset this member.', true); renderWorkspace(); return; }
+    const L = lay.lengthIn, physical = el.dataset.physical === 'true', axis = seatOf(m, lay.members);
+    const box = el.dataset.manF === 'x' ? { x: sideB() ? L - v - m.w : v }
+        : el.dataset.manF === 'y' ? { y: physical ? v + m.y - (axis?.y0 ?? m.y) : v }
+        : m.orient === 'v' ? { h: physical ? m.h + v - m.lengthIn : v } : { w: v };
+    if (box.h != null && box.h <= 0) { notice('This cut is shorter than the inherited seating offset. Start from a shorter source piece.', true); renderWorkspace(); return; }
     historyHint = { label: 'the place', mergeKey: `man-f:${key}:${el.dataset.manF}` };
     replacePanel(MAN.place(cur(), lay, key, box)); changed(); renderWorkspace();
+}
+function renderSketchMemberBar(p, f) {
+    const box = document.getElementById('sketch-member-tools'), key = selectedLayoutKey(), m = f.plan?.layout?.members.find(x => x.key === key);
+    if (!box) return;
+    box.hidden = !m;
+    if (!m) { box.innerHTML = ''; return; }
+    const axis = seatOf(m, f.plan.layout.members), field = (label,k,v) => `<label>${label}<input type="text" data-man-f="${k}" data-key="${esc(key)}" data-physical="true" value="${esc(fine(v))}"></label>`;
+    box.innerHTML = `<b>${esc(m.mark)} · ${esc(m.role)}</b><button class="secondary" data-act="man-copy" data-key="${esc(key)}" title="Add another member like this">Copy</button>
+        <button class="secondary" data-act="man-mirror" data-key="${esc(key)}">Mirror</button><button class="secondary" data-act="${MAN.isAdded(key) ? 'man-lock' : 'man-remove'}" data-key="${esc(key)}">Delete</button>
+        ${field('From left','x',m.x)}${field('From bottom','y',axis?.y0 ?? m.y)}${field(m.orient === 'v' ? 'Cut height' : 'Cut length','len',m.lengthIn)}
+        <button class="link" data-ctx="clear">Done</button>`;
 }
 // Dragging a member in the elevation (edit mode): it unlocks and goes where it is dropped (1/16" steps).
 let manDrag = null;
@@ -2764,10 +2794,10 @@ function renderLayoutSec() {
         <div class="layout-group"><h4>Stud facing <span class="muted">which way the studs' webs face: physical</span></h4>
             <label class="fd-check"><input type="checkbox" data-f="flipStuds" ${p.flipStuds ? 'checked' : ''}> Flip every stud on center (end studs and jambs still close their side)</label>
             <p class="muted">${flips ? `${flips} stud${flips === 1 ? '' : 's'} flipped one by one <button class="link" data-act="flips-clear">Clear them</button>` : 'No stud flipped one by one.'} Select a stud (elevation, plan or cut list) to flip just that one.</p></div>
-        <div class="layout-group"><h4>Stud cutback <span class="muted">where studs meet the tracks, headers and sills</span></h4>
+        <div class="layout-group"><h4>Cutback &amp; top gap <span class="muted">where studs meet tracks, headers and sills</span></h4>
             <div class="row">${field('Cut back', 'cutbackIn', G.cutbackOf(p) ?? '', { t: 'cut', ph: '1/16" (the engine\'s seat)' })}
                 ${set.panels.length > 1 ? '<button class="link" data-act="cutback-all" title="The same cutback on every panel in the set">Every panel</button>' : ''}</div>
-            <p class="muted small">Every stud's cut length is its length less this (rounded down to 1/8"). New panels start at 1/32"; a panel without one (an older file, a model's) uses the engine's 1/16".</p>
+            <p class="muted small">Cut lengths floor to 1/8". ${Number(p.deflectionGapIn)>0 ? `Top gap ${fine(p.deflectionGapIn)} replaces the top cutback; lower pieces keep cutback.` : 'No top deflection gap: ordinary cutback applies.'} New panels start at 1/32"; absent cutback uses 1/16".</p>
             <p class="small">${(() => { const f = fsOf(p); return `Cripples and jacks: <b>${f.seatPieces ? 'seated in the tracks' : 'clear span'}</b> · headers: <b>${f.headEnds === 'flush' ? `flush (${fine(f.headCutbackIn)} each end)` : 'overlap the jambs'}</b> · sills: <b>${f.sillEnds === 'flush' ? `flush (${fine(f.sillCutbackIn)} each end)` : 'overlap the jambs'}</b>`; })()}
                 <button class="link small" data-act="set-open" data-v="framing">Change for every panel</button></p></div>
         <p class="muted small">The viewing side (A or B, over the views) changes the drawing only: never a member.</p>`;
@@ -3133,7 +3163,7 @@ function openSetDialog(tab) {
 function renderSetDialog() {
     const d = setDialog(), list = chosen(), scope = checked.size ? `the ${list.length} checked panel${list.length === 1 ? '' : 's'}` : `all ${list.length} panel${list.length === 1 ? '' : 's'}`;
     const body = setTab === 'stock' ? stockTab(list) : setTab === 'overview' ? overviewTab() : setTab === 'floor' ? floorTab(list) : setTab === 'framing' ? framingTab() : '';
-    d.innerHTML = `<div class="sd"><header class="sd-head"><h2 id="sd-title">${esc(set.project || 'The set')}</h2><span class="muted small">Over ${esc(scope)} (check panels in the list to narrow it)</span><span class="spacer"></span>
+    d.innerHTML = `<div class="sd"><header class="sd-head"><h2 id="sd-title">${esc(set.project || 'The set')}</h2><span class="muted small">${setTab === 'framing' ? 'Framing scope is chosen below; export checkboxes do not change it.' : `Over ${esc(scope)} (check panels in the list to narrow it)`}</span><span class="spacer"></span>
             <button class="link" data-act="sd-close">Close</button></header>
         <div class="sd-tabs" role="tablist">${SET_TABS.map(([k, label]) => `<button role="tab" data-act="sd-tab" data-v="${k}" aria-selected="${setTab === k}" class="${setTab === k ? 'on' : ''}">${esc(label)}</button>`).join('')}</div>
         <div class="sd-body">${body}</div></div>`;
@@ -3259,27 +3289,30 @@ function openLabelMaker() {
 // Framing settings for every panel (universal): the studs' cutback and whether cripples and jacks are seated in the
 // tracks that receive them; how headers and sills end at the jambs (overlap or flush, with a cutback at each flush end).
 // A draft from the open panel, then Apply to every panel (one undo step).
-let fsDraft = null;
-const FS_KEYS = ['cutbackIn', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn'];
+let fsDraft = null, fsScope = 'all';
+const FS_KEYS = SOURCE_FRAMING_FIELDS;
 const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, deflectionGapIn: Number(p.deflectionGapIn) || 0, seatPieces: p.seatPieces !== false, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
     sillEnds: p.sillEnds === 'flush' ? 'flush' : 'overlap', sillCutbackIn: Number(p.sillCutbackIn) || 0 });
 const fsSame = (a, b) => FS_KEYS.every(k => (k === 'headCutbackIn' && a.headEnds !== 'flush') || (k === 'sillCutbackIn' && a.sillEnds !== 'flush') ? true : a[k] === b[k]);
 function framingTab() {
     if (!fsDraft) fsDraft = fsOf(cur() || G.newPanel());
-    const d = fsDraft, differ = set.panels.filter(p => !fsSame(d, fsOf(p)));
+    const d = fsDraft, targets = fsScope === 'open' ? [cur()].filter(Boolean) : set.panels, differ = targets.filter(p => !fsSame(d, fsOf(p)));
     const radio = (name, v, label, sub) => `<label class="fs-opt"><input type="radio" name="${name}" data-fs="${name}" value="${v}" ${d[name] === v ? 'checked' : ''}><span><b>${label}</b><small>${sub}</small></span></label>`;
-    const cut = (k, label, on = true) => `<label class="field mini-field"><span>${label}</span><input type="text" class="mini" data-fs="${k}" value="${esc(fine(d[k]))}" ${on ? '' : 'disabled'} aria-label="${label}"></label>`;
-    return `<p class="small">For every panel in the set: what you set here is given to all ${set.panels.length} of them by <b>Apply</b> (one Undo step), and new panels take it from the open panel. Cut lengths, marks, the cut list and the drawings follow.</p>
+    const cut = (k, label, on = true) => `<label class="field mini-field"><span>${label} <small>${esc(d[k] !== fsOf(cur() || G.newPanel())[k] ? 'Draft override (Apply to use)' : framingOrigin(cur(),k))}</small></span><input type="text" class="mini" data-fs="${k}" value="${esc(fine(d[k]))}" ${on ? '' : 'disabled'} aria-label="${label}"></label>`;
+    const source = sourceFraming(cur()), flange = G.parseMember(cur()?.members.stud)?.flangeIn;
+    return `<div class="framing-scope"><b>Apply framing rules to</b>${[['all',`All ${set.panels.length} panels`],['open',`Open panel: ${cur()?.mark || 'none'}`]].map(([v,label])=>`<label><input type="radio" name="fsScope" data-fs-scope value="${v}" ${fsScope===v?'checked':''}>${esc(label)}</label>`).join('')}</div>
+        <p class="small">One Apply, one Undo. Cutback, top gap, seating and header/sill ends are together here. Applying all panels replaces their individual and imported values.</p>
+        ${source ? `<p class="framing-source"><b>Revit template: ${esc(source.templateName || 'unnamed')}</b> ${esc(source.templateId)} · fields below show their source. <button class="link" data-act="fs-source">Use Revit values on this panel</button></p>` : ''}
         <div class="fs-grid">
-            <section class="sd-card"><h3>Studs</h3>${cut('cutbackIn', 'Cutback (each stud\'s top short of the track web)')}
+            <section class="sd-card"><h3>Stud cutback &amp; top gap</h3>${cut('cutbackIn', 'Stud cutback (except deflection top)')}
                 ${cut('deflectionGapIn', 'Top deflection gap (0 = use cutback)')}<p class="small">A gap at the top-track web replaces the top cutback; it is never added to it. Lower cripple/jack ends keep their cutback. Flat tops only.</p>
                 <label class="fs-opt"><input type="checkbox" data-fs="seatPieces" ${d.seatPieces ? 'checked' : ''}><span><b>Seat cripples and jacks in the tracks</b><small>On (the default): they run into each single track that receives them (the bottom track, a track header under them, a track sill over them) to its web, less the cutback, like full-height studs; drawn through the see-through tracks. Off: cut to the clear span. Either way a cripple's top runs into the top track like the studs (its top matches theirs).</small></span></label></section>
-            <section class="sd-card"><h3>Headers</h3>${radio('headEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side: tabs fastened to the jambs (the default)')}
+            <section class="sd-card"><h3>Header ends</h3>${radio('headEnds', 'overlap', 'Overlap the jambs', `One stud flange past each jamb (${flange ? fine(flange) : 'member flange'} each side on the open panel).`)}
                 ${radio('headEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end; a header on jack studs still bears on them')}${cut('headCutbackIn', 'Cutback at each flush end', d.headEnds === 'flush')}</section>
-            <section class="sd-card"><h3>Sills</h3>${radio('sillEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side (the default)')}
+            <section class="sd-card"><h3>Sill ends</h3>${radio('sillEnds', 'overlap', 'Overlap the jambs', `One stud flange past each jamb (${flange ? fine(flange) : 'member flange'} each side on the open panel).`)}
                 ${radio('sillEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end')}${cut('sillCutbackIn', 'Cutback at each flush end', d.sillEnds === 'flush')}</section>
         </div>
-        <div class="acts"><button data-act="fs-apply" ${differ.length ? '' : 'disabled'}>Apply to every panel</button><button class="link small" data-act="fs-reset">Back to the open panel's</button>
+        <div class="acts"><button data-act="fs-apply" ${differ.length ? '' : 'disabled'}>${fsScope === 'all' ? 'Apply to every panel' : 'Apply to open panel'}</button><button class="link small" data-act="fs-reset">Reset draft</button>
             <span class="small ${differ.length ? 'warning' : 'muted'}">${differ.length ? `${differ.length} panel${differ.length === 1 ? '' : 's'} differ from these: ${esc(differ.slice(0, 8).map(p => p.mark).join(', '))}${differ.length > 8 ? '…' : ''}` : 'Every panel has these.'}</span></div>
         <p class="muted small">Seated pieces and flush ends change cut lengths: the plan asks the Revit side for the features seated-pieces, flush-headers and flush-sills.</p>
         <p class="small">These two apply at once to the whole set (each one Undo step):</p>
@@ -3311,16 +3344,18 @@ function legendCard() {
 function applyFramingSettings() {
     const d = fsDraft;
     if (!d) return;
-    const n = set.panels.filter(p => !fsSame(d, fsOf(p))).length;
+    const n = set.panels.filter(p => (fsScope === 'all' || p.id === cur()?.id) && !fsSame(d, fsOf(p))).length;
     set.panels = set.panels.map(p => {
+        if (fsScope === 'open' && p.id !== cur()?.id) return p;
         const q = { ...p, cutbackIn: d.cutbackIn, seatPieces: d.seatPieces }; // stored only when off (on is the default)
+        if (sourceFraming(p)) q.framingOrigins = Object.fromEntries(FS_KEYS.map(k => [k,'web']));
         if (d.deflectionGapIn > 0) q.deflectionGapIn = d.deflectionGapIn; else delete q.deflectionGapIn;
         for (const [k, c] of [['headEnds', 'headCutbackIn'], ['sillEnds', 'sillCutbackIn']]) { if (d[k] === 'flush') { q[k] = 'flush'; q[c] = d[c]; } else { delete q[k]; delete q[c]; } }
         if (q.seatPieces) delete q.seatPieces;
         return q;
     });
     changed(); renderAll(); renderSetDialog();
-    notice(`Framing settings given to ${n} panel${n === 1 ? '' : 's'}: studs cut back ${fine(d.cutbackIn)}${d.seatPieces ? ', cripples and jacks seated in the tracks' : ''}; headers ${d.headEnds === 'flush' ? `flush (${fine(d.headCutbackIn)} each end)` : 'overlapping the jambs'}; sills ${d.sillEnds === 'flush' ? `flush (${fine(d.sillCutbackIn)} each end)` : 'overlapping the jambs'}.`);
+    notice(`Framing settings applied to ${n} panel${n === 1 ? '' : 's'}: cutback ${fine(d.cutbackIn)}${d.deflectionGapIn ? `; top gap ${fine(d.deflectionGapIn)} replaces top cutback` : ''}; headers ${d.headEnds}; sills ${d.sillEnds}.`);
 }
 function stockTab(list) {
     const { items, skipped } = setItems(list);
@@ -3363,6 +3398,7 @@ setDialog().addEventListener('change', (e) => {
     const pn = e.target.closest('[data-prof-name]');
     if (pn) { renameProfile(Number(pn.dataset.profName), pn.value); return; }
     const fsEl = e.target.closest('[data-fs]');
+    if (e.target.matches('[data-fs-scope]')) { fsScope = e.target.value; renderSetDialog(); return; }
     if (fsEl) {
         const k = fsEl.dataset.fs;
         if (k === 'seatPieces') fsDraft = { ...fsDraft, seatPieces: fsEl.checked };

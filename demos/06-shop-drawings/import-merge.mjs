@@ -72,13 +72,18 @@ export function matchIncoming(current, incoming) {
 // the clips, the members placed by hand, the engineering styles, the viewing side, the level and grid lines; each
 // opening's framing by its key; the openings added here. Never the locked geometry (shape, outline, revit, the model's
 // openings' place and size), the mark, level, wall type, group or revisions.
-const DETAIL_KEYS = ['members', 'provenance', 'layoutStartIn', 'layoutFromRight', 'optimizeOpenings', 'flipStuds', 'studFlips', 'clips', 'sideB', 'cutbackIn', 'deflectionGapIn', 'manual', 'style', 'styleQuery', 'context'];
+const DETAIL_KEYS = ['members', 'provenance', 'framingOrigins', 'layoutStartIn', 'layoutFromRight', 'optimizeOpenings', 'flipStuds', 'studFlips', 'clips', 'sideB', 'cutbackIn', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'manual', 'style', 'styleQuery', 'context'];
 const OPENING_FRAMING = ['head', 'jamb', 'sill', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout', 'style'];
-const lockedGeometry = (p) => JSON.stringify({ shape: p.shape, outline: p.outline ?? null, revit: p.revit ?? null,
+const geometryRevit = (revit) => { if (!revit) return null; const { framingSettings, templateName, ...geometry } = revit; return geometry; };
+const lockedGeometry = (p) => JSON.stringify({ shape: p.shape, outline: p.outline ?? null, revit: geometryRevit(p.revit),
     openings: (p.openings || []).filter(o => o.locked).map(o => [o.kind, o.leftIn, o.widthIn, o.heightIn, o.sillIn]) });
 // -> { panel, changed: [field names], geometryDiffers, markDiffers }
 export function updateDetailing(existing, incoming) {
     const a = cleanPanel(existing), b = cleanPanel(incoming), out = structuredClone(a), changed = [];
+    if (b.revit?.framingSettings && canon(a.revit?.framingSettings) !== canon(b.revit.framingSettings)) {
+        out.revit = { ...out.revit, framingSettings: structuredClone(b.revit.framingSettings) };
+        changed.push('Revit framing settings');
+    }
     for (const k of DETAIL_KEYS) {
         if (canon(a[k]) === canon(b[k])) continue; // by content, whatever order its fields were written in
         if (b[k] === undefined) delete out[k]; else out[k] = structuredClone(b[k]);

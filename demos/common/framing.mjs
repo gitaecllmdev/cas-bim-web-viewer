@@ -451,35 +451,48 @@ export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
     const T = layout.top || null, LEG = layout.trackLegIn ?? 1.25;
     const eps = 1 / 32, issues = [];
     const boxes = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > eps && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > eps;
+    const physical = m => m.manualAxis ? { ...m, y:m.manualAxis[0], h:m.manualAxis[1]-m.manualAxis[0] } : m;
     const overlap = (a, b) => {
         if (!a.pts && !b.pts) return boxes(a, b);
         if (!boxes(a, b)) return false;
         const shared = sharedArea(cornersOf(a), cornersOf(b));
         return shared == null ? true : shared > eps * eps;
     };
-    const outside = (m) => (m.pts ? m.pts.some(([x, y]) => x < -eps || x > L + eps || y < -eps || y > topAt(T, x, H) + eps)
+    const outside = (m) => (m.manualAxis && (m.manualAxis[0] < -eps || m.manualAxis[1] > topMin(T, m.x, m.x + m.w, H) + eps)) || (m.pts ? m.pts.some(([x, y]) => x < -eps || x > L + eps || y < -eps || y > topAt(T, x, H) + eps)
         : m.x < -eps || m.y < -eps || m.x + m.w > L + eps || m.y + m.h > topMin(T, m.x, m.x + m.w, H) + eps);
     const name = (m) => `${m.mark || '?'} (${m.role})`;
     const what = (o) => `${isDoor(o) ? 'door' : 'opening'} at ${fmtFtIn(o.left)} to ${fmtFtIn(o.right)}`;
     const vs = members.filter(m => m.orient === 'v'), hs = members.filter(m => m.orient === 'h');
+    if (layout.manual && (layout.manual.count || layout.manual.deleted)) {
+        for (const side of ['left','right']) {
+            const supports = vs.some(m => (side === 'left' ? Math.abs(m.x) <= eps : Math.abs(m.x + m.w - L) <= eps)
+                && (m.manualAxis?.[0] ?? m.y) <= LEG + eps
+                && (m.manualAxis?.[1] ?? m.y + m.h) >= topMin(T,m.x,m.x+m.w,H) - LEG - eps);
+            if (!supports) issues.push({ code:'no-end', message:`No full-height end stud at the ${side} panel edge` });
+        }
+        for (const role of ['top track','bottom track']) if (!hs.some(m => m.role === role))
+            issues.push({ code:'no-panel-track', message:`The panel has no ${role}` });
+    }
     for (const m of members) {
         if (!(m.lengthIn > 0) || !(m.w > 0) || !(m.h > 0)) issues.push({ code: 'size', message: `${name(m)} has no length` });
         if (outside(m)) issues.push({ code: 'bounds', message: `${name(m)} is outside the wall` });
         for (const o of openings) {
             // A bottom track across a door is by nature (run through, cut out on site): not a finding.
             if (m.role === 'bottom track' && isDoor(o)) continue;
-            if (overlap(m, { x: o.left, y: o.bottom, w: o.right - o.left, h: o.top - o.bottom })) issues.push({ code: 'through-opening', ...(o.key ? { opening: o.key } : {}), message: `${name(m)} runs through the ${what(o)}` });
+            if (overlap(physical(m), { x: o.left, y: o.bottom, w: o.right - o.left, h: o.top - o.bottom })) issues.push({ code: 'through-opening', ...(o.key ? { opening: o.key } : {}), message: `${name(m)} runs through the ${what(o)}` });
         }
     }
     for (const v of vs) {
         for (const h of hs) {
-            if (!overlap(v, h)) continue;
+            if (!overlap(physical(v), h)) continue;
             const tab = (h.role === 'head track' || h.role === 'sill track') && (v.x + v.w <= h.x + flangeIn + eps || v.x >= h.x + h.w - flangeIn - eps);
-            if (!tab) issues.push({ code: 'crossing', message: `${name(v)} crosses ${name(h)} at ${fmtFtIn(v.x)}` });
+            const seat = v.manualAxis && /track/.test(h.role) && (!h.parts || h.parts.reduce((n,p)=>n+(p.qty||1),0)===1)
+                && v.manualAxis.some(y=>y>=h.y-eps && y<=h.y+h.h+eps);
+            if (!tab && !seat) issues.push({ code: 'crossing', message: `${name(v)} crosses ${name(h)} at ${fmtFtIn(v.x)}` });
         }
     }
     for (let i = 0; i < vs.length; i++) for (let j = i + 1; j < vs.length; j++) {
-        if (overlap(vs[i], vs[j])) issues.push({ code: 'overlap', message: `${name(vs[i])} and ${name(vs[j])} overlap at ${fmtFtIn(vs[i].x)}` });
+        if (overlap(physical(vs[i]), physical(vs[j]))) issues.push({ code: 'overlap', message: `${name(vs[i])} and ${name(vs[j])} overlap at ${fmtFtIn(vs[i].x)}` });
     }
     for (let i = 0; i < hs.length; i++) for (let j = i + 1; j < hs.length; j++) {
         if (overlap(hs[i], hs[j])) issues.push({ code: 'overlap', message: `${name(hs[i])} and ${name(hs[j])} overlap` });

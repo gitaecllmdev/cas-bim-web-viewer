@@ -21,6 +21,7 @@
 import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight, relabel, floor8 } from '../common/framing.mjs';
 import { readExchange } from './exchange.mjs';
 import { cleanRevisions } from './revisions.mjs';
+import { inheritSourceFraming } from './source-framing.mjs';
 const inchText = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
 import { parseDesignator, parseMemberSpec, parseFeetInches } from '../02-takeoff/criteria.mjs';
 
@@ -663,7 +664,11 @@ export function cleanManual(m) {
 function placed(m, b) {
     const dx = b.x - m.x, dy = b.y - m.y, grow = m.orient === 'v' ? b.h - m.h : b.w - m.w;
     const out = { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
-    if (dy || grow) delete out.seat; // moved up or down, or another length: no longer where the engine seated it
+    if (m.orient === 'v' && !m.pts) {
+        const start = (m.full ? 0 : m.seat ? m.y - m.seat[0] : m.y) + dy;
+        out.manualAxis = [start, start + out.lengthIn]; // exact inherited fabrication length, moved by the requested offset
+    }
+    if (dy || grow) { delete out.seat; delete out.full; } // changed ends no longer obey automatic full-height placement
     // Another member type (one piece only; a built-up member's parts are its opening's): its name, and its flange the
     // vertical's width (a track's leg its height), from where it is.
     const d = b.type && !m.parts?.length ? parseMember(b.type) : null;
@@ -691,9 +696,9 @@ export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
         members.push(copy);
     }
     layout.members = members;
-    relabel(layout, { flangeIn });
     const n = members.filter(m => m.manual).length, gone = Object.values(edits.members).filter(e => e.deleted).length;
     layout.manual = { count: n, deleted: gone, stale };
+    relabel(layout, { flangeIn });
     if (n || gone) layout.notes.push(`Placed by hand: ${n} member${n === 1 ? '' : 's'}${gone ? `, ${gone} removed` : ''} (they do not follow the framing rules).`);
     return layout;
 }
@@ -820,7 +825,7 @@ export function canEdit(panel, path) {
 }
 // A copy that is not the model's wall: no revit block, nothing locked.
 function unlinked(panel) {
-    const { revit, revisions, ...rest } = structuredClone(panel);
+    const { revit, revisions, framingOrigins, ...rest } = structuredClone(panel);
     return { ...rest, openings: (rest.openings || []).map(({ locked, ...o }) => o) };
 }
 
@@ -954,7 +959,7 @@ export function provenanceOf(raw) {
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-const PANEL_KEYS = new Set(['deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+const PANEL_KEYS = new Set(['framingOrigins', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
     'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
 const OPENING_KEYS = new Set(['offsets', 'profile', 'insertId', 'id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
     'headBearing', 'crippleEnds', 'extra']);
@@ -972,6 +977,7 @@ export function cleanBinding(b) {
 // are kept in extra (exportPanel writes them back). A model's panel keeps its outline as the model gave it, and its
 // spacing stays empty when the model gave none (never the 16" of a new panel).
 export function cleanPanel(p = {}) {
+    p = inheritSourceFraming(p);
     const s = p.shape || {}, kind = SHAPES.some(k => k.kind === s.kind) ? s.kind : 'rect';
     const shape = { kind, lengthIn: len(s.lengthIn) ?? 120 };
     if (kind === 'rect') shape.heightIn = len(s.heightIn) ?? 120;
@@ -988,6 +994,7 @@ export function cleanPanel(p = {}) {
     const extra = extrasOf(p, PANEL_KEYS);
     return {
         id: str(p.id, 40) || rid(), mark: str(p.mark, 40) || 'P-101', level: str(p.level), wallType: str(p.wallType, 120), group: str(p.group), sideB: !!p.sideB,
+        ...(p.framingOrigins ? { framingOrigins: { ...p.framingOrigins } } : {}),
         optimizeOpenings: !!p.optimizeOpenings, // the opening optimizer: off unless asked for
         ...(Number(p.layoutStartIn) > 0 ? { layoutStartIn: round16(Number(p.layoutStartIn)) } : {}), ...(p.layoutFromRight ? { layoutFromRight: true } : {}), ...(p.flipStuds ? { flipStuds: true } : {}), ...(cutbackOf(p) != null ? { cutbackIn: Math.round(cutbackOf(p) * 64) / 64 } : {}),
         ...(Array.isArray(p.studFlips) && p.studFlips.length ? { studFlips: [...new Set(p.studFlips.map(Number).filter(Number.isFinite).map(round16))] } : {}),

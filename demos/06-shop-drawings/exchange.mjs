@@ -6,6 +6,7 @@
 // but that loses information is refused too: a repeated property name (the last would silently win), a number that is
 // not finite (1e999). Lengths in inches, finite, 0..12,000,000. Every panel needs a mark and a supported shape (or an
 // outline); a model's panel (with a revit block) needs its openings inside the wall.
+import { sourceFraming } from './source-framing.mjs';
 const MAX_BYTES = 32 * 1024 * 1024, MAX_DEPTH = 40, MAX_ARRAY = 100000, MAX_PANELS = 2000, MAX_LENGTH = 12000000;
 const KINDS = ['door', 'window', 'mep', 'steel'], SHAPES = ['rect', 'rake', 'gable', 'custom'];
 
@@ -91,6 +92,7 @@ export function readExchange(input) {
     if (basis != null && basis !== 'internal' && basis !== 'shared') throw new Error('Unknown coordinate basis.');
     if (!Array.isArray(data.panels) || data.panels.length > MAX_PANELS) throw new Error('Panels must be an array of at most 2,000 entries.');
     for (const p of data.panels) {
+        sourceFraming(p);
         if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Expected a JSON object.');
         if (typeof p.mark !== 'string' || !p.mark.trim()) throw new Error('Every panel needs a nonempty mark.');
         let L, top;
