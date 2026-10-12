@@ -16,6 +16,7 @@ function render({table=true}={}){
  for(const [id,k] of [['project','project'],['panel','defaultPanel'],['url','defaultUrl']])if(document.activeElement!==$('#lm-'+id))$('#lm-'+id).value=project[k];
  for(const [id,key] of [['lm-master-project','project'],['lm-master-url','defaultUrl'],['lm-master-notes','defaultNotes']])if(document.activeElement!==$('#'+id))$('#'+id).value=project[key];
  document.querySelectorAll('[data-design]').forEach(e=>{if(e.type==='checkbox')e.checked=project.design[e.dataset.design];else e.value=project.design[e.dataset.design];});
+ $('#lm-bulk-toolbar').hidden=!project.rows.length;document.querySelector('.lm-workspace').classList.toggle('is-empty',!project.rows.length);
  $('#lm-undo').disabled=!past.length;$('#lm-redo').disabled=!future.length;
  const panels=[...new Set(project.rows.map(r=>L.rowValue(r,project).panel))].filter(Boolean);if(filter&&!panels.includes(filter))filter='';if(!panels.includes(focusPanel))focusPanel=panels[0]||'';
  $('#lm-filter').innerHTML='<option value="">All checked panels</option>'+panels.map(p=>`<option ${filter===p?'selected':''}>${esc(p)}</option>`).join('');
