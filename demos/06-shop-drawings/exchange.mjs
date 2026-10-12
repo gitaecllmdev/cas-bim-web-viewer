@@ -107,6 +107,10 @@ export function readExchange(input) {
             if (!o || typeof o !== 'object') throw new Error('Expected a JSON object.');
             if (!KINDS.includes(o.kind)) throw new Error('Unknown opening kind.');
             for (const k of ['leftIn', 'widthIn', 'heightIn', 'sillIn']) if (o[k] != null) length(o[k], k);
+            // Doors are floor-based in the current engine. A model door above the wall base cannot be
+            // normalized to sill 0 without moving locked source geometry: reject before cleanPanel.
+            if (p.revit && typeof p.revit === 'object' && o.kind === 'door' && (o.sillIn ?? 0) > 0)
+                throw new Error('A model door cut is above the panel bottom. Elevated door cuts are not supported; review the source geometry before importing.');
             // A model's opening must sit inside its wall (the model's own geometry; never trimmed here).
             if (top && p.revit && typeof p.revit === 'object') {
                 const left = o.leftIn ?? 0, width = o.widthIn ?? 0, height = o.heightIn ?? 0, sill = o.kind === 'door' ? 0 : o.sillIn ?? 0;
