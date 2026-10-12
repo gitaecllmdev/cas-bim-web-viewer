@@ -23,15 +23,22 @@ export function cleanProject(value = {}) {
     if(value.rows && (!Array.isArray(value.rows)||value.rows.length>5000))throw new Error('Use at most 5,000 table rows.');
     const rows=(value.rows || []).map(r=>({panel:str(r.panel).slice(0,100),mark:str(r.mark).slice(0,100),qty:Number(r.qty ?? 1),
         url:str(r.url),notes:str(r.notes).slice(0,500),project:str(r.project).slice(0,200),review:str(r.review).slice(0,200),panelOnly:r.panelOnly===true,ready:r.ready!==false,
-        panelOrigin:str(r.panelOrigin).slice(0,240),sourcePanel:str(r.sourcePanel||r.panel).slice(0,100)}));
+        panelOrigin:str(r.panelOrigin).slice(0,240),sourcePanel:str(r.sourcePanel||r.panel).slice(0,100),
+        overrides:{url:r.overrides?.url===true,notes:r.overrides?.notes===true}}));
     const logo=value.logo;
     const validLogo=logo && /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(logo.href || '') && logo.href.length<1500000 &&
         Array.isArray(logo.px) && logo.px.length===2 && logo.px.every(v=>Number.isInteger(v)&&v>0&&v<=2000);
     return {format:'cas-label-project',version:1,project:str(value.project).slice(0,200),defaultPanel:str(value.defaultPanel).slice(0,100),
-        defaultUrl:str(value.defaultUrl),design,logo:validLogo?{href:logo.href,px:logo.px}:null,rows};
+        defaultUrl:str(value.defaultUrl),defaultNotes:str(value.defaultNotes).slice(0,500),design,logo:validLogo?{href:logo.href,px:logo.px}:null,rows};
 }
 export function rowValue(row,project) {
-    return {...row,panel:row.panel || project.defaultPanel,url:row.url || project.defaultUrl,project:row.project || project.project};
+    return {...row,panel:row.panel || project.defaultPanel,url:row.overrides?.url?row.url:row.url || project.defaultUrl,
+        notes:row.overrides?.notes?row.notes:row.notes || project.defaultNotes || '',project:row.project || project.project};
+}
+export function applyMaster(project,field,value){
+    if(!['url','notes'].includes(field))throw new Error('Use the link or notes master field.');
+    const key=field==='url'?'defaultUrl':'defaultNotes';project[key]=str(value).slice(0,field==='notes'?500:Infinity);
+    for(const r of project.rows)if(!r.overrides?.[field])r[field]=project[key];
 }
 export function printProject(project,{panel=''}={}){return {...project,rows:project.rows.filter(r=>r.ready!==false&&(!panel||rowValue(r,project).panel===panel))};}
 export function validateProject(project) {
