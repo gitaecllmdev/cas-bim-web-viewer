@@ -17,6 +17,7 @@ import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
+import {demoStagesFromSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
 
 // Base64 for the source PDF kept with a schedule (state is JSON).
 const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -60,7 +61,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.stages = {}; // externalId -> stage name (walls without an entry are "Not started")
         this.selected = [];
         const params = new URLSearchParams(location.search);
-        this.tab = TABS[params.get('tab')] ? params.get('tab') : 'stages';
+        this.tabs=this.options.standalone?{stages:'Overview',gantt:'Timeline',calendar:'Calendar',lookahead:'Lookahead'}:TABS;
+        this.tab = this.tabs[params.get('tab')] ? params.get('tab') : 'stages';
         this.colorMode = 'actual';
         // Schedule views: only the walls linked to the schedule, the floors apart (views.setLevelsApart), all floor plans.
         this.linkedOnly = false;
@@ -180,6 +182,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.sampleSchedule = entry?.sampleSchedule || null;
             this.stateName = this.sampleSchedule ? 'progress' : `progress-${modelKey(urn)}`;
             this.scheduleState = this.sampleSchedule ? 'schedule' : `schedule-${modelKey(urn)}`;
+            if(this.options.standalone){const key=modelKey('install-progress-demo:'+urn);this.stateName=`progress-${key}`;this.scheduleState=`schedule-${key}`;}
             const [map, saved, schedule] = await Promise.all([loadPropertyMap(), loadState(this.stateName), loadState(this.scheduleState).catch(() => ({}))]);
             this.map = map;
             this.stages = saved.stages || {};
@@ -189,8 +192,10 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.walls =(await getWallData(model, map)).walls;
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
+            const freshDemo=this.options.standalone&&!Object.hasOwn(saved,'stages');if(freshDemo)this.asOf=DEMO_DATE;
             if (schedule?.activities?.length) { this.useSchedule(schedule); this.loadPdf(); }
             else if (!schedule?.removed && this.sampleSchedule) await this.loadSample({ quiet: true }).catch(err => console.warn('Sample schedule:', err.message));
+            if(freshDemo){this.stages=this.demoStageSnapshot();await saveState(this.stateName,{stages:this.stages,asOf:this.asOf,demo:true});}
             this.render();
         } catch (err) {
             this.panel.querySelector('[data-status]').textContent = `Could not load progress: ${err.message || err}`;
@@ -269,7 +274,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     async loadSample({ quiet = false } = {}) {
         const resp = await fetch(SAMPLE.url);
         if (!resp.ok) throw new Error(`Sample schedule not found (${resp.status})`);
-        const s = scheduleFromXer(parseXer(decodeText(await resp.arrayBuffer())), { file: SAMPLE.file });
+        let s = scheduleFromXer(parseXer(decodeText(await resp.arrayBuffer())), { file: SAMPLE.file });
+        if(this.options.standalone)s=demoShift(s,{today:new Date(2026,9,12,12),project:'Snowdon Towers',day:s.project.dataDate,keepLinks:true});
         s.source.sample = true;
         this.useSchedule(s);
         if (!quiet) { this.render(); this.message(`Loaded the sample schedule (made up): ${s.activities.length} activities.`); }
@@ -417,8 +423,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.panel.innerHTML = `<div class="demo-panel pg">
             <div class="tk-head pg-head">
                 <div class="pg-row">
-                    <b class="pg-title">Install Progress</b>
-                    <div class="tk-tabs">${Object.entries(TABS).map(([k, label]) => `<button data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
+                    <b class="pg-title">${this.options.standalone?'Project workspace':'Install Progress'}</b>
+                    <div class="tk-tabs" role="tablist" aria-label="Progress and schedule views">${Object.entries(this.tabs).map(([k, label]) => `<button role="tab" aria-selected="${k===this.tab}" data-tab="${k}" class="${k === this.tab ? 'active' : ''}">${label}</button>`).join('')}</div>
                     <span class="pg-info" data-sched-info></span>
                     ${s?.source.original || this.viewingOriginal ? `<button class="pg-btn ${this.viewingOriginal ? 'active' : ''}" data-original title="${this.viewingOriginal ? 'Back to the demo schedule (dates adjusted)' : 'The schedule as imported: its own project, data date and dates (view only)'}">${this.viewingOriginal ? 'Original dates' : 'Show original'}</button>` : ''}
                     ${d?.day ? `<span class="pg-chip demo" title="Demo: dates moved ${d.shiftDays.toLocaleString()} days (whole weeks) so ${fmtDay(d.day)} falls today. Original: ${escapeHtml(d.originalProject)} (data date ${d.originalDataDate ? fmtDay(d.originalDataDate) : '–'}). Schedule ⋯ › Undo restores them.">dates adjusted</span>`
@@ -433,7 +439,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                         <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>` : ''}
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
-                    <button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 7): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>
+                    ${this.options.standalone?'':'<button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 7): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>'}
                 </div>
                 ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
                 ${s ? `<div class="pg-row pg-search" data-search ${this.tab === 'stages' ? 'hidden' : ''}>
@@ -482,7 +488,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.render();
         };
         p.querySelector('[data-dock]')?.addEventListener('click', () => document.dispatchEvent(new CustomEvent('dock-split', { detail: 'toggle' })));
-        p.querySelector('[data-switch-demo]').onclick = () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '09-panel-tracker' } })); // main.js
+        const switchDemo=p.querySelector('[data-switch-demo]');if(switchDemo)switchDemo.onclick = () => document.dispatchEvent(new CustomEvent('switch-demo', { detail: { id: '09-panel-tracker' } })); // main.js
         const lt = p.querySelector('[data-links-toggle]');
         if (lt) lt.onclick = () => { const d = p.querySelector('[data-links]'); d.hidden = !d.hidden; lt.classList.toggle('active', !d.hidden); if (!d.hidden) this.renderLinks(); this.fitGantt(); };
         this.renderInfo();
@@ -497,7 +503,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const params = new URLSearchParams(location.search);
         if (tab === 'stages') params.delete('tab'); else params.set('tab', tab);
         history.replaceState(null, '', `${location.pathname}?${params}`);
-        this.panel.querySelectorAll('[data-tab]').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+        this.panel.querySelectorAll('[data-tab]').forEach(b => {b.classList.toggle('active', b.dataset.tab === tab);b.setAttribute('aria-selected',b.dataset.tab===tab);});
         const search = this.panel.querySelector('[data-search]');
         if (search) search.hidden = tab === 'stages';
         this.renderBody();
@@ -641,7 +647,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.refresh();
         const monthChanged = this.tab === 'calendar' && day.slice(0, 7) !== this.calMonth;
         if (monthChanged) this.calMonth = day.slice(0, 7);
-        if (wasActual || hadFocus || monthChanged) this.renderBody();
+        if (wasActual || hadFocus || monthChanged || this.tab==='lookahead') this.renderBody();
         else if (this.tab === 'calendar') this.renderDayList();
         this.updateCursorUi({ move });
     }
@@ -736,12 +742,35 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         }
         if (this.tab === 'gantt') this.renderGantt(body);
         else if (this.tab === 'calendar') this.renderCalendar(body);
+        else if (this.tab === 'lookahead'&&this.options.standalone) this.renderLookahead(body);
         else this.renderStages(body);
         this.renderInfo();
         if (this.tab !== 'stages') this.renderSearch(); // the match count follows the level and Show filters
     }
 
     // --- Stages tab (the tracker) ----------------------------------------------------------------------------------
+
+    renderLookahead(body) {
+        const plan=lookaheadWeeks(this.visibleActivities('open'),this.cursor);
+        body.innerHTML=`<div class="lookahead-head"><div><span class="eyebrow">SHORT-INTERVAL PLANNING</span><h3>Three weeks ahead</h3><p class="muted">${plan.unique} open activities · from ${fmtDay(this.cursor)}. Activities spanning weeks appear in each relevant week.</p></div><label>Start date <input type="date" data-lookahead-date value="${this.cursor}" min="${this.span[0]}" max="${this.span[1]}"></label></div>
+            <div class="pg-main float"><div class="lookahead-weeks">${plan.weeks.map((w,i)=>`<section class="lookahead-week"><header><span>WEEK ${i+1}</span><b>${fmtDay(w.start)} – ${fmtDay(w.finish)}</b><small>${w.activities.length} activities</small></header>${w.activities.map(a=>{const m=this.modelOf(a),c=compare(m,a.pct);return `<button class="lookahead-card ${a.id===this.selectedAct?'selected':''}" data-look-act="${escapeHtml(a.id)}" style="--stage-color:${this.colorOf(a)}"><small>${escapeHtml(a.level||'Project')} · ${escapeHtml(a.stage||'Coordination')}</small><b>${escapeHtml(a.name)}</b><span>${escapeHtml(a.id)} · ${fmtDay(a.start)} – ${fmtDay(a.finish)}</span><div><em>P6 ${a.pct??'–'}%</em><em>Model ${m?m.pct+'%':'not linked'}</em>${c?.state==='behind'?'<em class="behind">Behind plan</em>':''}</div></button>`;}).join('')||'<p class="lookahead-empty">No open activities in this week.</p>'}</section>`).join('')}</div><div class="pg-side" data-details></div></div>${plan.unscheduled?`<p class="note">${plan.unscheduled} open activities need valid start/finish dates and are not placed in a week.</p>`:''}`;
+        body.querySelector('[data-lookahead-date]').onchange=e=>{if(e.target.value)this.setCursor(e.target.value,{move:true});};
+        body.querySelectorAll('[data-look-act]').forEach(b=>b.onclick=()=>this.selectActivity(b.dataset.lookAct));
+        this.renderDetails(body.querySelector('[data-details]'));
+    }
+
+    demoStageSnapshot(){
+        // Public sample schedule order is stable even while model levels finish loading.
+        return demoStagesFromSchedule(this.walls,this.schedule?.activities||[],this.levels);
+    }
+
+    async resetDemo(){
+        if(!this.options.standalone)return;
+        this.stopPlay();this.clearFocus();this.asOf=DEMO_DATE;
+        this.kw.active=[];this.kw.typed='';this.gantt.show='all';this.colorMode='actual';
+        this.views.setLevel(null);await this.loadSample({quiet:true});
+        await this.setStages(this.demoStageSnapshot(),{undo:true});await this.saveSchedule();this.render();
+    }
 
     renderStages(body) {
         const level = this.views.level?.name;
@@ -754,7 +783,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             <h3>Progress by level <span class="muted">(click a level to view it; % = Finished ÷ all walls)</span></h3>
             <table><thead><tr><th>Level</th><th style="width:28%">Stages</th><th class="num">Finished</th><th>Set level</th></tr></thead><tbody data-levels></tbody></table>
             <div class="row"><button data-reset>Reset all stages…</button> <span class="muted" data-saved></span> <button data-undo hidden>Undo</button></div>
-            <p class="note">Single user. Saved to a local JSON file (data/progress.json), not synced to any cloud system.</p>`;
+            <p class="note">${this.options.standalone?'Demonstration field snapshot. Your edits stay in this browser; export CSV to share them.':'Single user. Saved to a local JSON file (data/progress.json), not synced to any cloud system.'}</p>`;
         body.querySelectorAll('[data-stage]').forEach(b => b.onclick = () => this.setStage(b.dataset.stage));
         body.querySelector('[data-select-level]').onclick = () => {
             this.views.select(this.walls.filter(w => (w.level ?? NOT_SET) === level).map(w => w.dbId));
@@ -865,6 +894,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.compareCounts = c;
         }
         this.views.setColors(colors);
+        if(this.options.standalone)document.dispatchEvent(new CustomEvent('progress-summary',{detail:{walls:this.walls.length,finished:counts[FINISHED],counts,levels:this.levels.length,activities:this.schedule?.activities.length||0,attention:this.linked.filter(a=>compare(this.modelOf(a),a.pct)?.state==='behind').length,asOf:this.asOf,project:this.schedule?.project.name||'Snowdon Towers'}}));
         if (this.allPlans.isOpen) this.allPlans.setColors(colors);
         if (this.views.apart) this.updateFloorLabels(planned);
         this.renderColorLegend();
