@@ -24,7 +24,7 @@ export function cleanProject(value = {}) {
     const rows=(value.rows || []).map(r=>({panel:str(r.panel).slice(0,100),mark:str(r.mark).slice(0,100),qty:Number(r.qty ?? 1),
         url:str(r.url),notes:str(r.notes).slice(0,500),project:str(r.project).slice(0,200),review:str(r.review).slice(0,200),panelOnly:r.panelOnly===true,ready:r.ready!==false,
         panelOrigin:str(r.panelOrigin).slice(0,240),sourcePanel:str(r.sourcePanel||r.panel).slice(0,100),
-        overrides:{url:r.overrides?.url===true,notes:r.overrides?.notes===true}}));
+        overrides:{url:r.overrides?.url===true,notes:r.overrides?.notes===true,project:r.overrides?.project===true}}));
     const logo=value.logo;
     const validLogo=logo && /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(logo.href || '') && logo.href.length<1500000 &&
         Array.isArray(logo.px) && logo.px.length===2 && logo.px.every(v=>Number.isInteger(v)&&v>0&&v<=2000);
@@ -33,11 +33,11 @@ export function cleanProject(value = {}) {
 }
 export function rowValue(row,project) {
     return {...row,panel:row.panel || project.defaultPanel,url:row.overrides?.url?row.url:row.url || project.defaultUrl,
-        notes:row.overrides?.notes?row.notes:row.notes || project.defaultNotes || '',project:row.project || project.project};
+        notes:row.overrides?.notes?row.notes:row.notes || project.defaultNotes || '',project:row.overrides?.project?row.project:row.project || project.project};
 }
 export function applyMaster(project,field,value){
-    if(!['url','notes'].includes(field))throw new Error('Use the link or notes master field.');
-    const key=field==='url'?'defaultUrl':'defaultNotes';project[key]=str(value).slice(0,field==='notes'?500:Infinity);
+    if(!['url','notes','project'].includes(field))throw new Error('Use a supported master field.');
+    const key=field==='url'?'defaultUrl':field==='notes'?'defaultNotes':'project';project[key]=str(value).slice(0,field==='notes'?500:field==='project'?200:Infinity);
     for(const r of project.rows)if(!r.overrides?.[field])r[field]=project[key];
 }
 export function printProject(project,{panel=''}={}){return {...project,rows:project.rows.filter(r=>r.ready!==false&&(!panel||rowValue(r,project).panel===panel))};}
