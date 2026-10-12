@@ -13,6 +13,7 @@ import { labelPages } from './labels.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
 import { prefabState, PREFAB_COLORS } from './prefab.mjs';
+import { openingCallout, allowanceArrows } from './opening-callouts.mjs';
 
 // Sheet sizes (landscape, inches). 'auto' takes the smallest one that draws the panel at 1/4" = 1'-0" or larger, so
 // long exterior walls stay readable; past 36 x 48 the sheet is 36" tall and as wide as the panel needs (a roll plot).
@@ -109,6 +110,7 @@ export function lapLines(m, members) {
 const over = (t, m) => t.orient === 'h' && t.x < m.x + m.w - 1e-6 && t.x + t.w > m.x + 1e-6;
 export function seatOf(m, members) {
     if (m.orient !== 'v' || !(m.lengthIn > 0)) return null;
+    if (m.topAxis) return { y0: m.topAxis[0], y1: m.topAxis[1] };
     // A piece seated by the engine (m.seat: how far into the track under it and over it): down into the one, its cut
     // length up from there (the cutback short of the other's web).
     if (!m.full && m.seat) { const [down, up] = m.seat, y0 = m.y - down; return down || up ? { y0, y1: m.pts ? m.y + m.h : Math.min(m.y + m.h + up, y0 + m.lengthIn) } : null; }
@@ -168,7 +170,7 @@ function toSvg(ops, box = null) {
     const [bx, by, W, H] = box || [0, 0, ops.size.W, ops.size.H];
     const body = ops.map(o => {
         if (o.t === 'text') return `<text x="${n(o.x)}" y="${n(o.y)}" font-size="${o.size}" text-anchor="${o.anchor}" font-weight="${o.weight}" fill="${o.fill}"${o.rotate ? ` transform="rotate(${o.rotate} ${n(o.x)} ${n(o.y)})"` : ''}>${esc(o.s)}</text>`;
-        if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}/>`;
+        if (o.t === 'line') return `<line x1="${n(o.x1)}" y1="${n(o.y1)}" x2="${n(o.x2)}" y2="${n(o.y2)}" stroke="${o.stroke}" stroke-width="${o.width}"${o.dash ? ` stroke-dasharray="${o.dash}"` : ''}${o.allowanceSide ? ` data-allowance-side="${o.allowanceSide}"` : ''}/>`;
         const op = o.opacity != null ? ` fill-opacity="${o.opacity}"` : '';
         if (o.t === 'rect') return `<rect x="${n(o.x)}" y="${n(o.y)}" width="${n(o.w)}" height="${n(o.h)}" fill="${o.fill}"${op} stroke="${o.stroke}" stroke-width="${o.width}"/>`;
         if (o.t === 'poly') return `<polygon points="${o.pts.map(p => `${n(p[0])},${n(p[1])}`).join(' ')}" fill="${o.fill}"${op} stroke="${o.stroke}" stroke-width="${o.width}" stroke-linejoin="round"/>`;
@@ -456,14 +458,15 @@ export function sheetOps(layout, info) {
             out.push(text(X(o.requested.left) + 0.04, Y(o.top) + 0.1, `RO ${fmtFtIn(o.requested.right - o.requested.left)}`, { size: 0.06, weight: 'bold', fill: COLORS.openingDim })); // in its corner: clear of the tags on the header and sill
             ink.push(textBox(X(o.requested.left) + 0.04, Y(o.top) + 0.1, `RO ${fmtFtIn(o.requested.right - o.requested.left)}`, 0.06, 'start'));
         }
-        // Its size inside it (as typed: the clear opening) and the rough opening as + the framing offset each side.
+        if (o.clear && (o.clear.left !== o.left || o.clear.right !== o.right || o.clear.top !== o.top || o.clear.bottom !== o.bottom)) {
+            out.push(rect(X(o.clear.left), Y(o.clear.top), (o.clear.right - o.clear.left) * s, (o.clear.top - o.clear.bottom) * s,
+                { stroke: COLORS.openingDim, width: 0.003 }));
+        }
+        // Original size, with the actual framed R.O. directly below it.
         {
-            const c = o.clear || o, w = c.right - c.left, h = (o.through ? o.top : c.top) - c.bottom, r8 = (v) => Math.round(v * 8) / 8;
-            // The framing offset each side (R.O. +x when equal; by side when it varies).
-            const sides = o.clear ? { L: r8(o.clear.left - o.left), R: r8(o.right - o.clear.right), T: o.through ? null : r8(o.top - o.clear.top), B: openingKind(o) === 'door' ? null : r8(o.clear.bottom - o.bottom) } : null;
-            const vals = sides ? Object.values(sides).filter(v => v != null) : [], off = vals.length && vals.every(v => v === vals[0]) ? vals[0] : null;
-            const roText = !sides ? '' : off != null ? (off > 0 ? `R.O. +${inchesText(off)}` : '') : `R.O. ${Object.entries(sides).filter(([, v]) => v != null).map(([k, v]) => `${k}+${inchesText(v)}`).join(' ')}`;
-            const lines = [o.through ? `${fmtFtIn(w)} WIDE` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`, ...(roText ? [roText] : [])];
+            const lines = openingCallout(o).lines;
+            // Small openings retain an explicit original/R.O. label even when the
+            // panel scale cannot fit it inside; the external callout has a leader.
             const size = Math.min(0.07, ((o.right - o.left) * s * 0.9) / (Math.max(...lines.map(l => l.length)) * 0.62));
             if (size >= 0.04) {
                 const cx = X((o.left + o.right) / 2), cy = Y(o.bottom + (o.top - o.bottom) * 0.3);
@@ -474,8 +477,16 @@ export function sheetOps(layout, info) {
                 lines.forEach((l, k) => out.push(text(cx, cy + k * size * 1.25, l, { size, anchor: 'middle', weight: k ? 'normal' : 'bold', fill: COLORS.openingDim })));
                 if (showName) out.push(text(cx, cy + (lines.length - 1) * size * 1.25 + nSize * 1.35, nm, { size: nSize, anchor: 'middle', fill: openingInk(look.color) }));
                 ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - size - 0.01, y1: cy - size - 0.01 + bh });
+            } else {
+                const cx = X((o.left + o.right) / 2), cy = Y(o.bottom) + 0.15;
+                const bw = Math.max(...lines.map(l => textWidth(l, 0.045, true))) + 0.04;
+                out.push(rect(cx - bw / 2, cy - 0.05, bw, 0.15, { fill: '#ffffff', stroke: 'none', width: 0 }));
+                out.push(line(cx, Y(o.bottom), cx, cy - 0.06, { stroke: COLORS.openingDim, width: 0.005 }));
+                lines.forEach((l, k) => out.push(text(cx, cy + k * 0.055, l, { size: 0.045, anchor: 'middle', fill: COLORS.openingDim })));
+                ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - 0.05, y1: cy + 0.1 });
             }
         }
+        out.push(...allowanceArrows(o, { X, Y, scale: s, color: COLORS.openingDim }));
         // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
         // (The model's trade for it, when it says: PLUMBING, ELECTRICAL, ...)
         const kind = openingKind(o), kt = look?.kindText || OPENING_KINDS[kind];
@@ -485,6 +496,8 @@ export function sheetOps(layout, info) {
             ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, 0.06, 'middle'));
         }
     }
+    const topGap = members.find(m => m.topGapIn)?.topGapIn;
+    if (topGap) out.push(text(X(L / 2), Y(HT) - 0.16, `TOP DEFLECTION GAP ${inchesText(topGap)} - NO TOP CUTBACK`, { size: 0.07, anchor: 'middle', fill: COLORS.openingDim }));
     // Members, colored by function like the CAS legend (on screen, info.prefabMembers: a mark with a prefab length in
     // blue when longer, green when shorter)
     const rowOf = new Map(cutList.map(c => [c.mark, c]));

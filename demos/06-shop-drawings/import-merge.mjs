@@ -72,7 +72,7 @@ export function matchIncoming(current, incoming) {
 // the clips, the members placed by hand, the engineering styles, the viewing side, the level and grid lines; each
 // opening's framing by its key; the openings added here. Never the locked geometry (shape, outline, revit, the model's
 // openings' place and size), the mark, level, wall type, group or revisions.
-const DETAIL_KEYS = ['members', 'provenance', 'layoutStartIn', 'layoutFromRight', 'optimizeOpenings', 'flipStuds', 'studFlips', 'clips', 'sideB', 'cutbackIn', 'manual', 'style', 'styleQuery', 'context'];
+const DETAIL_KEYS = ['members', 'provenance', 'layoutStartIn', 'layoutFromRight', 'optimizeOpenings', 'flipStuds', 'studFlips', 'clips', 'sideB', 'cutbackIn', 'deflectionGapIn', 'manual', 'style', 'styleQuery', 'context'];
 const OPENING_FRAMING = ['head', 'jamb', 'sill', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout', 'style'];
 const lockedGeometry = (p) => JSON.stringify({ shape: p.shape, outline: p.outline ?? null, revit: p.revit ?? null,
     openings: (p.openings || []).filter(o => o.locked).map(o => [o.kind, o.leftIn, o.widthIn, o.heightIn, o.sillIn]) });

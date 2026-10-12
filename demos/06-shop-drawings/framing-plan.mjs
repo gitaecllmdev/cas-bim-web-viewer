@@ -79,7 +79,7 @@ export function detailingFromPanel(panel) {
             header: p.members.header, jamb: p.members.jamb, sill: p.members.sill },
         provenance: p.provenance ? { ...p.provenance } : null,
         layout: { startIn: p.layoutStartIn ?? null, fromRight: !!p.layoutFromRight, optimize: !!p.optimizeOpenings },
-        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), seatPieces: p.seatPieces !== false, seatTop: p.seatTop !== false },
+        studs: { flipAll: !!p.flipStuds, flips: [...(p.studFlips || [])], ...(p.cutbackIn != null ? { cutbackIn: p.cutbackIn } : {}), ...(p.deflectionGapIn != null ? { deflectionGapIn: p.deflectionGapIn } : {}), seatPieces: p.seatPieces !== false, seatTop: p.seatTop !== false },
         ...(p.headEnds === 'flush' ? { heads: { ends: 'flush', cutbackIn: p.headCutbackIn ?? 0 } } : {}), ...(p.sillEnds === 'flush' ? { sills: { ends: 'flush', cutbackIn: p.sillCutbackIn ?? 0 } } : {}),
         openings: Object.fromEntries(p.openings.map((o, i) => [keys[i], Object.fromEntries(OPENING_DETAIL.filter(k => o[k] !== undefined && o[k] !== '').map(k => [k, o[k]]))])),
         clips: (p.clips || []).map(c => ({ ...c })),
@@ -182,6 +182,7 @@ function panelFrom(snapshot, detailing) {
         layoutFromRight: !!detailing.layout?.fromRight, optimizeOpenings: !!detailing.layout?.optimize,
         flipStuds: !!detailing.studs?.flipAll, studFlips: [...(detailing.studs?.flips || [])], clips: (detailing.clips || []).map(c => ({ ...c })), sideB: false,
         ...(finite(detailing.studs?.cutbackIn) ? { cutbackIn: detailing.studs.cutbackIn } : {}),
+        ...(detailing.studs?.deflectionGapIn != null ? { deflectionGapIn: detailing.studs.deflectionGapIn } : {}),
         // Seating as the detailing says; absent (the contract's fixtures): clear span, tops too.
         seatPieces: detailing.studs?.seatPieces === true, seatTop: detailing.studs?.seatTop === true,
         ...(detailing.heads?.ends === 'flush' ? { headEnds: 'flush', headCutbackIn: finite(detailing.heads.cutbackIn) ? detailing.heads.cutbackIn : 0 } : {}),
@@ -276,6 +277,12 @@ export function resolveFramingPlan(snapshot, detailing, catalog = null, engineer
     plan.cutList = cutListOf(layout, members);
     plan.catalog = { catalogVersion: catalogUsed.catalogVersion, source: catalogUsed.source || 'provided' };
     plan.requiredFeatures = featuresOf(panel, inputs, layout, members, plan);
+    // Drawing context for unframed model penetrations: no members, cut-list
+    // quantities or source geometry are added/changed by these annotations.
+    for (const so of plan.source.openings.filter(s => smallKeys.has(s.sourceKey))) {
+        const box = { ...so.actual, top: so.actual.top ?? H };
+        layout.openings.push({ ...box, key: so.sourceKey, kind: so.kind, clear: { ...box }, unframed: true });
+    }
     return done(layout);
 }
 
@@ -303,7 +310,7 @@ function intentOf(panel, snapshot, detailing) {
         members: { stud: { setting: m.stud, value: stud, source: src('stud', m.stud, 'missing') }, track: { setting: m.track, value: track, source: src('track', m.track, 'inherit:stud') },
             topTrack: { setting: m.topTrack, value: topTrack, source: src('topTrack', m.topTrack, 'inherit:track') },
             spacingIn: { setting: detailing.members?.spacingIn ?? null, value: m.spacingIn ?? null, source: prov.spacingIn || (detailing.members?.spacingIn != null ? 'detailing' : snapshot.kind === 'model' ? 'missing' : 'default') } },
-        layout: null, studs: { flipAll: !!panel.flipStuds, flips: [...panel.studFlips] }, view: { side: detailing.view?.side === 'B' ? 'B' : 'A', note: 'projection only: side B mirrors the drawing, never the members' },
+        layout: null, studs: { flipAll: !!panel.flipStuds, flips: [...panel.studFlips], ...(Number(panel.deflectionGapIn) > 0 ? { deflectionGapIn: panel.deflectionGapIn, topCutback: 'replaced-by-deflection-gap' } : {}) }, view: { side: detailing.view?.side === 'B' ? 'B' : 'A', note: 'projection only: side B mirrors the drawing, never the members' },
         openings,
     };
 }
@@ -337,7 +344,8 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
         const sloped = m.orient === 'v' && !!T && (m.pts || m.full);
         const ends = m.orient === 'v' ? { bottom: 'square', top: sloped ? 'slope' : 'square', ...(sloped ? { topSlope: slopeAt(xc) } : {}) }
             : m.role === 'top track' && m.slope ? { start: 'plumb', end: 'plumb', plumb: slopeAt(m.x + m.w / 2) } : { start: 'square', end: 'square' };
-        return { lengthIn: m.lengthIn, rule: cutRule(m), allowanceIn: m.orient === 'v' ? layout.cutbackIn ?? SEAT_ALLOWANCE_IN : 0, rounding: ROUND, ends };
+        return { lengthIn: m.lengthIn, rule: m.topGapIn ? 'top-deflection-gap' : cutRule(m), allowanceIn: m.topGapIn ? 0 : m.orient === 'v' ? layout.cutbackIn ?? SEAT_ALLOWANCE_IN : 0, rounding: ROUND, ends,
+            ...(m.topGapIn ? { topGapIn: m.topGapIn } : {}) };
     };
     const push = (rec, m) => { members.push({ ...rec, func: m.func, mark: rec.mark ?? m.mark ?? '', graphicBox: { x: m.x, y: m.y, w: m.w, h: m.h }, ...(m.manual ? { manual: m.manual, ...(m.from ? { copyOf: m.from } : {}) } : {}) }); };
 
@@ -350,7 +358,7 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
         const record = (rec) => { push({ role: m.role, ...rec }, m); graphic.memberKeys.push(rec.memberKey); };
         if (m.orient === 'v') {
             const xc = m.x + m.w / 2, right = webOnRight(m, layout);
-            const y0 = m.full ? 0 : m.y, y1 = m.full ? (T ? topAt(T, xc, H) : H) : m.pts ? underAt(T, xc, H, LEG) : m.y + m.h;
+            const y0 = m.topAxis ? m.topAxis[0] : m.full ? 0 : m.y, y1 = m.topAxis ? m.topAxis[1] : m.full ? (T ? topAt(T, xc, H) : H) : m.pts ? underAt(T, xc, H, LEG) : m.y + m.h;
             const fr = m.of ? framingOf.get(m.of) : null;
             const jambUnresolved = m.jamb && fr && fr.plies > 1 && !fr.jambStyleSet;
             if (jambUnresolved) unresolvedAssemblies.set(`${m.of}:jamb:${m.jamb}`, `${m.of}: ${fr.plies} jamb studs each side, but how they sit (boxed, back to back or same way) was not chosen: the drawing assumes boxed.`);
@@ -440,6 +448,7 @@ function cutListOf(layout, members) {
 function featuresOf(panel, inputs, layout, members, plan) {
     const f = new Set();
     if (layout.top) f.add('sloped-top');
+    if (Number(panel.deflectionGapIn) > 0) f.add('deflection-gap');
     if (inputs.openings.some(o => o.through)) f.add('steel-through-top');
     if (members.some(m => m.assemblyKey && /:jamb:/.test(m.assemblyKey))) f.add('jamb-plies');
     if (members.some(m => /:head:stud-/.test(m.memberKey))) f.add('stud-built-header');
@@ -467,7 +476,7 @@ export function planToNativeFeet(plan) {
     const out = JSON.parse(JSON.stringify(plan));
     out.unit = 'ft';
     for (const m of out.members) { m.start = pt(m.start); m.end = pt(m.end); m.placementLengthFt = ft(m.placementLengthIn); delete m.placementLengthIn;
-        m.cut = { ...m.cut, lengthFt: ft(m.cut.lengthIn), allowanceFt: ft(m.cut.allowanceIn) }; delete m.cut.lengthIn; delete m.cut.allowanceIn; }
+        m.cut = { ...m.cut, lengthFt: ft(m.cut.lengthIn), allowanceFt: ft(m.cut.allowanceIn), ...(m.cut.topGapIn != null ? { topGapFt: ft(m.cut.topGapIn) } : {}) }; delete m.cut.lengthIn; delete m.cut.allowanceIn; delete m.cut.topGapIn; }
     for (const a of out.accessories) a.at = pt(a.at);
     return out;
 }

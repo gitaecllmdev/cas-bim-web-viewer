@@ -102,7 +102,8 @@ function outlineFaces(m, layout, D, project, eye, seg = SEG, color = FUNC_COLOR[
 // layout: frameWall() output; box: { x, y, w, h } on the sheet (inches); opts: { flangeIn, highlight }.
 export function isoView(layout, box, { flangeIn = 1.625, highlight = null } = {}) {
     const hl = highlight == null ? null : new Set(highlight instanceof Set ? highlight : [].concat(highlight)); // one mark or several
-    const { lengthIn: L, heightIn: H, members, openings = [] } = layout;
+    const { lengthIn: L, heightIn: H, members: originalMembers, openings = [] } = layout;
+    const members = originalMembers?.map(m => m.topAxis ? { ...m, y: m.topAxis[0], h: m.topAxis[1] - m.topAxis[0] } : m);
     const D = layout.studIn || 3.625;
     if (!members?.length || !(L > 0) || !(H > 0)) return [];
     const az = (AZIMUTH * Math.PI) / 180, el = (ELEVATION * Math.PI) / 180;

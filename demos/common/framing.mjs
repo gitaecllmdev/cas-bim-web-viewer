@@ -265,7 +265,7 @@ function clipOpenings(openings, L, H, trackLegIn, top = null) {
 const trackOnly = (m) => (m.parts?.length ? m.parts.reduce((n, p) => n + (p.qty || 1), 0) === 1 && /^\d{3,4}T/i.test(m.parts[0].name || '') : /^\d{3,4}T/i.test(m.type || '') || /track/.test(m.role) && !m.parts);
 function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacingIn = 16, mils = 33,
     member = 'stud', flangeIn = 1.625, trackLegIn = 1.25, cutbackIn = SEAT_ALLOWANCE_IN, studName, trackName, topTrackName, top = null, layoutStartIn = null, layoutFromRight = false, studFlips = [],
-    headEnds = 'overlap', headCutbackIn = 0, sillEnds = 'overlap', sillCutbackIn = 0, seatPieces = false, seatTop = false }) {
+    headEnds = 'overlap', headCutbackIn = 0, sillEnds = 'overlap', sillCutbackIn = 0, seatPieces = false, seatTop = false, deflectionGapIn = 0 }) {
     const L = round16(lengthIn), H = heightIn, LEG = trackLegIn, T = top;
     const ops = clipOpenings(openings, L, H, LEG, T);
     const studType = studName || memberType(studIn, 'stud', mils, member), trackType = trackName || memberType(studIn, 'track', mils, member);
@@ -382,7 +382,16 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
                 const up = above && !above.pts && track(above) && (above.role === 'top track' || (seatPieces && above.role === 'sill track')) ? above.h : 0;
                 if (down || up) { len += down + up; seat = [down, up]; }
             }
-            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}), ...tag, ...(full ? { full: true } : {}), ...(seat ? { seat } : {}) });
+            // Opt-in top-track gap replaces the top cutback, never adds to it. Other
+            // vertical ends retain their original cutback rule. Flat tops only;
+            // generator validation refuses a sloped-top gap until its datum is chosen.
+            const topGap = deflectionGapIn > 0 && b >= hi - 1e-6 ? deflectionGapIn : 0;
+            let topAxis = null;
+            if (topGap) {
+                const start = full ? 0 : a - (seat?.[0] || 0), end = H - topGap;
+                topAxis = [start, end]; len = end - start; seat = null;
+            }
+            add({ role: r, orient: 'v', type: studType, x, w: flangeIn, ...geo, lengthIn: len, ...(r === 'jamb stud' ? own : {}), ...(own.ply ? { ply: own.ply } : {}), ...tag, ...(full ? { full: true } : {}), ...(seat ? { seat } : {}), ...(topGap ? { topGapIn: topGap, topAxis } : {}) });
         }
         return full;
     };

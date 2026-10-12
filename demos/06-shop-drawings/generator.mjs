@@ -410,6 +410,12 @@ export function panelErrors(panel) {
     if (!stud || !isStud(stud)) unresolved('on-center stud', m.stud, 'stud such as 362S162-33');
     if (m.track && !isTrack(track)) unresolved('bottom track', m.track, 'track such as 362T125-33');
     if (m.topTrack && !isTrack(parseMember(m.topTrack))) unresolved('top track', m.topTrack, 'track such as 362T200-33, or keep it as the bottom track');
+    const gap = Number(panel.deflectionGapIn ?? 0);
+    if (!(gap >= 0 && gap <= 12)) add('members', 'Top deflection gap must be between 0 and 12 inches.', 'input.deflection_gap_invalid');
+    if (gap > 0 && shapeTop(panel.shape).top) add('members', 'Top deflection gap on a sloped top needs a reviewed gap datum; use a flat top for this setting.', 'input.deflection_gap_sloped');
+    if (gap > 0 && panel.manual) add('members', 'Reset manual member overrides before applying a top deflection gap.', 'input.deflection_gap_manual');
+    const topLeg = parseMember(m.topTrack || m.track || trackFor(m.stud))?.flangeIn;
+    if (gap > 0 && topLeg != null && gap >= topLeg) add('members', 'Top deflection gap must be smaller than the top-track leg so the stud remains inside the track.', 'input.deflection_gap_unseated');
     const sp = Number(m.spacingIn);
     if (model && !(sp > 0)) add('members', 'The model\'s export gives no stud spacing: pick the spacing for this panel (it is not assumed).', 'detailing.spacing_missing');
     else if (!(sp >= 4 && sp <= 48)) add('members', 'Stud spacing should be between 4" and 48" (16" o.c. is typical).', 'member.spacing');
@@ -511,6 +517,7 @@ export function frameInputs(panel) {
     if (panel.layoutFromRight) inputs.layoutFromRight = true;
     if (panel.flipStuds) inputs.flipStuds = true;
     if (cutbackOf(panel) != null) inputs.cutbackIn = cutbackOf(panel);
+    if (Number(panel.deflectionGapIn) > 0) inputs.deflectionGapIn = Number(panel.deflectionGapIn);
     // Pieces seated in the tracks unless the panel says not (seatPieces: false); their tops into the top track always.
     Object.assign(inputs, endsOf(panel), { seatPieces: panel.seatPieces !== false, seatTop: panel.seatTop !== false });
     if (panel.studFlips?.length) inputs.studFlips = [...panel.studFlips];
@@ -721,7 +728,9 @@ export function framingNotes(panel) {
     const H = shapeTop(panel.shape).heightIn;
     return (panel.openings || []).map((o, i) => {
         const fr = openingFraming(panel, o, H), b = openingBox(o, H), bits = [];
-        if (fr.offsetIn > 0) bits.push(`rough opening ${fmtFtIn(fr.ro.right - fr.ro.left)}${b.through ? '' : ` x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`} (${inchText(fr.offsetIn)} framing offset)`);
+        if (fr.offsetIn > 0 || offsetsVary(o)) bits.push(`rough opening ${fmtFtIn(fr.ro.right - fr.ro.left)}${b.through ? '' : ` x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`} (${offsetsVary(o)
+            ? Object.entries(offsetsOf(o)).filter(([k]) => !(o.kind === 'door' && k === 'bottom') && !(o.kind === 'steel' && k === 'top')).map(([k,v]) => `${k[0].toUpperCase()} +${inchText(v)}`).join(', ')
+            : `${inchText(fr.offsetIn)} framing offset`})`);
         if (fr.plies > 1) bits.push(`${fr.plies} jamb studs each side, ${JAMB_STYLES[fr.jambStyle].toLowerCase()}`);
         if (fr.head?.depthIn) bits.push(`header ${HEAD_STYLES[fr.head.style].toLowerCase()}, ${inchText(fr.head.depthIn)} deep${fr.bearing === 'jacks' ? ', on jack studs' : ''}`);
         else if (fr.bearing === 'jacks') bits.push('header on jack studs');
@@ -945,7 +954,7 @@ export function provenanceOf(raw) {
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-const PANEL_KEYS = new Set(['seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+const PANEL_KEYS = new Set(['deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
     'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
 const OPENING_KEYS = new Set(['offsets', 'profile', 'insertId', 'id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
     'headBearing', 'crippleEnds', 'extra']);
@@ -989,6 +998,7 @@ export function cleanPanel(p = {}) {
         ...(cleanBinding(p.style) ? { style: cleanBinding(p.style) } : {}), ...(cleanManual(p.manual) ? { manual: cleanManual(p.manual) } : {}),
         ...(cleanRevisions(p.revisions) ? { revisions: cleanRevisions(p.revisions) } : {}), // issued revisions (revisions.mjs)
         ...endsOf(p), // pieces seated in the tracks; flush header and sill ends
+        ...(p.deflectionGapIn != null && p.deflectionGapIn !== '' ? { deflectionGapIn: Number(p.deflectionGapIn) } : {}),
         ...(p.context && typeof p.context === 'object' ? { context: structuredClone(p.context) } : {}), // level and grid lines (context-lines.mjs: drawing only)
         ...(p.styleQuery && (str(p.styleQuery.finish) || str(p.styleQuery.depthCode)) ? { styleQuery: { finish: str(p.styleQuery.finish), depthCode: str(p.styleQuery.depthCode, 8) } } : {}),
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
@@ -1032,7 +1042,7 @@ export function encodePanel(panel) {
         trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : '',
             o.offsetIn ?? '', o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : ''])), '', p.optimizeOpenings ? 1 : '',
         p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '',
-        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '']);
+        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '', p.deflectionGapIn ?? '']);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -1042,9 +1052,10 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = ''] = data;
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = '', deflectionGapIn = ''] = data;
     return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn, ...(cutbackIn === '' ? {} : { cutbackIn }),
         ...(seat === 0 ? { seatPieces: false } : {}), ...(headFlush === 1 ? { headEnds: 'flush', headCutbackIn: headCut } : {}), ...(sillFlush === 1 ? { sillEnds: 'flush', sillCutbackIn: sillCut } : {}),
+        ...(deflectionGapIn === '' ? {} : { deflectionGapIn }),
         clips: Array.isArray(clips) ? clips.map(([type, x, y]) => ({ type, x, y })) : [], studFlips: Array.isArray(studFlips) ? studFlips : [],
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),

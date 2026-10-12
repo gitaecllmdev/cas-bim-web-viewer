@@ -16,6 +16,7 @@ import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
 import * as FP from './demos/06-shop-drawings/framing-plan.mjs';
+import { resolvePlanBatch } from './demos/06-shop-drawings/batch-framing.mjs';
 import * as P from './demos/06-shop-drawings/profiles.mjs';
 import * as DT from './demos/06-shop-drawings/details.mjs';
 import * as R from './demos/06-shop-drawings/opening-rules.mjs';
@@ -3259,8 +3260,8 @@ function openLabelMaker() {
 // tracks that receive them; how headers and sills end at the jambs (overlap or flush, with a cutback at each flush end).
 // A draft from the open panel, then Apply to every panel (one undo step).
 let fsDraft = null;
-const FS_KEYS = ['cutbackIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn'];
-const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, seatPieces: p.seatPieces !== false, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
+const FS_KEYS = ['cutbackIn', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn'];
+const fsOf = (p) => ({ cutbackIn: G.cutbackOf(p) ?? 1 / 16, deflectionGapIn: Number(p.deflectionGapIn) || 0, seatPieces: p.seatPieces !== false, headEnds: p.headEnds === 'flush' ? 'flush' : 'overlap', headCutbackIn: Number(p.headCutbackIn) || 0,
     sillEnds: p.sillEnds === 'flush' ? 'flush' : 'overlap', sillCutbackIn: Number(p.sillCutbackIn) || 0 });
 const fsSame = (a, b) => FS_KEYS.every(k => (k === 'headCutbackIn' && a.headEnds !== 'flush') || (k === 'sillCutbackIn' && a.sillEnds !== 'flush') ? true : a[k] === b[k]);
 function framingTab() {
@@ -3271,6 +3272,7 @@ function framingTab() {
     return `<p class="small">For every panel in the set: what you set here is given to all ${set.panels.length} of them by <b>Apply</b> (one Undo step), and new panels take it from the open panel. Cut lengths, marks, the cut list and the drawings follow.</p>
         <div class="fs-grid">
             <section class="sd-card"><h3>Studs</h3>${cut('cutbackIn', 'Cutback (each stud\'s top short of the track web)')}
+                ${cut('deflectionGapIn', 'Top deflection gap (0 = use cutback)')}<p class="small">A gap at the top-track web replaces the top cutback; it is never added to it. Lower cripple/jack ends keep their cutback. Flat tops only.</p>
                 <label class="fs-opt"><input type="checkbox" data-fs="seatPieces" ${d.seatPieces ? 'checked' : ''}><span><b>Seat cripples and jacks in the tracks</b><small>On (the default): they run into each single track that receives them (the bottom track, a track header under them, a track sill over them) to its web, less the cutback, like full-height studs; drawn through the see-through tracks. Off: cut to the clear span. Either way a cripple's top runs into the top track like the studs (its top matches theirs).</small></span></label></section>
             <section class="sd-card"><h3>Headers</h3>${radio('headEnds', 'overlap', 'Overlap the jambs', 'One flange past the rough opening each side: tabs fastened to the jambs (the default)')}
                 ${radio('headEnds', 'flush', 'Flush between the jambs', 'Cut to the rough opening, less the cutback at each end; a header on jack studs still bears on them')}${cut('headCutbackIn', 'Cutback at each flush end', d.headEnds === 'flush')}</section>
@@ -3312,6 +3314,7 @@ function applyFramingSettings() {
     const n = set.panels.filter(p => !fsSame(d, fsOf(p))).length;
     set.panels = set.panels.map(p => {
         const q = { ...p, cutbackIn: d.cutbackIn, seatPieces: d.seatPieces }; // stored only when off (on is the default)
+        if (d.deflectionGapIn > 0) q.deflectionGapIn = d.deflectionGapIn; else delete q.deflectionGapIn;
         for (const [k, c] of [['headEnds', 'headCutbackIn'], ['sillEnds', 'sillCutbackIn']]) { if (d[k] === 'flush') { q[k] = 'flush'; q[c] = d[c]; } else { delete q[k]; delete q[c]; } }
         if (q.seatPieces) delete q.seatPieces;
         return q;
@@ -3364,7 +3367,7 @@ setDialog().addEventListener('change', (e) => {
         const k = fsEl.dataset.fs;
         if (k === 'seatPieces') fsDraft = { ...fsDraft, seatPieces: fsEl.checked };
         else if (k === 'headEnds' || k === 'sillEnds') fsDraft = { ...fsDraft, [k]: fsEl.value };
-        else { const v = G.parseLength(fsEl.value); if (v == null || v < 0 || v > 1) { notice('A cutback between 0" and 1".', true); renderSetDialog(); return; } fsDraft = { ...fsDraft, [k]: Math.round(v * 64) / 64 }; }
+        else { const v = G.parseLength(fsEl.value), max = k === 'deflectionGapIn' ? 12 : 1; if (v == null || v < 0 || v > max) { notice(k === 'deflectionGapIn' ? 'A top deflection gap between 0" and 12".' : 'A cutback between 0" and 1".', true); renderSetDialog(); return; } fsDraft = { ...fsDraft, [k]: Math.round(v * 64) / 64 }; }
         renderSetDialog(); return;
     }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSet(); renderSetDialog(); return; }
@@ -3482,10 +3485,18 @@ async function downloadPdf(panels, { perTypical = false } = {}) {
         failed.length ? `Framing check failed on ${failed.join(', ')}: marked DO NOT RELEASE.` : ''].filter(Boolean).join(' '), !!(skipped.length || failed.length));
 }
 // The resolved framing plans (cas-framing-plan-set): physical members, cut lists, issues and states, per panel.
-function exportPlanJson() {
-    const out = FP.exportPlans(set, engineeringFor()), ready = out.plans.filter(q => q.states.canPreview).length;
-    download(JSON.stringify(out, null, 2), `framing-config-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
-    notice(`Framing config downloaded for all ${out.plans.length} panel${out.plans.length === 1 ? '' : 's'} (${ready} drawn; the rest list what is still to choose or fix).`);
+let planExportBusy = false;
+async function exportPlanJson() {
+    if (planExportBusy) return;
+    planExportBusy = true;
+    try {
+        const input = structuredClone(set), engineering = structuredClone(engineeringFor());
+        const { output: out } = await resolvePlanBatch(input, engineering, { onProgress: ({done,total}) => notice(`Preparing framing config: ${done} of ${total} panels...`) });
+        const ready = out.plans.filter(q => q.states.canPreview).length;
+        download(JSON.stringify(out, null, 2), `framing-config-${fileName(input.project || 'shops')}-${today()}.json`, 'application/json');
+        notice(`Framing config downloaded for all ${out.plans.length} panel${out.plans.length === 1 ? '' : 's'} (${ready} drawn; the rest list what is still to choose or fix).`);
+    } catch (error) { notice(`Framing config could not be prepared: ${error.message}`, true); }
+    finally { planExportBusy = false; }
 }
 function exportJson() {
     download(JSON.stringify(G.exportSet(set), null, 2), `panel-set-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
