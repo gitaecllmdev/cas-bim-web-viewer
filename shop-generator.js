@@ -282,7 +282,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'save-combo': () => saveCombo(p),
         'del-combo': () => deleteCombo(),
         open: () => openPanel(b.dataset.id),
-        'set-pdf': () => downloadPdf(chosen(), { includeCover: true }),
+        'set-pdf': () => downloadPdf(chosen()),
         'set-pdf-typ': () => downloadPdf(chosen(), { perTypical: true }),
         'set-assign': () => assign(p),
         'set-delete': () => { deletePanels(); if (setDialog().open) renderSetDialog(); },
@@ -3098,7 +3098,7 @@ function renderExportActions() {
     const list = chosen(), { items, skipped } = setItems(list), p = cur();
     const scope = checked.size ? `${list.length} checked panel${list.length===1?'':'s'}` : `All ${list.length} panel${list.length===1?'':'s'}`;
     el.innerHTML = `<h3 id="nav-export-title">Export &amp; print</h3><p class="export-help">Download sheets here. Open the PDF to print at <b>100% / actual size</b>.</p>
-        <div class="export-block"><strong>Shop drawing sheets</strong><p>${esc(scope)} &middot; ${items.length} sheet${items.length===1?'':'s'} + cover</p>
+        <div class="export-block"><strong>Shop drawing sheets</strong><p>${esc(scope)} &middot; ${items.length} sheet${items.length===1?'':'s'} &middot; one sheet per panel</p>
         <button data-act="set-pdf" ${items.length ? '' : 'disabled'}>Download shop sheets PDF</button>
         ${skipped.length ? `<p class="warning">Not included: ${esc(skipped.join(', '))} (fix inputs first).</p>` : ''}
         ${p ? `<button class="secondary" data-act="pdf" ${framed(p).layout ? '' : 'disabled'} title="One sheet for the open panel, without a cover">Current panel PDF: ${esc(p.mark)}</button>` : ''}
@@ -3206,15 +3206,15 @@ function rulesOnChecked() {
     changed(); renderAll(); renderSetDialog();
     notice(`Rules used on ${used.length} opening${used.length === 1 ? '' : 's'}${none.length ? `; no single rule for ${none.join(', ')}: pick those in each panel's Openings tab` : ''}.`, none.length > 0);
 }
-// Shop-floor output: the set PDF with its cover and bookmarks, the member labels.
+// Shop-floor output: one drawing sheet per panel with bookmarks, and separate member labels.
 function floorTab(list) {
     const { items, skipped } = setItems(list), skip = typicalSkips(list);
     const pieces = labelPieces(items), sheets = Math.ceil(pieces.length / 30);
     return `<p class="export-print-tip">PDFs download to your browser Downloads folder. Open the PDF and print at 100% / actual size. Sheet and label PDFs use checked panels; with none checked, all panels are included.</p>${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
         <div class="sd-cards">
-            <section class="sd-card"><h3>Shop drawing sheets (.pdf)</h3><p class="small">A cover sheet (the panel index with each sheet's number, check, typical and revision; what to buy), then each panel's sheet, with a bookmark for each.</p>
-                <div class="acts"><button data-act="set-pdf" ${items.length?'':'disabled'}>Download shop sheets PDF (${items.length} sheet${items.length === 1 ? '' : 's'} + cover)</button>
-                ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size} + cover)</button>` : ''}</div></section>
+            <section class="sd-card"><h3>Shop drawing sheets (.pdf)</h3><p class="small">One sheet per panel, with a bookmark for each. Stock and purchasing information stays in the separate CSV downloads.</p>
+                <div class="acts"><button data-act="set-pdf" ${items.length?'':'disabled'}>Download shop sheets PDF (${items.length} sheet${items.length === 1 ? '' : 's'})</button>
+                ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size})</button>` : ''}</div></section>
             <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
                 <div class="acts"><button data-act="sd-labels" ${pieces.length?'':'disabled'}>Download label PDF: ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button><button class="secondary" data-act="sd-label-maker" ${pieces.length?'':'disabled'}>Design QR labels (2 × 4 inch / QR)</button></div></section>
             <section class="sd-card"><h3>Framing config (.json)</h3><p class="small">All ${set.panels.length} panels, regardless of checks: resolved members, cut lists, issues and review states for CAS Revit.</p><button class="secondary" data-act="set-export-plan">Download framing config</button></section>
@@ -3474,23 +3474,7 @@ function typicalSkips(panels) {
     for (const g of typicals()) { const inSet = g.members.filter(m => ids.has(m.id)); for (const m of inSet.slice(1)) skip.add(m.id); }
     return skip;
 }
-// The cover sheet: each printed panel's sheet number and state, the set's stock to buy, what was left out.
-function coverOf(items, skipped, perTypical, allPanels) {
-    const typ = typicals(), byMark = new Map(set.panels.map(p => [p.mark, p]));
-    const rows = items.map(({ layout, info }, k) => {
-        const p = byMark.get(info.mark), s = p ? panelState(p) : null, t = p ? TY.typicalOf(typ, p.id) : null, r = p?.revisions?.[p.revisions.length - 1];
-        return { sheet: String(k + 1), mark: info.mark, size: `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}`, level: info.level, wallType: info.wallType,
-            check: !s ? '' : s.state === 'failed' ? `FAILED (${layout.issues.length})` : s.state === 'preliminary' ? `PRELIMINARY (${s.open})` : 'PASSED',
-            typical: [t ? (t.reference ? `TYP x${t.group.members.length}` : `= ${t.group.members[0].mark}`) : '', r ? `REV ${r.n}` : ''].filter(Boolean).join(' · ') };
-    });
-    let stock = null;
-    try { stock = ST.nestStock(setItems(allPanels).items, stockPrefs); } catch { stock = null; }
-    return { project: set.project || '', date: today(), drawnBy: set.drawnBy || '', rows, stock,
-        notes: [skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '', perTypical ? 'One sheet per typical: each typical sheet lists the other panels it frames.' : '',
-            'What to buy includes every selected panel with a drawing, including all copies of typical panels. Preliminary quantities are for review only.'] };
-}
-async function downloadPdf(panels, { perTypical = false, includeCover = perTypical } = {}) {
-    const allPanels = panels;
+async function downloadPdf(panels, { perTypical = false } = {}) {
     const items = [], skipped = [];
     if (perTypical) { const skip = typicalSkips(panels); panels = panels.filter(p => !skip.has(p.id)); }
     for (const p of panels) {
@@ -3499,8 +3483,8 @@ async function downloadPdf(panels, { perTypical = false, includeCover = perTypic
     }
     if (!items.length) { notice(`Nothing to print: ${skipped.join(', ')} ${skipped.length === 1 ? 'has' : 'have'} inputs to fix.`, true); return; }
     const logo = await logoJpeg();
-    if (items.length === 1 && !includeCover) download(renderSheetPdf(items[0].layout, items[0].info, logo), `shop-drawing-${fileName(items[0].info.mark)}.pdf`, 'application/pdf');
-    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`, { cover: coverOf(items, skipped, perTypical, allPanels) }), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
+    if (items.length === 1) download(renderSheetPdf(items[0].layout, items[0].info, logo), `shop-drawing-${fileName(items[0].info.mark)}.pdf`, 'application/pdf');
+    else download(renderSheetsPdf(items, logo, `${set.project || 'Panel'} shop drawings`), `panel-shops-${fileName(set.project || 'set')}-${today()}.pdf`, 'application/pdf');
     const failed = items.filter(x => x.layout.issues.length).map(x => x.info.mark);
     notice([`${items.length} sheet${items.length === 1 ? '' : 's'} downloaded.`, skipped.length ? `Left out (inputs to fix): ${skipped.join(', ')}.` : '',
         failed.length ? `Framing check failed on ${failed.join(', ')}: marked DO NOT RELEASE.` : ''].filter(Boolean).join(' '), !!(skipped.length || failed.length));
