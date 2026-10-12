@@ -21,6 +21,21 @@ export function panelEvidenceNearWindow(items,rect,file=''){
     const namePanel=panelFromText(file);return {panel:namePanel,origin:namePanel?'Filename':'Not detected'};
 }
 export function panelNearWindow(items,rect,file=''){return panelEvidenceNearWindow(items,rect,file).panel;}
+// Adjacent custom lines (CT / AC / HC etc.) can be outside the ruled schedule and indented.
+// Extend only over explicit mark + integer quantity lines; stop at notes, geometry or the next schedule.
+export function extendScheduleWindow(items,rect,height){
+    const inside=textInWindow(items,rect);if(!/\b(?:MARK|LABEL)\b/i.test(inside)||! /\b(?:QTY|QUANTITY)\b/i.test(inside))return rect;
+    const lines=[];for(const i of items.filter(i=>i.y-i.h/2>rect.y+rect.h&&i.x>=rect.x-24&&i.x<rect.x+rect.w).sort((a,b)=>a.y-b.y||a.x-b.x)){
+        let line=lines.find(l=>Math.abs(l.y-i.y)<=Math.max(2,Math.min(l.h,i.h)*.45));if(!line){line={y:i.y,h:i.h,items:[]};lines.push(line);}line.items.push(i);
+    }
+    let bottom=rect.y+rect.h,left=rect.x;
+    for(const line of lines.sort((a,b)=>a.y-b.y)){
+        const parts=line.items.sort((a,b)=>a.x-b.x),text=parts.map(i=>i.str).join(' ').trim();if(!text)continue;
+        if(line.y-bottom>Math.max(70,line.h*6)||parts[0].x>rect.x+Math.min(180,rect.w*.45)||! /^[A-Z]{1,4}\d{0,4}\s*[|:]?\s+\d+\b/i.test(text)||/\b(?:CUT\s*LIST|TOTAL|DATE)\b/i.test(text))break;
+        left=Math.min(left,parts[0].x-4);bottom=Math.min(height,line.y+line.h);
+    }
+    return {...rect,x:Math.max(0,left),w:rect.w+rect.x-Math.max(0,left),h:bottom-rect.y};
+}
 export function scheduleWindows(items,width,height){
     const headers=items.filter(i=>/^(?:LABEL|MARK)$/i.test(i.str.trim())).sort((a,b)=>a.y-b.y||a.x-b.x),out=[];
     for(const h of headers){
@@ -33,7 +48,7 @@ export function scheduleWindows(items,width,height){
         if(!rows.length)continue;
         const right=headers.filter(i=>i.x>h.x+50&&Math.abs(i.y-h.y)<40).sort((a,b)=>a.x-b.x)[0]?.x||width;
         const x=Math.max(0,h.x-16),y=Math.max(0,h.y-h.h*3),w=Math.min(right-x-18,Math.max(400,(qty.x-h.x)*6.5)),bottom=Math.min(height,last+rows.at(-1).h*3);
-        const rect={x,y,w:Math.max(80,w),h:bottom-y};out.push({rect,panel:panelNearWindow(items,rect)});
+        const rect=extendScheduleWindow(items,{x,y,w:Math.max(80,w),h:bottom-y},height);out.push({rect,panel:panelNearWindow(items,rect)});
     }
     return out;
 }

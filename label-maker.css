@@ -67,3 +67,5 @@
 .lm-group-heading { flex-wrap:nowrap;gap:6px;min-height:32px; }.lm-group-heading input[data-group-panel] { width:105px;flex:none; }.lm-group-heading>label,.lm-group-heading>span:not(.lm-group-origin),.lm-group-add { flex-shrink:0; }.lm-group-origin { width:auto;min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }.lm-group-add { order:1;margin-left:auto;white-space:nowrap;height:26px;padding:2px 6px;font-size:11px; }.lm-table-wrap .lm-panel-check { text-align:left;padding:3px 5px; }
 .lm-table-wrap tr[data-context-row]:focus-within { background:#eff6fd; }.lm-table-wrap tr[data-context-row]:hover { background:#f8fafc; }#lm-count { margin:6px 0 0;font-size:12px; }.lm-table-wrap { margin-top:6px;max-height:calc(100dvh - 230px); }
 @media(max-width:700px) { .lm-table-wrap { max-height:calc(100dvh - 420px);min-height:180px; }.lm-row-actions button { height:32px; }.lm-table-wrap input:not([type=checkbox]) { height:30px;min-height:30px;max-height:30px; } }
+
+.lm-snapshot-actions { display:flex;gap:8px;flex-wrap:wrap;margin:16px 0; }.lm-embedded #lm-snapshot { display:none; }
