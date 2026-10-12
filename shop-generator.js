@@ -2695,7 +2695,7 @@ function renderCommands() {
     if (pdf) { pdf.disabled = !cs.pdf.enabled; pdf.title = cs.pdf.reason || 'The shop drawing as a PDF'; }
     const dirtyEl = document.getElementById('dirty'), dirty = isDirty();
     dirtyEl.classList.toggle('on', dirty);
-    dirtyEl.textContent = !set.panels.length ? '' : dirty ? 'Changes not exported' : 'Exported';
+    dirtyEl.textContent = !set.panels.length ? '' : dirty ? 'Project file needs saving' : 'Project file saved';
     dirtyEl.title = 'Everything is kept in this browser as you work; Export writes a file to keep or share.';
 }
 
@@ -3061,7 +3061,7 @@ function renderSet() {
         <div>${[...byGroup].map(([g, list]) => `${groups.length > 1 ? `<div class="nav-group">${esc(g || 'No group')}</div>` : ''}<ul class="nav-list">${list.map(item).join('')}</ul>`).join('') || '<p class="muted small">No panel matches.</p>'}</div>
         <div id="set-actions" class="nav-actions"></div>
         <div class="nav-actions"><button class="secondary" data-act="set-open" title="Every panel at a glance, the set's cut list and stock, labels and the set PDF">Set overview, stock, labels</button></div>
-        <div class="nav-actions"><button class="secondary" data-act="set-export-plan" title="The resolved framing plans: every physical member, the cut list and what is still to decide (for the native CAS_FRAMING editor)">Export framing plan</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
+        <section id="nav-export" class="nav-export" aria-labelledby="nav-export-title"></section>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
     renderSetActions();
     restoreFocus(box, fx);
 }
@@ -3087,13 +3087,24 @@ function typBadge(p, groups) {
 function renderSetActions() {
     const el = main.querySelector('#set-actions');
     if (!el) return;
-    const n = chosen().length, some = checked.size > 0;
-    const skip = typicalSkips(chosen());
-    el.innerHTML = `<button data-act="set-pdf">PDF (${some ? `${n} checked` : `all ${n}`})</button>
-        ${skip.size ? `<button class="secondary" data-act="set-pdf-typ" title="Each typical once: its sheet lists the other panels it frames">PDF, one per typical (${n - skip.size})</button>` : ''}
-        ${some ? `<button class="secondary" data-act="set-assign" title="Give the checked panels the members of the panel open now">Give ${checked.size} checked these members</button>
+    const some = checked.size > 0;
+    el.innerHTML = `${some ? `<button class="secondary" data-act="set-assign" title="Give the checked panels the members of the panel open now">Give ${checked.size} checked these members</button>
         <button class="link danger" data-act="set-delete">Delete ${checked.size} checked</button>` : ''}
         <button class="link" data-act="set-clear" title="Start over: remove every panel here">Start a new set</button>`;
+    renderExportActions();
+}
+function renderExportActions() {
+    const el = main.querySelector('#nav-export'); if (!el) return;
+    const list = chosen(), { items, skipped } = setItems(list), p = cur();
+    const scope = checked.size ? `${list.length} checked panel${list.length===1?'':'s'}` : `All ${list.length} panel${list.length===1?'':'s'}`;
+    el.innerHTML = `<h3 id="nav-export-title">Export &amp; print</h3><p class="export-help">Download sheets here. Open the PDF to print at <b>100% / actual size</b>.</p>
+        <div class="export-block"><strong>Shop drawing sheets</strong><p>${esc(scope)} &middot; ${items.length} sheet${items.length===1?'':'s'} + cover</p>
+        <button data-act="set-pdf" ${items.length ? '' : 'disabled'}>Download shop sheets PDF</button>
+        ${skipped.length ? `<p class="warning">Not included: ${esc(skipped.join(', '))} (fix inputs first).</p>` : ''}
+        ${p ? `<button class="secondary" data-act="pdf" ${framed(p).layout ? '' : 'disabled'} title="One sheet for the open panel, without a cover">Current panel PDF: ${esc(p.mark)}</button>` : ''}
+        <button class="secondary" data-act="set-open" data-v="floor">Labels, CSV &amp; more print options</button></div>
+        <div class="export-block"><strong>Framing config (.json)</strong><p>All ${set.panels.length} panels. Resolved members, cut lists and checks for CAS Revit.</p><button class="secondary" data-act="set-export-plan">Download framing config</button></div>
+        <div class="export-block"><strong>Editable project (.json)</strong><p>All ${set.panels.length} panels and settings. Save this file to reopen and edit later.</p><button class="secondary" data-act="set-export">Save project file</button></div>`;
 }
 const chosen = () => (checked.size ? set.panels.filter(p => checked.has(p.id)) : set.panels);
 // Typical panels: the same framing (typical.mjs), side A; remembered while the panels are the same.
@@ -3110,7 +3121,7 @@ const typicalOfPanel = (p) => TY.typicalOf(typicals(), p.id);
 const setDialog = () => document.getElementById('set-dialog');
 let setTab = 'overview', sdFilter = 'all';
 let stockPrefs = load(KEYS.stock, { stockIn: ST.DEFAULT_STOCK_IN, kerfIn: ST.DEFAULT_KERF_IN });
-const SET_TABS = [['overview', 'Overview'], ['framing', 'Framing settings'], ['stock', 'Cut list and stock'], ['floor', 'Shop floor']];
+const SET_TABS = [['overview', 'Overview'], ['framing', 'Framing settings'], ['stock', 'Cut list and stock'], ['floor', 'Export & print']];
 const lf = (inches) => `${(inches / 12).toLocaleString(undefined, { maximumFractionDigits: 1 })} LF`;
 function openSetDialog(tab) {
     if (tab) setTab = tab;
@@ -3153,7 +3164,7 @@ function overviewTab() {
         <div class="sd-row"><span class="seg" role="group" aria-label="Show">${f('all', 'All')}${f('attention', 'Needs attention')}${f('framed', 'Ready')}</span><span class="spacer"></span>
             <span class="small">${n ? `<b>${n} checked</b>:` : 'Check panels for:'}</span>
             <button class="secondary small" data-act="sd-rules" ${n && eng ? '' : 'disabled'} title="${eng ? 'Every door and window on the checked panels takes the engineering rule that covers it' : 'Open the engineering catalog first'}">Use the rules on their openings</button>
-            <button class="secondary small" data-act="set-pdf" ${n ? '' : 'disabled'}>PDF of them</button>
+            <button class="secondary small" data-act="set-pdf" ${n ? '' : 'disabled'}>Download checked sheets PDF</button>
             <button class="link small danger" data-act="set-delete" ${n ? '' : 'disabled'}>Delete them</button></div>
         <table class="sd-table sd-dash"><thead><tr><th><input type="checkbox" data-sd-all aria-label="Check every panel shown" ${shown.length && shown.every(r => checked.has(r.p.id)) ? 'checked' : ''}></th><th>Panel</th><th>Group / level</th><th>Size</th><th>Openings</th><th>State</th><th>To decide / errors</th><th>By hand</th><th>Typical</th><th>Rev</th><th>Studs</th></tr></thead><tbody>
         ${shown.map(({ p, s }) => {
@@ -3198,17 +3209,18 @@ function rulesOnChecked() {
 // Shop-floor output: the set PDF with its cover and bookmarks, the member labels.
 function floorTab(list) {
     const { items, skipped } = setItems(list), skip = typicalSkips(list);
-    if (!items.length) return '<p class="muted">No framed panel to print.</p>';
     const pieces = labelPieces(items), sheets = Math.ceil(pieces.length / 30);
-    return `${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
+    return `<p class="export-print-tip">PDFs download to your browser Downloads folder. Open the PDF and print at 100% / actual size. Sheet and label PDFs use checked panels; with none checked, all panels are included.</p>${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
         <div class="sd-cards">
-            <section class="sd-card"><h3>The set PDF</h3><p class="small">A cover sheet (the panel index with each sheet's number, check, typical and revision; what to buy), then each panel's sheet, with a bookmark for each.</p>
-                <div class="acts"><button data-act="set-pdf">Download (${items.length} sheet${items.length === 1 ? '' : 's'} + cover)</button>
+            <section class="sd-card"><h3>Shop drawing sheets (.pdf)</h3><p class="small">A cover sheet (the panel index with each sheet's number, check, typical and revision; what to buy), then each panel's sheet, with a bookmark for each.</p>
+                <div class="acts"><button data-act="set-pdf" ${items.length?'':'disabled'}>Download shop sheets PDF (${items.length} sheet${items.length === 1 ? '' : 's'} + cover)</button>
                 ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size} + cover)</button>` : ''}</div></section>
-            <section class="sd-card"><h3>Member labels</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
-                <div class="acts"><button data-act="sd-labels">Download ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button><button class="secondary" data-act="sd-label-maker">Open Label Maker (2 × 4 inch / QR)</button></div></section>
-            <section class="sd-card"><h3>Cut lists</h3><p class="small">What to buy, how each bar is cut, the set's cut list: CSV for a spreadsheet or the saw.</p>
-                <div class="acts"><button class="secondary" data-act="sd-tab" data-v="stock">Cut list and stock</button></div></section>
+            <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">One label per piece: its panel, mark, function, member type and cut length, numbered 1/n to n/n. Letter sheets of 30 labels, 2 5/8" x 1" (Avery 5160 size): print at actual size.</p>
+                <div class="acts"><button data-act="sd-labels" ${pieces.length?'':'disabled'}>Download label PDF: ${pieces.length} labels (${sheets} sheet${sheets === 1 ? '' : 's'})</button><button class="secondary" data-act="sd-label-maker" ${pieces.length?'':'disabled'}>Design QR labels (2 × 4 inch / QR)</button></div></section>
+            <section class="sd-card"><h3>Framing config (.json)</h3><p class="small">All ${set.panels.length} panels, regardless of checks: resolved members, cut lists, issues and review states for CAS Revit.</p><button class="secondary" data-act="set-export-plan">Download framing config</button></section>
+            <section class="sd-card"><h3>Editable project (.json)</h3><p class="small">All ${set.panels.length} panels and settings. Reopen with Import project to continue editing.</p><button class="secondary" data-act="set-export">Save project file</button></section>
+            <section class="sd-card"><h3>Cut lists (.csv)</h3><p class="small">What to buy, how each bar is cut, the set's cut list: CSV for a spreadsheet or the saw.</p>
+                <p class="small">Purchase list: stock bars and quantities to buy. Stock cut plan: cuts for each bar. Panel cut list: member quantities and cut lengths by panel.</p><div class="acts"><button class="secondary" data-act="sd-csv" data-v="buy" ${items.length?'':'disabled'}>Purchase list CSV</button><button class="secondary" data-act="sd-csv" data-v="cuts" ${items.length?'':'disabled'}>Stock cut plan CSV</button><button class="secondary" data-act="sd-csv" data-v="list" ${items.length?'':'disabled'}>Panel cut list CSV</button><button class="link" data-act="sd-tab" data-v="stock">Review stock lengths and cutting settings</button></div></section>
         </div>`;
 }
 function openLabelMaker() {
@@ -3329,7 +3341,7 @@ function stockTab(list) {
         <table class="sd-table"><thead><tr><th>Member type</th><th>Pieces</th><th>Cut</th><th>Buy</th><th>To buy</th><th>Offcut</th></tr></thead><tbody>
             ${plan.types.map(x => `<tr><td><b>${esc(x.type)}</b></td><td>${x.pieces}</td><td>${lf(x.cutIn)}</td><td>${esc(buyText(x))}${x.long.length ? `<br><span class="warning small">${x.long.length} longer than the stock: cut to length</span>` : ''}</td><td>${lf(x.orderedIn)}</td><td>${x.wastePct.toFixed(1)}%</td></tr>`).join('')}
         </tbody></table>
-        <div class="acts"><button class="secondary small" data-act="sd-csv" data-v="buy">Download what to buy (CSV)</button><button class="secondary small" data-act="sd-csv" data-v="cuts">Download the cut plan (CSV)</button><button class="secondary small" data-act="sd-csv" data-v="list">Download the set cut list (CSV)</button></div>
+        <div class="acts"><button class="secondary small" data-act="sd-csv" data-v="buy">Purchase list CSV</button><button class="secondary small" data-act="sd-csv" data-v="cuts">Stock cut plan CSV</button><button class="secondary small" data-act="sd-csv" data-v="list">Panel cut list CSV</button></div>
         ${plan.types.map(x => `<details class="sd-bars"><summary>${esc(x.type)}: how each bar is cut (${x.bars.length} bar${x.bars.length === 1 ? '' : 's'})</summary><ol>
             ${x.bars.map(b => `<li><b>${esc(fmtFtIn(b.stockIn))}</b>: ${b.cuts.map(c => `${esc(fmtFtIn(c.lengthIn))} <span class="muted">(${esc(c.panel)} ${esc(c.mark)})</span>`).join(' + ')} <span class="muted">· offcut ${esc(fmtFtIn(b.wasteIn))}</span></li>`).join('')}
             ${x.long.map(c => `<li class="warning">${esc(fmtFtIn(c.lengthIn))} (${esc(c.panel)} ${esc(c.mark)}): longer than the stock, order cut to length</li>`).join('')}</ol></details>`).join('')}
@@ -3496,8 +3508,8 @@ async function downloadPdf(panels, { perTypical = false, includeCover = perTypic
 // The resolved framing plans (cas-framing-plan-set): physical members, cut lists, issues and states, per panel.
 function exportPlanJson() {
     const out = FP.exportPlans(set, engineeringFor()), ready = out.plans.filter(q => q.states.canPreview).length;
-    download(JSON.stringify(out, null, 2), `framing-plans-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
-    notice(`Exported ${out.plans.length} resolved plan${out.plans.length === 1 ? '' : 's'} (${ready} drawn; the rest list what is still to choose or fix).`);
+    download(JSON.stringify(out, null, 2), `framing-config-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');
+    notice(`Framing config downloaded for all ${out.plans.length} panel${out.plans.length === 1 ? '' : 's'} (${ready} drawn; the rest list what is still to choose or fix).`);
 }
 function exportJson() {
     download(JSON.stringify(G.exportSet(set), null, 2), `panel-set-${fileName(set.project || 'shops')}-${today()}.json`, 'application/json');

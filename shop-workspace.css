@@ -362,3 +362,5 @@ td .oc { display: block; margin: 3px 0 0; }
 .quick-bar .qb-menu .qb-f { flex-wrap: wrap; }
 .quick-bar .qb-menu select { max-width: 100%; }
 .label-maker-dialog { width:100vw!important;height:100dvh!important;max-width:none!important;max-height:none!important;margin:0!important;border-radius:0!important; }
+
+.nav-export { margin-top:6px;padding:10px;background:#fff;border:1px solid #b8c9da;border-top:3px solid #2468a8;border-radius:6px; }.nav-export h3 { margin:0 0 6px;font-size:15px; }.export-help,.export-block p { margin:4px 0 8px;font-size:11px;line-height:1.4;color:#566b80; }.export-block { padding:9px 0;border-top:1px solid #e0e6ed; }.export-block strong { font-size:12px; }.export-block button { display:block;width:100%;margin-top:5px;text-align:left;padding:6px 7px;font-size:12px; }.export-block:last-child { padding-bottom:0; }.export-print-tip { padding:10px 12px;background:#edf4fb;border-left:3px solid #2468a8;font-size:13px;line-height:1.5; }
