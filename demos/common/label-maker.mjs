@@ -36,6 +36,18 @@ export function cleanProject(value = {}) {
     return {format:'cas-label-project',version:1,project:str(value.project).slice(0,200),defaultPanel:str(value.defaultPanel).slice(0,100),
         defaultUrl:str(value.defaultUrl),defaultNotes:str(value.defaultNotes).slice(0,500),design,logo:validLogo?{href:logo.href,px:logo.px}:null,logoSource:str(value.logoSource),rows};
 }
+export const MAX_IMPORT_PANELS=10;
+export function applyLabelImport(project,rows,{replace=false}={}){
+    const previous=replace?[]:project.rows.map(r=>({...r,url:rowValue(r,project).url,notes:rowValue(r,project).notes,overrides:{...r.overrides,url:true,notes:true}}));
+    const incoming=rows.map(r=>({...r,ready:true})),combined=[...previous,...incoming];
+    const panels=new Set(combined.map(r=>str(r.panel||project.defaultPanel)));
+    if(panels.size>MAX_IMPORT_PANELS)throw new Error('Import at most 10 panels. Clear previous labels or select fewer panels. Previous labels kept.');
+    return cleanProject({...project,defaultUrl:'',defaultNotes:'',rows:combined});
+}
+export function projectNameHistory(previous,name){
+    const value=str(name).slice(0,200),list=Array.isArray(previous)?previous.filter(n=>typeof n==='string').map(n=>str(n).slice(0,200)).filter(Boolean):[];
+    return [...new Set([value,...list].filter(Boolean))].slice(0,30);
+}
 export function rowValue(row,project) {
     return {...row,panel:row.panel || project.defaultPanel,url:row.overrides?.url?row.url:row.url || project.defaultUrl,
         notes:row.overrides?.notes?row.notes:row.notes || project.defaultNotes || '',project:row.overrides?.project?row.project:row.project || project.project};

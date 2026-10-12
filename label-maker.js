@@ -10,13 +10,15 @@ const locked=embedded&&new URLSearchParams(location.search).get('from')==='shop'
 let importName='Pasted table',project=L.cleanProject(),past=[],future=[],filter='',page=0,focusPanel='',contexts=new Map(),contextHistory=new Map(),pendingImport=null,activeBatch=null,noticeTimer;
 function notice(s,error=false){$('#lm-status').textContent=s;$('#lm-status').classList.toggle('error',error);clearTimeout(noticeTimer);noticeTimer=setTimeout(()=>$('#lm-status').textContent='',10000);}
 function store(){try{localStorage.setItem(KEY,JSON.stringify(project));$('#lm-saved').textContent='Saved locally. Save downloads a portable project.';}catch{$('#lm-saved').textContent='Browser storage unavailable. Save the project file to keep your work.';}}
+const PROJECT_NAMES_KEY='cas-label-maker:project-names';
+function rememberProjectName(name){let names;try{names=JSON.parse(localStorage.getItem(PROJECT_NAMES_KEY)||'[]');}catch{}names=L.projectNameHistory(names,name);try{localStorage.setItem(PROJECT_NAMES_KEY,JSON.stringify(names));}catch{}$('#lm-project-names').innerHTML=names.map(n=>`<option value="${esc(n)}"></option>`).join('');}
 function pruneContextHistory(){const keep=new Set([...past,...future,JSON.stringify(project)]);for(const key of contextHistory.keys())if(!keep.has(key))contextHistory.delete(key);}
 function mutate(fn,{table=true}={}){const before=JSON.stringify(project);contextHistory.set(before,new Map(contexts));try{fn();project=L.cleanProject(project);}catch(e){project=L.cleanProject(JSON.parse(before));notice(e.message,true);render();return false;}if(JSON.stringify(project)!==before){past.push(before);if(past.length>50)past.shift();future=[];store();}pruneContextHistory();render({table});return true;}
-function history(redo){const from=redo?future:past,to=redo?past:future;if(!from.length)return;const current=JSON.stringify(project);contextHistory.set(current,new Map(contexts));to.push(current);const saved=from.pop();project=L.cleanProject(JSON.parse(saved));if(contextHistory.has(saved))contexts=new Map(contextHistory.get(saved));pruneContextHistory();store();render();}
+function history(redo){const from=redo?future:past,to=redo?past:future;if(!from.length)return;const current=JSON.stringify(project);contextHistory.set(current,new Map(contexts));to.push(current);const saved=from.pop();project=L.cleanProject(JSON.parse(saved));if(contextHistory.has(saved))contexts=new Map(contextHistory.get(saved));pruneContextHistory();store();render({forceFields:true});}
 function visibleProject(){return L.printProject(project,{panel:filter});}
-function render({table=true}={}){
- for(const [id,k] of [['project','project'],['panel','defaultPanel'],['url','defaultUrl']])if(document.activeElement!==$('#lm-'+id))$('#lm-'+id).value=project[k];
- for(const [id,key] of [['lm-master-project','project'],['lm-master-url','defaultUrl'],['lm-master-notes','defaultNotes']])if(document.activeElement!==$('#'+id))$('#'+id).value=project[key];
+function render({table=true,forceFields=false}={}){
+ for(const [id,k] of [['project','project'],['panel','defaultPanel'],['url','defaultUrl']])if(forceFields||document.activeElement!==$('#lm-'+id))$('#lm-'+id).value=project[k];
+ for(const [id,key] of [['lm-master-project','project'],['lm-master-url','defaultUrl'],['lm-master-notes','defaultNotes']])if(forceFields||document.activeElement!==$('#'+id))$('#'+id).value=project[key];
  document.querySelectorAll('[data-design]').forEach(e=>{if(e.type==='checkbox')e.checked=project.design[e.dataset.design];else e.value=project.design[e.dataset.design];});
  $('#lm-bulk-toolbar').hidden=!project.rows.length;document.querySelector('.lm-workspace').classList.toggle('is-empty',!project.rows.length);
  $('#lm-undo').disabled=!past.length;$('#lm-redo').disabled=!future.length;
@@ -44,7 +46,7 @@ function renderTable(){
 function renderContext(){const ctx=contexts.get(focusPanel);$('#lm-context-image').hidden=!ctx?.preview;if(ctx?.preview)$('#lm-context-image').src=ctx.preview;$('#lm-context-caption').textContent=ctx?`${focusPanel} · ${ctx.source||'Panel source'}${ctx.page?' · page '+ctx.page:''}`:'Source context is shown here when imported or supplied by Panel Shop Generator.';if(document.activeElement!==$('#lm-recognized-edit'))$('#lm-recognized-edit').value=ctx?.text||project.rows.filter(r=>L.rowValue(r,project).panel===focusPanel).map(r=>`${r.mark} ${r.qty}`).join('\n');}
 function addImport(value,text=''){
  if(locked){notice('This workspace uses the resolved panel cut list. Import into standalone Label Maker instead.',true);return;}
- value={...value,rows:(value.rows||[]).filter(r=>!L.skipDateMark(r.mark))};const groups=value.groups||[],rows=groups.length?groups.flatMap(g=>{const detected=panelFromText(g.text);g.panel=g.panel||detected||project.defaultPanel;if(!g.panelOrigin||g.panelOrigin.startsWith('Not detected'))g.panelOrigin=(detected?'Recognized text':'Default panel')+' · '+(g.source||importName);return L.rowsFromOcr(g.text,{panel:g.panel,url:project.defaultUrl}).rows.map(r=>({...r,ready:true,panelOrigin:g.panelOrigin,sourcePanel:g.panel}));}):value.rows.map(r=>({...r,ready:true,panel:r.panel||panelFromText(text)||project.defaultPanel,panelOrigin:r.panelOrigin?r.panelOrigin+' · '+importName:panelFromText(text)?'Recognized text · '+importName:r.panel?'Imported panel column · '+importName:'Default panel · '+importName}));
+ value={...value,rows:(value.rows||[]).filter(r=>!L.skipDateMark(r.mark))};const groups=value.groups||[],rows=groups.length?groups.flatMap(g=>{const detected=panelFromText(g.text);g.panel=g.panel||detected||project.defaultPanel;if(!g.panelOrigin||g.panelOrigin.startsWith('Not detected'))g.panelOrigin=(detected?'Recognized text':'Default panel')+' · '+(g.source||importName);return L.rowsFromOcr(g.text,{panel:g.panel,url:''}).rows.map(r=>({...r,ready:true,panelOrigin:g.panelOrigin,sourcePanel:g.panel}));}):value.rows.map(r=>({...r,ready:true,panel:r.panel||panelFromText(text)||project.defaultPanel,panelOrigin:r.panelOrigin?r.panelOrigin+' · '+importName:panelFromText(text)?'Recognized text · '+importName:r.panel?'Imported panel column · '+importName:'Default panel · '+importName}));
  if(!rows.length){notice('No Mark + Qty rows found. Correct or paste the recognized text.',true);return;}
  const sourceContexts=groups.length?groups.map(g=>[g.panel,g]):text?[[rows[0].panel,{panel:rows[0].panel,text,source:'Pasted recognized text'}]]:[];
  const batch={rows,sourceContexts,text,issues:value.issues||[]};
@@ -53,8 +55,8 @@ function addImport(value,text=''){
  commitImport(batch,false);
 }
 function commitImport(batch,replace){
- if(!mutate(()=>{project.rows=replace?batch.rows:[...project.rows,...batch.rows];if(replace)contexts.clear();for(const [panel,ctx] of batch.sourceContexts)contexts.set(panel,ctx);}))return;
- focusPanel=batch.rows[0].panel;page=0;filter='';render();$('#lm-ocr-text').textContent=batch.text;$('#lm-import-issues').textContent=batch.issues.join('\n');$('#lm-import-issues').hidden=!batch.issues.length;notice(`${batch.rows.length} rows loaded. All checked and ready to print.`);
+ if(!mutate(()=>{project=L.applyLabelImport(project,batch.rows,{replace});if(replace)contexts.clear();for(const [panel,ctx] of batch.sourceContexts)contexts.set(panel,ctx);}))return;
+ focusPanel=batch.rows[0].panel;page=0;filter='';render({forceFields:true});$('#lm-ocr-text').textContent=batch.text;$('#lm-import-issues').textContent=batch.issues.join('\n');$('#lm-import-issues').hidden=!batch.issues.length;notice(`${batch.rows.length} rows loaded. All checked and ready to print.`);
 }
 
 function download(bytes,name,type){if(!bytes?.length)throw new Error('The print file was empty. Select valid label rows first.');const url=URL.createObjectURL(new Blob([bytes],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
@@ -81,7 +83,7 @@ async function importTable(file) {
 
             const table=s.rows().map(([,cells])=>{const r=[];for(const c of cells)if(c)r[c.col-1]=c.cached===false?'':c.text;return r;});
 
-            return L.rowsFromTable(table,{panel:project.defaultPanel,project:"",url:project.defaultUrl});
+            return L.rowsFromTable(table,{panel:project.defaultPanel,project:"",url:''});
 
         });
 
@@ -89,7 +91,7 @@ async function importTable(file) {
 
     }
 
-    table=L.parseDelimited(await file.text());addImport(L.rowsFromTable(table,{panel:project.defaultPanel,project:"",url:project.defaultUrl}));
+    table=L.parseDelimited(await file.text());addImport(L.rowsFromTable(table,{panel:project.defaultPanel,project:"",url:''}));
 
 }
 
@@ -118,7 +120,7 @@ const layoutEditor=new LabelLayoutEditor({getProject:()=>project,onApply:design=
 const sourceViewer=new LabelSourceViewer({onDismiss:()=>{if(activeBatch){activeBatch=null;sourceViewer.batchPosition=null;notice('Import cancelled. Previous labels kept.');}},onExtract:(text,data={})=>{addImport({groups:data.groups,rows:[],issues:[...(data.issues||[]),...(data.groups||[]).flatMap(g=>L.rowsFromOcr(g.text).issues)]},text);if(activeBatch)setTimeout(()=>advanceFiles().catch(e=>{activeBatch=null;notice(e.message,true);}),0);}});
 function queueFiles(input){
  const files=Array.from(input||[]);if(!files.length)return;if(locked)throw new Error('Resolved cut-list rows are locked.');
- if(files.length>20)throw new Error('Load at most 20 files at once.');if(files.reduce((n,f)=>n+f.size,0)>200*1024*1024)throw new Error('Keep the total import below 200 MB.');
+ if(files.length>10)throw new Error('Load at most 10 files and 10 panels at once.');if(files.reduce((n,f)=>n+f.size,0)>200*1024*1024)throw new Error('Keep the total import below 200 MB.');
  if(project.rows.length){pendingImport={files};$('#lm-import-choice-summary').textContent=`Your current list has ${project.rows.length} rows. Load ${files.length} new file${files.length===1?'':'s'}: clear previous labels or keep both? Previous labels stay until the new import completes.`;$('#lm-import-choice').showModal();}
  else return startFileBatch(files,false);
 }
@@ -129,13 +131,13 @@ async function advanceFiles(){
  activeBatch=null;sourceViewer.batchPosition=null;if(batch.rows.length)commitImport(batch,batch.replace);else notice('No label rows found. Previous labels kept.',true);
 }
 
-async function importFile(file){if(!file)return;if(locked)throw new Error('Resolved cut-list rows are locked.');importName=file.name;if(/\.(csv|tsv|xlsx)$/i.test(file.name))return importTable(file);if(/\.txt$/i.test(file.name)){const text=await file.text();return /[,\t]/.test(text)?addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:project.defaultUrl,cutList:true})):addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:project.defaultUrl}),text);}return loadSource(file);}
+async function importFile(file){if(!file)return;if(locked)throw new Error('Resolved cut-list rows are locked.');importName=file.name;if(/\.(csv|tsv|xlsx)$/i.test(file.name))return importTable(file);if(/\.txt$/i.test(file.name)){const text=await file.text();return /[,\t]/.test(text)?addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:'',cutList:true})):addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);}return loadSource(file);}
 const safe=fn=>async(...args)=>{try{await fn(...args);}catch(e){notice(e.message,true);}};
 const loadSource=async f=>{await sourceViewer.open(f);$('#lm-source-reopen').disabled=!sourceViewer.loaded;};
 $('#lm-source-reopen').onclick=()=>{sourceViewer.dialog.showModal();sourceViewer.fit(false);};
 for(const [id,k] of [['panel','defaultPanel']])$('#lm-'+id).onchange=e=>mutate(()=>project[k]=e.target.value);
 for(const id of ['lm-master-url','lm-url'])$('#'+id).onchange=e=>mutate(()=>L.applyMaster(project,'url',e.target.value));
-for(const id of ['lm-master-project','lm-project'])$('#'+id).onchange=e=>mutate(()=>L.applyMaster(project,'project',e.target.value));
+for(const id of ['lm-master-project','lm-project'])$('#'+id).onchange=e=>{if(mutate(()=>L.applyMaster(project,'project',e.target.value)))rememberProjectName(project.project);};
 $('#lm-master-notes').onchange=e=>mutate(()=>L.applyMaster(project,'notes',e.target.value));
 document.querySelectorAll('[data-design]').forEach(e=>e.onchange=()=>mutate(()=>project.design[e.dataset.design]=e.type==='checkbox'?e.checked:Number(e.value)));
 $('#lm-table').onchange=e=>{const t=e.target;if(t.dataset.groupPanel!=null){if(locked){renderTable();return;}const old=[...new Set(project.rows.map(r=>L.rowValue(r,project).panel))][Number(t.dataset.groupPanel)],next=t.value.trim();if(!next){notice('Enter a panel number.',true);renderTable();return;}mutate(()=>project.rows.forEach(r=>{if(L.rowValue(r,project).panel===old){r.panel=next;r.panelOrigin=`Corrected from ${r.sourcePanel||old} · ${r.panelOrigin||'entered'}`;}}));if(contexts.has(old))contexts.set(next,{...contexts.get(old),panel:next});focusPanel=next;renderContext();return;}if(t.dataset.panelCheck!=null){const panels=[...new Set(project.rows.map(r=>L.rowValue(r,project).panel))],p=panels[Number(t.dataset.panelCheck)];mutate(()=>project.rows.forEach(r=>{if(L.rowValue(r,project).panel===p)r.ready=t.checked;}));}else if(t.dataset.field){if(locked&&['panel','mark','qty','panelOnly'].includes(t.dataset.field)){renderTable();return;}mutate(()=>{const r=project.rows[Number(t.dataset.row)];if(['url','notes','project'].includes(t.dataset.field)){r.overrides={...r.overrides,[t.dataset.field]:true};}r[t.dataset.field]=t.type==='checkbox'?t.checked:t.dataset.field==='qty'?Number(t.value):t.value;if(['panel','mark','qty','panelOnly'].includes(t.dataset.field))r.ready=false;},{table:true});}};
@@ -146,14 +148,14 @@ $('#lm-add').onclick=()=>!locked&&mutate(()=>project.rows.push({panel:focusPanel
 $('#lm-undo').onclick=()=>history(false);$('#lm-redo').onclick=()=>history(true);
 $('#lm-context-panel').onchange=e=>{focusPanel=e.target.value;renderContext();};
 $('#lm-context-image').onclick=()=>{let d=document.querySelector('#lm-context-dialog');if(!d){d=document.createElement('dialog');d.id='lm-context-dialog';d.innerHTML='<button class="secondary">Close source</button><img style="display:block;max-width:90vw;max-height:85dvh">';document.body.append(d);d.querySelector('button').onclick=()=>d.close();}d.querySelector('img').src=$('#lm-context-image').src;d.showModal();};
-$('#lm-recognized-read').onclick=()=>{if(locked)return;const text=$('#lm-recognized-edit').value,panel=panelFromText(text)||focusPanel||project.defaultPanel;addImport(L.rowsFromOcr(text,{panel,url:project.defaultUrl}),text);};
+$('#lm-recognized-read').onclick=()=>{if(locked)return;const text=$('#lm-recognized-edit').value,panel=panelFromText(text)||focusPanel||project.defaultPanel;addImport(L.rowsFromOcr(text,{panel,url:''}),text);};
 $('#lm-open').onclick=()=>$('#lm-project-file').click();$('#lm-project-file').onchange=safe(async e=>{if(locked)throw new Error('Resolved cut-list fields are locked.');const f=e.target.files[0];if(!f)return;const v=JSON.parse(await f.text());if(v.format!=='cas-label-project'||v.version!==1)throw new Error('Use a version 1 Label Maker project.');mutate(()=>project=L.cleanProject({...v,rows:(v.rows||[]).filter(r=>!L.skipDateMark(r.mark))}));contexts.clear();renderContext();e.target.value='';if(!project.logo&&project.design.showLogo){await ensureLogo();}});
 $('#lm-save').onclick=()=>download(JSON.stringify(project,null,2),filename()+'.labels.json','application/json');
 $('#lm-import').onclick=()=>$('#lm-data-file').click();$('#lm-data-file').onchange=safe(async e=>{const files=[...e.target.files];e.target.value='';await queueFiles(files);});
-$('#lm-read-paste').onclick=safe(()=>addImport(L.rowsFromTable(L.parseDelimited($('#lm-paste').value),{panel:project.defaultPanel,url:project.defaultUrl,cutList:$('#lm-cutlist').checked})));
-$('#lm-paste-recognized').onclick=()=>{const text=$('#lm-paste').value;addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:project.defaultUrl}),text);};
+$('#lm-read-paste').onclick=safe(()=>addImport(L.rowsFromTable(L.parseDelimited($('#lm-paste').value),{panel:project.defaultPanel,url:'',cutList:$('#lm-cutlist').checked})));
+$('#lm-paste-recognized').onclick=()=>{const text=$('#lm-paste').value;addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);};
 $('#lm-image-file').onchange=safe(async e=>{const files=[...e.target.files];e.target.value='';await queueFiles(files);});
-document.addEventListener('paste',safe(async e=>{const f=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();if(f){e.preventDefault();await queueFiles([f]);}else if(!/INPUT|TEXTAREA/.test(e.target.tagName)&&e.clipboardData.getData('text/plain')){e.preventDefault();const text=e.clipboardData.getData('text/plain');importName='Clipboard';if(/[,\t]/.test(text))addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:project.defaultUrl,cutList:true}));else addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:project.defaultUrl}),text);}}));
+document.addEventListener('paste',safe(async e=>{const f=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();if(f){e.preventDefault();await queueFiles([f]);}else if(!/INPUT|TEXTAREA/.test(e.target.tagName)&&e.clipboardData.getData('text/plain')){e.preventDefault();const text=e.clipboardData.getData('text/plain');importName='Clipboard';if(/[,\t]/.test(text))addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:'',cutList:true}));else addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);}}));
 document.querySelector('.lm-workspace').ondragover=e=>e.preventDefault();document.querySelector('.lm-workspace').ondrop=safe(async e=>{e.preventDefault();await queueFiles(e.dataTransfer.files);});
 $('#lm-logo-file').onchange=safe(async e=>{if(!e.target.files[0])return;const logo=await jpegLogo(e.target.files[0]);try{localStorage.setItem('cas-label-maker:preferred-logo',JSON.stringify(logo));}catch{}mutate(()=>{project.logo=logo;project.logoSource='custom';});e.target.value='';});$('#lm-default-logo').onclick=safe(async()=>{const logo=await defaultLogo();try{localStorage.removeItem('cas-label-maker:preferred-logo');}catch{}mutate(()=>{project.logo=logo;project.logoSource='default-cw';project.design.showLogo=true;});});
 $('#lm-filter').onchange=e=>{filter=e.target.value;page=0;render({table:false});};$('#lm-page').onchange=e=>{page=Number(e.target.value)-1;render({table:false});};
@@ -166,4 +168,4 @@ if(new URLSearchParams(location.search).get('from')==='shop'){try{const data=loc
 $('#lm-settings').onclick=()=>$('#lm-settings-drawer').showModal();$('#lm-settings-close').onclick=()=>$('#lm-settings-drawer').close();$('#lm-pdf-mobile').onclick=()=>$('#lm-pdf').click();document.querySelectorAll('[data-pane]').forEach(b=>b.onclick=()=>{document.querySelector('.lm-workspace').dataset.activePane=b.dataset.pane;document.querySelectorAll('[data-pane]').forEach(t=>t.setAttribute('aria-selected',String(t===b)));});
 for(const [id,replace] of [['lm-import-replace',true],['lm-import-append',false]])$('#'+id).onclick=safe(async()=>{if(!pendingImport)return;const batch=pendingImport;pendingImport=null;$('#lm-import-choice').close();if(batch.files)await startFileBatch(batch.files,replace);else commitImport(batch,replace);});$('#lm-import-cancel').onclick=()=>$('#lm-import-choice').close();$('#lm-import-choice').addEventListener('close',()=>{if(!$('#lm-import-choice').open)pendingImport=null;});
 async function ensureLogo(){let preferred;try{preferred=JSON.parse(localStorage.getItem('cas-label-maker:preferred-logo')||'null');}catch{}const custom=L.cleanProject({logo:preferred}).logo;if(custom){project.logo=custom;project.logoSource='custom';}else {if(project.logo&&!project.logoSource){const old=await fetch('demos/06-shop-drawings/cas-logo.png');const legacy=old.ok?await jpegLogo(await old.blob()):null;if(project.logo.href!==legacy?.href){project.logoSource='custom';try{localStorage.setItem('cas-label-maker:preferred-logo',JSON.stringify(project.logo));}catch{}}}if(!project.logo||project.logoSource!=='custom'){const logo=await defaultLogo();if(project.logoSource!=='custom'){project.logo=logo;project.logoSource='default-cw';}}}store();render({table:false});}
-render();ensureLogo().catch(()=>notice('Logo could not load. Open Settings to upload a logo or hide it.',true));
+rememberProjectName(project.project);render();ensureLogo().catch(()=>notice('Logo could not load. Open Settings to upload a logo or hide it.',true));
