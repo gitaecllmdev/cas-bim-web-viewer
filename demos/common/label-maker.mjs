@@ -8,15 +8,20 @@ import { csvText } from './table-export.mjs';
 export const HANDOFF_KEY = 'cas-label-maker:handoff';
 export const MAX_LABELS = 5000;
 export const STOCK = { pageW:8.5,pageH:11,cols:2,rows:5,w:4,h:2,left:0.15625,top:0.5,pitchX:4.1875,pitchY:2 };
-export const DEFAULT_DESIGN = { panelPt:34,markPt:40,projectPt:7,showQr:true,showLogo:true,showNotes:true,numbered:false,startSlot:1,offsetXmm:0,offsetYmm:0 };
+export const DEFAULT_DESIGN = { panelPt:34,markPt:40,notesPt:18,projectPt:7,showQr:true,showLogo:true,showNotes:true,numbered:false,startSlot:1,offsetXmm:0,offsetYmm:0 };
+export const DEFAULT_LAYOUT={panel:{x:1.155,y:.55-34/72,w:1.65,h:34/72},mark:{x:1.155,y:1.19-40/72,w:1.65,h:40/72},notes:{x:1.155,y:1.47-18/72,w:1.65,h:18/72},project:{x:.48,y:1.82-7/72,w:2.35,h:2.1*7/72},logo:{x:2.85,y:.88,w:1.03,h:1.03},qr:{x:.14,y:.49,w:.94,h:.94}};
+export const FONT_KEYS={panel:'panelPt',mark:'markPt',notes:'notesPt',project:'projectPt'};
+export const skipDateMark=mark=>/DATE/i.test(String(mark||''));
 const str = v => String(v ?? '').trim();
 const bounded = (v,lo,hi,fallback) => Number.isFinite(Number(v)) ? Math.max(lo,Math.min(hi,Number(v))) : fallback;
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function cleanProject(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Open a label project object.');
     const d=value.design || {}, design={...DEFAULT_DESIGN};
-    for(const k of ['panelPt','markPt']) design[k]=bounded(d[k],12,48,design[k]);
-    design.projectPt=bounded(d.projectPt,5,12,7);
+    for(const k of ['panelPt','markPt']) design[k]=bounded(d[k],5,72,design[k]);
+    design.projectPt=bounded(d.projectPt,5,72,7);
+    design.notesPt=bounded(d.notesPt,6,72,18);
+    design.layout={};for(const [key,def] of Object.entries(DEFAULT_LAYOUT)){const v=d.layout?.[key]||{},w=bounded(v.w,.12,key==='qr'?2:4,def.w),h=FONT_KEYS[key]?Math.min(2,design[FONT_KEYS[key]]/72*(key==='project'?2.1:1)):key==='qr'?w:bounded(v.h,.12,2,def.h);design.layout[key]={x:bounded(v.x,0,4-w,def.x),y:bounded(v.y,0,Math.max(0,2-h),def.y),w,h};}
     for(const k of ['showQr','showLogo','showNotes','numbered']) if(typeof d[k]==='boolean')design[k]=d[k];
     design.startSlot=Math.round(bounded(d.startSlot,1,10,1));
     for(const k of ['offsetXmm','offsetYmm'])design[k]=bounded(d[k],-3,3,0);
@@ -29,7 +34,7 @@ export function cleanProject(value = {}) {
     const validLogo=logo && /^data:image\/jpeg;base64,[a-z0-9+/=]+$/i.test(logo.href || '') && logo.href.length<1500000 &&
         Array.isArray(logo.px) && logo.px.length===2 && logo.px.every(v=>Number.isInteger(v)&&v>0&&v<=2000);
     return {format:'cas-label-project',version:1,project:str(value.project).slice(0,200),defaultPanel:str(value.defaultPanel).slice(0,100),
-        defaultUrl:str(value.defaultUrl),defaultNotes:str(value.defaultNotes).slice(0,500),design,logo:validLogo?{href:logo.href,px:logo.px}:null,rows};
+        defaultUrl:str(value.defaultUrl),defaultNotes:str(value.defaultNotes).slice(0,500),design,logo:validLogo?{href:logo.href,px:logo.px}:null,logoSource:str(value.logoSource),rows};
 }
 export function rowValue(row,project) {
     return {...row,panel:row.panel || project.defaultPanel,url:row.overrides?.url?row.url:row.url || project.defaultUrl,
@@ -98,6 +103,7 @@ export function rowsFromTable(table,{panel='',project='',url='',cutList=false}={
         const value=header?{panel:get('panel',panel),mark:get('mark'),qty:indexes.qty>=0?Number(get('qty')):1,url:get('url',url),notes:get('notes'),project:get('project',project),review:get('review')}:
             cutList?{panel,mark:str(r[0]),qty:Number(r[1]),url,notes:'',project,review:''}:
             {panel:str(r[0])||panel,mark:str(r[1]),qty:1,url:str(r[2])||url,notes:str(r[3]),project:str(r[4])||project,review:''};
+        if(skipDateMark(value.mark)){issues.push(`Skipped DATE mark on input row ${i+(header?2:1)}.`);continue;}
         value.panelOrigin=header&&indexes.panel>=0&&str(r[indexes.panel])?'Imported panel column':!header&&!cutList&&str(r[0])?'Imported panel column':'Default panel';
         if(!value.mark){
             if(value.panel && !cutList){value.panelOnly=true;issues.push(`Input row ${i+(header?2:1)} is panel-only (no member mark). Kept as supplied; check that it is intentional.`);}
@@ -117,6 +123,7 @@ export function rowsFromTable(table,{panel='',project='',url='',cutList=false}={
 export function rowsFromOcr(text,{panel='',project='',url=''}={}) {
     const rows=[],issues=[];
     for(const ln of String(text).split(/\r?\n/)) {
+        if(skipDateMark(ln.trim().split(/\s+/)[0]))continue;
         if(!ln.trim()||/^(LABEL|MARK|QTY|QUANTITY|GRAND TOTAL|TOTAL|PANEL)\b/i.test(ln.trim())||/\b(?:FRAMING\s+)?CUT\s*LIST\b/i.test(ln))continue;
         const m=/^\s*([A-Z]{1,4}\d{0,4})\s*[|:]?\s+(\d+)\b(.*)$/i.exec(ln);
         if(m){const mark=m[1].toUpperCase();rows.push({panel,mark,qty:Number(m[2]),url,notes:'',project,review:''});
@@ -126,7 +133,7 @@ export function rowsFromOcr(text,{panel='',project='',url=''}={}) {
     return {rows,issues};
 }
 export function projectFromShop(items,{project='',urls={}}={}) {
-    return cleanProject({project,rows:items.flatMap(it=>(it.cutList||[]).map(c=>({panel:it.panel,mark:c.mark,qty:c.qty,
+    return cleanProject({project,rows:items.flatMap(it=>(it.cutList||[]).filter(c=>!skipDateMark(c.mark)).map(c=>({panel:it.panel,mark:c.mark,qty:c.qty,
         url:urls[it.panel]||'',notes:'',review:it.review||'',panelOrigin:'Resolved cut list · Panel Shop Generator',sourcePanel:it.panel}))) });
 }
 export function expandedCsv(project,{header=true}={}) {
@@ -144,27 +151,27 @@ function footerLines(s,pt,w) {
     return lines;
 }
 export function labelPageOps(project,pieces,pageIndex=0,{guides=false,qrCache=new Map()}={}) {
-    const {design:d}=project,ops=[],skip=d.startSlot-1;
+    const {design:d}=project,ops=[],skip=d.startSlot-1,l=d.layout||DEFAULT_LAYOUT;
     for(let slot=0;slot<10;slot++) {
         const x=STOCK.left+(slot%2)*STOCK.pitchX+d.offsetXmm/25.4,y=STOCK.top+Math.floor(slot/2)*2+d.offsetYmm/25.4;
         if(guides)ops.push(rect(x,y,4,2,{fill:'none',stroke:'#bbbbbb',width:.004}));
         const p=pieces[pageIndex*10+slot-skip];if(!p)continue;
-        ops.push(text(x+1.98,y+.55,p.panel,fitted(p.panel,d.panelPt,1.65)));
-        ops.push(text(x+1.98,y+1.19,p.mark,fitted(p.mark,d.markPt,1.65)));
-        if(d.showNotes && p.notes)ops.push(text(x+1.98,y+1.47,p.notes,fitted(p.notes,9,1.65)));
+        ops.push(text(x+l.panel.x+l.panel.w/2,y+l.panel.y+d.panelPt/72,p.panel,fitted(p.panel,d.panelPt,l.panel.w)));
+        ops.push(text(x+l.mark.x+l.mark.w/2,y+l.mark.y+d.markPt/72,p.mark,fitted(p.mark,d.markPt,l.mark.w)));
+        if(d.showNotes && p.notes)ops.push(text(x+l.notes.x+l.notes.w/2,y+l.notes.y+(d.notesPt||18)/72,p.notes,fitted(p.notes,d.notesPt||18,l.notes.w)));
         if(d.numbered)ops.push(text(x+3.7,y+.2,`${p.piece}/${p.pieces}`,7,{anchor:'end',fill:'#555555'}));
         if(d.showQr && p.url) {
             if(!qrCache.has(p.url)){const q=qrEncode(p.url);qrCache.set(p.url,{q,rects:qrRects(q)});}
-            const {q,rects}=qrCache.get(p.url),size=.94,m=size/(q.size+8),qx=x+.14,qy=y+.49;
+            const {q,rects}=qrCache.get(p.url),size=l.qr.w,m=size/(q.size+8),qx=x+l.qr.x,qy=y+l.qr.y;
             ops.push(rect(qx,qy,size,size,{fill:'#ffffff'}));
             for(const r of rects)ops.push(rect(qx+(r.x+4)*m,qy+(r.y+4)*m,r.w*m,r.h*m));
         }
-        if(d.showLogo && project.logo){const scale=1.03/Math.max(...project.logo.px),w=project.logo.px[0]*scale,h=project.logo.px[1]*scale;
-            ops.push({t:'image',id:'logo',href:project.logo.href,px:project.logo.px,x:x+2.85+(1.03-w)/2,y:y+.88+(1.03-h)/2,w,h});}
+        if(d.showLogo && project.logo){const scale=Math.min(l.logo.w/project.logo.px[0],l.logo.h/project.logo.px[1]),w=project.logo.px[0]*scale,h=project.logo.px[1]*scale;
+            ops.push({t:'image',id:'logo',href:project.logo.href,px:project.logo.px,x:x+l.logo.x+(l.logo.w-w)/2,y:y+l.logo.y+(l.logo.h-h)/2,w,h});}
         if(p.review)ops.push(text(x+1.655,y+1.67,p.review,fitted(p.review,7,2.35),{fill:'#b00020',weight:'bold'}));
-        const lines=footerLines(p.project,d.projectPt,2.35),pt=Math.min(d.projectPt,2* d.projectPt/Math.max(lines.length,2));
-        const shown=lines.length<=2?lines:footerLines(p.project,pt,2.35);
-        shown.forEach((ln,k)=>ops.push(text(x+1.655,y+1.82+k*pt/72*1.1,ln,fitted(ln,pt,2.35),{fill:'#888888'})));
+        let pt=d.projectPt,shown=footerLines(p.project,pt,l.project.w);
+        for(let i=0;i<4&&shown.length*pt/72*1.1>l.project.h;i++){pt=Math.min(pt,l.project.h*72/(shown.length*1.1));shown=footerLines(p.project,pt,l.project.w);}
+        shown.forEach((ln,k)=>ops.push(text(x+l.project.x+l.project.w/2,y+l.project.y+pt/72+k*pt/72*1.1,ln,fitted(ln,pt,l.project.w),{fill:'#888888'})));
     }
     return ops;
 }
