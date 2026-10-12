@@ -1,4 +1,4 @@
-import {LANES, boardError, normalizeBoard, mergePublished} from './demos/common/framing-board.mjs';
+import {LANES, boardError, normalizeBoard, mergePublished, numberBoard, cardReference} from './demos/common/framing-board.mjs';
 const $=id=>document.getElementById(id), API='/api/state/framing-decision-board', CACHE='cas-framing-board:draft:v2';
 const local=['localhost','127.0.0.1','[::1]'].includes(location.hostname);
 const fields=['title','lane','panel','notes','evidence','owner','due','kind','priority','acceptance','results'];
@@ -14,16 +14,16 @@ function render(){
     const progress=document.createElement('progress');progress.max=board.cards.length||1;progress.value=completed;$('progress').append(progress);
     const search=$('search').value.trim().toLowerCase(), today=new Date().toLocaleDateString('en-CA');
     for(const [key,title] of LANES){
-        const cards=board.cards.filter(c=>c.lane===key&&(!$('owner').value||c.owner===$('owner').value)&&(!$('kind').value||c.kind===$('kind').value)&&(!search||[c.title,c.panel,c.notes,c.acceptance,c.results].join(' ').toLowerCase().includes(search))).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
+        const cards=board.cards.filter(c=>c.lane===key&&(!$('owner').value||c.owner===$('owner').value)&&(!$('kind').value||c.kind===$('kind').value)&&(!search||(/^#?\d+$/.test(search)?c.number===Number(search.replace('#','')):[cardReference(c.number),c.title,c.panel,c.notes,c.acceptance,c.results].join(' ').toLowerCase().includes(search)))).sort((a,b)=>(a.due||'9999').localeCompare(b.due||'9999'));
         const tab=node('button',`${title} (${cards.length})`);tab.type='button';tab.setAttribute('aria-pressed',key===currentLane);tab.addEventListener('click',()=>{currentLane=key;render();$('lane-tabs').querySelector(`[data-key="${key}"]`).focus();});tab.dataset.key=key;$('lane-tabs').append(tab);
         const lane=document.createElement('section');lane.className='lane'+(key===currentLane?' current':'');lane.dataset.lane=key;
         const heading=node('h2',title);heading.append(node('small',cards.length));lane.append(heading);
         lane.addEventListener('dragover',e=>{e.preventDefault();lane.classList.add('drag-over');});lane.addEventListener('dragleave',()=>lane.classList.remove('drag-over'));
         lane.addEventListener('drop',async e=>{e.preventDefault();lane.classList.remove('drag-over');const c=board.cards.find(c=>c.id===e.dataTransfer.getData('text/plain'));if(c){c.lane=key;currentLane=key;render();await save();}});
         for(const c of cards){
-            const button=document.createElement('button');button.className='card';button.dataset.card=c.id;
+            const button=document.createElement('button');button.className='card';button.dataset.card=c.id;button.dataset.number=c.number;
             const handle=node('span','⠿','drag-handle');handle.draggable=true;handle.title='Drag to another column; use Status in card details with a keyboard';let dragging=false;
-            const tags=document.createElement('div');tags.className='card-tags';tags.append(node('span',typeNames[c.kind],'tag '+c.kind));if(c.priority==='high')tags.append(node('span','High priority','tag high'));
+            const tags=document.createElement('div');tags.className='card-tags';tags.append(node('span',cardReference(c.number),'card-number'),node('span',typeNames[c.kind],'tag '+c.kind));if(c.priority==='high')tags.append(node('span','High priority','tag high'));
             const meta=document.createElement('div');meta.className='card-meta';meta.append(node('span',c.owner==='You'?'◉ You':'◉ Codex'));
             const due=node('time',date(c.due));if(c.due){due.dateTime=c.due;if(c.due<today&&c.lane!=='done')due.className='overdue';}meta.append(due);
             button.append(handle,tags,node('b',c.title),node('p',c.panel||c.notes),meta);
@@ -42,11 +42,12 @@ async function load(reset=false){
         const res=await fetch(API,{cache:'no-store'});if(!res.ok)throw Error('Could not load the local board.');const data=await res.json();
         board=data?.version?normalizeBoard(data,seed):structuredClone(seed);
         if(data?.version===1)for(const c of seed.cards)if(!board.cards.some(x=>x.id===c.id))board.cards.push(c);
-        if(data?.version===2&&data.publishedSeed)board={...mergePublished(seed,board,data.publishedSeed),revision:data.revision};
+        if(data?.version===2&&data.publishedSeed)board={...mergePublished(seed,board,normalizeBoard(data.publishedSeed,seed)),revision:data.revision};
+        board=numberBoard(board,seed);
         board.publishedSeed=seed;
         text($('save-status'),`Local board · revision ${board.revision}`);
     }else{
-        let cached=null;try{cached=JSON.parse(localStorage.getItem(CACHE)||'null');if(cached)cached.board=normalizeBoard(cached.board);}catch{cached=null;}
+        let cached=null;try{cached=JSON.parse(localStorage.getItem(CACHE)||'null');if(cached){cached.board=normalizeBoard(cached.board,seed);if(cached.seed)cached.seed=normalizeBoard(cached.seed,seed);}}catch{cached=null;}
         board=reset?structuredClone(seed):mergePublished(seed,cached?.board,cached?.seed);
         text($('save-status'),cached&&!reset?'Published plan · browser draft':'Published plan · edits save in this browser');
     }
@@ -59,21 +60,23 @@ async function save(){
     try{while(pending){pending=false;const snapshot=structuredClone(board);text($('save-status'),'Saving…');const response=await fetch(API,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(snapshot)});if(!response.ok){const err=await response.json();throw Error(err.error);}board.revision=snapshot.revision+1;text($('save-status'),`Local board · saved revision ${board.revision}`);}}
     catch(e){pending=false;text($('save-status'),e.message);}finally{busy=false;}
 }
-function edit(card,button){opener=button||$('add');editing=card?.id||null;for(const key of fields)$('card-'+key).value=card?.[key]??({lane:'backlog',owner:'Codex',kind:'task',priority:'normal'}[key]||'');$('delete').hidden=!editing;$('editor').showModal();}
+function edit(card,button){if(!board)return;opener=button||$('add');editing=card?.id||null;text($('card-reference'),card?`${cardReference(card.number)} · Card details`:'New card · number assigned on save');for(const key of fields)$('card-'+key).value=card?.[key]??({lane:'backlog',owner:'Codex',kind:'task',priority:'normal'}[key]||'');$('delete').hidden=!editing;$('editor').showModal();}
 $('editor').querySelector('form').addEventListener('submit',e=>{
     if(e.submitter?.value!=='save')return;
-    const c={id:editing||crypto.randomUUID()};for(const key of fields)c[key]=$('card-'+key).value;
-    const next={...board,cards:editing?board.cards.map(x=>x.id===editing?c:x):[...board.cards,c]},invalid=boardError(next);
-    if(invalid){e.preventDefault();text($('save-status'),invalid[1]);return;}board=next;currentLane=c.lane;render();save();
+    const c={id:editing||crypto.randomUUID()};if(editing)c.number=board.cards.find(x=>x.id===editing).number;for(const key of fields)c[key]=$('card-'+key).value;
+    const next=numberBoard({...board,cards:editing?board.cards.map(x=>x.id===editing?c:x):[...board.cards,c]},seed),invalid=boardError(next);
+    if(invalid){e.preventDefault();text($('save-status'),invalid[1]);return;}board=next;currentLane=c.lane;if(!editing)for(const id of ['search','owner','kind'])$(id).value='';render();save();
 });
 $('editor').addEventListener('close',()=>{const target=editing&&[...document.querySelectorAll('.card')].find(c=>c.dataset.card===editing);(target||opener)?.focus();});
 $('delete').addEventListener('click',async()=>{board.cards=board.cards.filter(c=>c.id!==editing);$('editor').close('cancel');render();$('add').focus();await save();});
-$('add').addEventListener('click',()=>edit());for(const id of ['search','owner','kind'])$(id).addEventListener(id==='search'?'input':'change',render);
+$('add').addEventListener('click',()=>edit());for(const id of ['search','owner','kind'])$(id).addEventListener(id==='search'?'input':'change',()=>{
+    if(id==='search'&&board){const query=$('search').value.trim(),found=/^#?\d+$/.test(query)&&board.cards.find(c=>c.number===Number(query.replace('#','')));if(found){currentLane=found.lane;$('owner').value='';$('kind').value='';}}render();
+});
 $('reload').addEventListener('click',async()=>{if(busy)return text($('save-status'),'Wait for the current save to finish.');if(!local&&!confirm('Restore the published plan? Browser edits will be replaced. Download your board first to keep them.'))return;try{await load(true);if(!local){localStorage.removeItem(CACHE);}}catch(e){text($('save-status'),e.message);}});
 $('download').addEventListener('click',()=>{if(!board)return;const url=URL.createObjectURL(new Blob([JSON.stringify(board,null,2)],{type:'application/json'})),a=document.createElement('a');a.href=url;a.download='cas-framing-board.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),1500);});
 $('attach').addEventListener('click',async()=>{try{
     const set=JSON.parse(localStorage.getItem('cas-shopgen:set')||'null');if(!set?.panels?.length)return text($('save-status'),'No panel project in this browser.');
-    board.cards.push({id:crypto.randomUUID(),lane:'backlog',title:'Current panel context',panel:set.project||'',owner:'Codex',kind:'task',priority:'normal',due:'',acceptance:'Review this browser draft before making framing changes.',results:'',evidence:'Panel Shop Generator browser draft',notes:set.panels.slice(0,100).map(p=>`${p.mark}: ${p.revit?.framingSettings?.template?.name||'no imported template'}; cutback ${p.cutbackIn??'default'} in; top gap ${p.deflectionGapIn??0} in; ${p.manual?'custom members':'automatic members'}`).join('\n').slice(0,8000)});currentLane='backlog';render();await save();
+    board.cards.push({id:crypto.randomUUID(),lane:'backlog',title:'Current panel context',panel:set.project||'',owner:'Codex',kind:'task',priority:'normal',due:'',acceptance:'Review this browser draft before making framing changes.',results:'',evidence:'Panel Shop Generator browser draft',notes:set.panels.slice(0,100).map(p=>`${p.mark}: ${p.revit?.framingSettings?.template?.name||'no imported template'}; cutback ${p.cutbackIn??'default'} in; top gap ${p.deflectionGapIn??0} in; ${p.manual?'custom members':'automatic members'}`).join('\n').slice(0,8000)});board=numberBoard(board,seed);currentLane='backlog';render();await save();
 }catch(e){text($('save-status'),e.message);}});
 $('import').addEventListener('change',async e=>{try{const file=e.target.files[0];if(!file)return;const data=normalizeBoard(JSON.parse(await file.text()),seed);if(!confirm('Replace this board with the selected file? Download your current board first to keep a copy.'))return;board={...data,revision:board.revision};render();await save();}catch(err){text($('save-status'),err.message);}finally{e.target.value='';}});
 load().catch(e=>text($('save-status'),e.message));

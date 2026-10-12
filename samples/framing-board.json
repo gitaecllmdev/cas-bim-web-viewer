@@ -34,7 +34,8 @@
       "acceptance": "Open QC-05: jack 84⅜ in, upper piece 31¾ in, outer king 119⅞ in. Compare QC-02's bearing arrangement. Check both window sides and C/T openings. Record any wrong member ID and screenshot.",
       "evidence": "Live Revit 2023 readback, 2026-10-12; native join audit",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 1
     },
     {
       "id": "recipes-review",
@@ -48,7 +49,8 @@
       "acceptance": "Check single/boxed/double headers, doubled jambs, sill ends and door bottom track behavior. Confirm R.O. arrows and original vs rough sizes. Note bearing and seat requirements; do not approve unsupported variants by substitution.",
       "evidence": "343-member combination mock; 24 measured top gaps",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 2
     },
     {
       "id": "custom-review",
@@ -62,7 +64,8 @@
       "acceptance": "Copy a stud, shorten it to 60 in, mirror a jamb and Undo. Confirm Sketch, cuts and PDF agree. Invalid length, opening collisions and missing supports must block release. Record expected behavior before native custom-axis placement.",
       "evidence": "Real browser handlers at 1366 and 380 px; custom stress suite",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 3
     },
     {
       "id": "metadata-review",
@@ -76,7 +79,8 @@
       "acceptance": "After mapping is available, export a model wall with template name, gap, cutback, seating and end rules. Confirm inch conversion once, explicit zero/false, reload and Use Revit values. Confirm top gap replaces only top cutback.",
       "evidence": "Version 1 revit.framingSettings contract",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 4
     },
     {
       "id": "workflow-review",
@@ -90,7 +94,8 @@
       "acceptance": "Web import → resolve → native dry run → commit → compare → PDF and QR labels. Repeat without duplicates; update only owned members; cancel/Undo cleanly. On 1,000-wall synthetic test check responsive progress, counts and recovery. Review labels and one sheet per panel.",
       "evidence": "Depends on writer, scale and release QA cards",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 5
     },
     {
       "id": "release-review",
@@ -104,7 +109,8 @@
       "acceptance": "Approve supported recipes and actual host versions tested. Explicitly accept or defer each remaining limitation. Any failure returns its card to In progress.",
       "evidence": "Month-end review",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 6
     },
     {
       "id": "native-mapping",
@@ -118,7 +124,8 @@
       "acceptance": "Reviewed mapping with missing/invalid values blocked or clearly absent. Prove real export → browser consumption and override restoration.",
       "evidence": "Existing web source settings support",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 7
     },
     {
       "id": "native-writer",
@@ -132,7 +139,8 @@
       "acceptance": "Validate supported features before creation. Dry run, one Undo step, unique ownership, idempotent updates, rollback on join/cut/facing mismatch, no MWF writes. Keep preparation off the Revit API thread.",
       "evidence": "Mock prototype proves 343 members, not production import",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 8
     },
     {
       "id": "custom-native",
@@ -146,7 +154,8 @@
       "acceptance": "Place the three reviewed synthetic cases, read back cut length/axis/facing/identity, preserve quantities, then inspect short studs and extra jambs.",
       "evidence": "Requires custom review; disposable model",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 9
     },
     {
       "id": "bulk",
@@ -160,7 +169,8 @@
       "acceptance": "Benchmark 100/1,000-wall synthetic sets, native placement and audit separately. Bounded payloads, cancellation, stable ownership, no per-member regeneration, measured progress and recoverable Undo.",
       "evidence": "Existing web benchmark and live 343-member timing",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 10
     },
     {
       "id": "unsupported",
@@ -174,7 +184,8 @@
       "acceptance": "Record accepted diagrams/datums or defer each recipe. Keep export blocked until its exact arrangement has a tested native binding. Never silently replace it.",
       "evidence": "Combination mock skipped four recipes",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 11
     },
     {
       "id": "embed",
@@ -188,7 +199,8 @@
       "acceptance": "Define versioned messages, document identity, settings origin and ExternalEvent mutation. Check focus, resize and close/reopen; reuse the same resolver rather than duplicate framing logic.",
       "evidence": "Host feasibility proposal; not implemented",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 12
     },
     {
       "id": "planning-sync",
@@ -202,7 +214,8 @@
       "acceptance": "Decide whether browser drafts plus Git updates are enough, or approve an authenticated shared backend. Never use the public page for client engineering data.",
       "evidence": "No new service or dependency required today",
       "priority": "low",
-      "results": ""
+      "results": "",
+      "number": 13
     },
     {
       "id": "usability",
@@ -216,7 +229,8 @@
       "acceptance": "Have a colleague import a panel, explain framing settings, locate a blocked issue, export one sheet and QR labels without coaching. Record time and confusing wording.",
       "evidence": "Aim for one clear action at each stage",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 14
     },
     {
       "id": "release-qa",
@@ -230,7 +244,8 @@
       "acceptance": "Keep frozen fixture goldens intact. Replay desktop/narrow handlers and actual downloads; verify supported Revit versions, changed ownership/cancellation/Undo and unsupported-feature rejection. Publish tested web build with an accurate limitations list.",
       "evidence": "Depends on planned native writer and user reviews",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 15
     },
     {
       "id": "board-month",
@@ -244,7 +259,8 @@
       "acceptance": "Drag cards, change owner/date/status with keyboard, filter your tests, reload drafts, import/export JSON and verify live URLs at 1366 and 380 px. No homepage link.",
       "evidence": "306 unit tests; real local and cloud-mode handlers at 1366/380 px; public URLs recorded in the web handoff",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 16
     },
     {
       "id": "gap-rule",
@@ -258,7 +274,8 @@
       "acceptance": "24 live top gaps match 0.5 or 1 inch. Preserve this datum in every native binding.",
       "evidence": "User direction and live gap readback",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 17
     },
     {
       "id": "numbers",
@@ -272,7 +289,8 @@
       "acceptance": "23 frozen fixture outputs remain unchanged. No automatic quantity repair.",
       "evidence": "Framing contract and frozen fixtures",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 18
     },
     {
       "id": "revit-combo",
@@ -286,7 +304,8 @@
       "acceptance": "Independent readback; zero allowed joins across 686 ends on October 12. User visual review is tracked separately.",
       "evidence": "Live Revit 2023 audit",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 19
     },
     {
       "id": "custom-qc",
@@ -300,7 +319,8 @@
       "acceptance": "95 exported members; 34 stress cases; desktop/narrow; no fixture changes.",
       "evidence": "305 web tests at previous milestone",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 20
     },
     {
       "id": "revit-input",
@@ -314,7 +334,8 @@
       "acceptance": "Explicit zero and false preserved; malformed unit/version/value rejected. Native exporter mapping remains Planned.",
       "evidence": "Real browser source-settings handlers",
       "priority": "normal",
-      "results": ""
+      "results": "",
+      "number": 21
     },
     {
       "id": "joins-rule",
@@ -328,7 +349,9 @@
       "acceptance": "Before commit, require joins false at both ends plus native cut within tolerance; unsupported join controls must fail visibly, not pass silently.",
       "evidence": "Current prototype already disables joins; 343-member live audit",
       "priority": "high",
-      "results": ""
+      "results": "",
+      "number": 22
     }
-  ]
+  ],
+  "nextNumber": 1001
 }
