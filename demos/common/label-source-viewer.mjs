@@ -9,7 +9,7 @@ export function selectionRect(a,b,width,height){
     return {x:Math.min(x1,x2),y:Math.min(y1,y2),w:Math.abs(x2-x1),h:Math.abs(y2-y1)};
 }
 export class LabelSourceViewer {
-    constructor({onExtract}){
+    constructor({onExtract,onDismiss=()=>{}}){
         this.onExtract=onExtract;this.regions=[];this.page=1;this.pages=1;this.job=0;this.zoom=1;this.pan=false;this.loaded=false;
         document.body.insertAdjacentHTML('beforeend',`<dialog id="lm-source-viewer" class="lm-source-viewer" aria-labelledby="ls-title">
             <header><div><h2 id="ls-title">Select tables from your drawing</h2><span id="ls-file"></span></div><button id="ls-full" class="secondary">Full screen</button><button id="ls-close" class="secondary" aria-label="Close source viewer">Close</button></header>
@@ -21,7 +21,7 @@ export class LabelSourceViewer {
         </dialog>`);
         this.dialog=document.querySelector('#lm-source-viewer');this.$=s=>this.dialog.querySelector(s);this.canvas=this.$('#ls-canvas');
         const safe=fn=>async()=>{try{await fn();}catch(e){this.status(e.message);}};
-        this.$('#ls-close').onclick=()=>this.dialog.close();this.dialog.addEventListener('close',()=>{this.controller?.abort();++this.job;});
+        this.$('#ls-close').onclick=()=>{onDismiss();this.dialog.close();};this.dialog.addEventListener('cancel',()=>onDismiss());this.dialog.addEventListener('close',()=>{if(this.dialog.open)return;this.controller?.abort();++this.job;});
         this.$('#ls-full').onclick=()=>{const full=this.dialog.classList.toggle('ls-fullscreen');this.$('#ls-full').textContent=full?'Window size':'Full screen';requestAnimationFrame(()=>this.fit(false));};
         this.$('#ls-prev').onclick=safe(()=>this.showPage(this.page-1));this.$('#ls-next').onclick=safe(()=>this.showPage(this.page+1));this.$('#ls-show').onclick=safe(()=>this.showPage(Number(this.$('#ls-page').value)));
         this.$('#ls-page').onkeydown=e=>{if(e.key==='Enter')this.$('#ls-show').click();};
@@ -42,7 +42,7 @@ export class LabelSourceViewer {
     async open(file){
         if(!file)return;if(file.size>30*1024*1024)throw new Error('Use an image or PDF smaller than 30 MB.');
         this.controller?.abort();const job=++this.job;this.regions=[];this.bytes=null;this.page=this.pages=1;this.draft=this.start=null;this.loading=true;this.busy=false;this.loaded=false;this.canvas.width=this.canvas.height=0;this.paint();
-        this.fileName=file.name||'Pasted screenshot';this.$('#ls-file').textContent=this.fileName;this.dialog.showModal();this.status('Loading drawing…');
+        this.fileName=file.name||'Pasted screenshot';this.$('#ls-file').textContent=(this.batchPosition?`File ${this.batchPosition.index} of ${this.batchPosition.total} - `:'')+this.fileName;this.dialog.showModal();this.status('Loading drawing…');
         try{
             if(/\.pdf$/i.test(file.name)||file.type==='application/pdf'){
                 this.bytes=new Uint8Array(await file.arrayBuffer());if(job!==this.job)return;await this.showPage(1,job);
@@ -72,7 +72,7 @@ export class LabelSourceViewer {
     }
     paint(){this.boxes();this.$('#ls-regions').innerHTML=this.regions.length?this.regions.map((r,i)=>`<div class="ls-region"><canvas data-thumb="${i}"></canvas><span>Window ${i+1}<small>Page ${r.page}</small></span><button class="secondary" data-remove="${i}" aria-label="Remove window ${i+1}" ${this.busy?'disabled':''}>×</button></div>`).join(''):'<p class="muted">No windows selected yet.</p>';
         this.$('#ls-regions').querySelectorAll('canvas').forEach(c=>{const source=this.regions[Number(c.dataset.thumb)].canvas;c.width=100;c.height=Math.max(20,Math.min(80,100*source.height/source.width));c.getContext('2d').drawImage(source,0,0,c.width,c.height);});
-        this.$('#ls-done').disabled=this.loading||this.busy||!this.regions.length;this.$('#ls-done').textContent=this.busy?'Pulling items…':`Done — pull items${this.regions.length?' ('+this.regions.length+' windows)':''}`;
+        this.$('#ls-done').disabled=this.loading||this.busy||!this.regions.length;this.$('#ls-done').textContent=this.busy?'Pulling items...':`${this.batchPosition&&this.batchPosition.index<this.batchPosition.total?'Done - next file':'Done - load labels'}${this.regions.length?' ('+this.regions.length+' windows)':''}`;
         for(const id of ['ls-clear','ls-whole','ls-prev','ls-next','ls-show'])this.$('#'+id).disabled=this.loading||this.busy;
         this.$('#ls-cancel').hidden=!this.busy;
     }
