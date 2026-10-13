@@ -1,5 +1,24 @@
-import {addDays,dayMs,STAGE_NAMES} from './p6.mjs';
+import {addDays,dayMs,STAGE_NAMES,makeCalendar,scheduleFromRows} from './p6.mjs';
 export const DEMO_DATE='2026-10-12';
+// Synthetic hotel plan uses exact model level names; no client schedule or invented wall links.
+export function hotelDemoSchedule(levels){
+    const rank=name=>/ground/i.test(name)?0:/roof/i.test(name)?1000:Number(/\d+/.exec(name)?.[0]||999);
+    const ordered=[...new Set(levels.filter(Boolean))].sort((a,b)=>rank(a)-rank(b)||a.localeCompare(b,undefined,{numeric:true}));
+    if(!ordered.length)throw Error('No model levels are available for the demonstration schedule.');
+    const cal=makeCalendar(),rows=[['Activity ID','Activity Name','Start','Finish','Activity % Complete','Location','Install Stage','WBS','Original Duration','Predecessors','Total Float','Activity Status']];
+    for(const [i,level] of ordered.entries()){
+        let start=cal.add(addDays(DEMO_DATE,-45+i*6),0),previous='';
+        for(const [j,stage] of STAGE_NAMES.slice(1).entries()){
+            const id=`WH${String(i+1).padStart(2,'0')}${['F','B','T','C'][j]}`,duration=[7,6,5,4][j],finish=cal.add(start,duration-1);
+            const pct=finish<DEMO_DATE?100:start>DEMO_DATE?0:Math.min(90,Math.max(10,Math.round((dayMs(DEMO_DATE)-dayMs(start))/(dayMs(finish)-dayMs(start)+86400000)*100)));
+            rows.push([id,`${stage} walls · ${level}`,start,finish,String(pct),level,stage,level,String(duration),previous,String(i%3===0?0:5),pct===100?'Complete':pct>0?'In progress':'Not started']);
+            previous=id;start=cal.add(finish,1);
+        }
+    }
+    const schedule=scheduleFromRows(rows,{file:'wilton-hotel-demo.csv',dataDate:DEMO_DATE,importedAt:DEMO_DATE+'T12:00:00.000Z'});
+    schedule.project.id='WILTON-DEMO';schedule.project.name='Wilton Hotel';schedule.source.sample=true;
+    return schedule;
+}
 export function demoStages(walls,levels){
     const grouped=new Map();for(const w of walls)if(w.externalId){const level=w.level||'Not set';if(!grouped.has(level))grouped.set(level,[]);grouped.get(level).push(w);}
     const order=[...levels.filter(l=>grouped.has(l)),...[...grouped.keys()].filter(l=>!levels.includes(l)).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true}))];

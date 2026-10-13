@@ -17,7 +17,7 @@ import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
 import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
-import {demoStagesFromSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
+import {demoStagesFromSchedule,hotelDemoSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
 
 // Base64 for the source PDF kept with a schedule (state is JSON).
 const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -179,7 +179,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             const urn = decodeURIComponent(location.hash.slice(1));
             const models = await fetchJson('samples/urns.json').catch(() => []);
             const entry = models.find(m => m.urn === urn) || (!urn ? models[0] : null);
-            this.sampleSchedule = entry?.sampleSchedule || null;
+            this.sampleSchedule = this.options.hotelDemo ? 'model-level-demo' : entry?.sampleSchedule || null;
             this.stateName = this.sampleSchedule ? 'progress' : `progress-${modelKey(urn)}`;
             this.scheduleState = this.sampleSchedule ? 'schedule' : `schedule-${modelKey(urn)}`;
             if(this.options.standalone){const key=modelKey('install-progress-demo:'+urn);this.stateName=`progress-${key}`;this.scheduleState=`schedule-${key}`;}
@@ -189,7 +189,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             // The day the field progress was recorded, when the saved progress says (a demo data set does): the plan
             // timeline opens there, so "installed vs plan" compares the walls with the plan on that day.
             this.asOf = /^\d{4}-\d{2}-\d{2}$/.test(saved.asOf || '') ? saved.asOf : null;
-            this.walls =(await getWallData(model, map)).walls;
+            this.walls =(await getWallData(model, map)).walls.map(w=>({...w,level:w.level||null}));
             this.byDbId = new Map(this.walls.map(w => [w.dbId, w]));
             this.wallOrder = [...this.walls].sort((a, b) => a.dbId - b.dbId);
             const freshDemo=this.options.standalone&&!Object.hasOwn(saved,'stages');if(freshDemo)this.asOf=DEMO_DATE;
@@ -272,6 +272,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     async loadSample({ quiet = false } = {}) {
+        if(this.options.hotelDemo){
+            this.useSchedule(hotelDemoSchedule(this.walls.map(w=>w.level)));
+            if(!quiet){this.render();this.message(`Loaded the demonstration schedule: ${this.schedule.activities.length} activities linked to the hotel's model levels.`);}
+            return;
+        }
         const resp = await fetch(SAMPLE.url);
         if (!resp.ok) throw new Error(`Sample schedule not found (${resp.status})`);
         let s = scheduleFromXer(parseXer(decodeText(await resp.arrayBuffer())), { file: SAMPLE.file });
@@ -436,7 +441,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     <details class="tk-dd pg-menu"><summary class="pg-btn" title="Schedule: sample, export, remove">⋯</summary><div class="tk-dd-list">
                         ${s?.source.original ? '<a href="#" data-undo-demo>Undo the demo move</a>' : ''}
                         ${this.sampleSchedule ? `<a href="#" data-sample>Load the sample schedule (made up)</a>
-                        <a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>` : ''}
+                        ${this.options.hotelDemo?'':`<a href="${SAMPLE.url}" download="${SAMPLE.file}">Download the sample .xer</a>`}` : ''}
                         ${s ? '<a href="#" data-export>Export CSV (P6 % vs model %)</a><a href="#" data-remove>Remove the schedule…</a>' : ''}
                     </div></details>
                     ${this.options.standalone?'':'<button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 7): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>'}
@@ -895,7 +900,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.compareCounts = c;
         }
         this.views.setColors(colors);
-        if(this.options.standalone)document.dispatchEvent(new CustomEvent('progress-summary',{detail:{walls:this.walls.length,finished:counts[FINISHED],counts,levels:this.levels.length,activities:this.schedule?.activities.length||0,attention:this.linked.filter(a=>compare(this.modelOf(a),a.pct)?.state==='behind').length,asOf:this.asOf,project:this.schedule?.project.name||'Snowdon Towers'}}));
+        if(this.options.standalone)document.dispatchEvent(new CustomEvent('progress-summary',{detail:{walls:this.walls.length,finished:counts[FINISHED],counts,levels:this.levels.filter(l=>l!==NOT_SET).length,activities:this.schedule?.activities.length||0,attention:this.linked.filter(a=>compare(this.modelOf(a),a.pct)?.state==='behind').length,asOf:this.asOf,project:this.schedule?.project.name||'Snowdon Towers'}}));
         if (this.allPlans.isOpen) this.allPlans.setColors(colors);
         if (this.views.apart) this.updateFloorLabels(planned);
         this.renderColorLegend();
