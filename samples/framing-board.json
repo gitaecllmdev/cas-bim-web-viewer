@@ -2,23 +2,35 @@
   "version": 2,
   "revision": 0,
   "project": "CAS Framing · Web → Revit",
-  "updatedAt": "2026-10-12",
+  "updatedAt": "2026-10-13",
   "milestones": [
     {
-      "due": "2026-10-19",
-      "title": "Week 1 · Framing details approved"
+      "due": "2026-10-18",
+      "title": "1 · Details and safety rules"
     },
     {
-      "due": "2026-10-26",
-      "title": "Week 2 · Input contract & edge cases"
+      "due": "2026-10-25",
+      "title": "2 · Identity, source and host decision"
     },
     {
-      "due": "2026-11-02",
-      "title": "Week 3 · Native writer & round trip"
+      "due": "2026-11-01",
+      "title": "3 · Verified single-panel Apply"
     },
     {
-      "due": "2026-11-12",
-      "title": "Week 4 · Scale, usability & release"
+      "due": "2026-11-08",
+      "title": "4 · Updates, recovery and two users"
+    },
+    {
+      "due": "2026-11-15",
+      "title": "5 · Batches and recovery rehearsal"
+    },
+    {
+      "due": "2026-11-22",
+      "title": "6 · Packaged end-to-end pilot"
+    },
+    {
+      "due": "2026-11-26",
+      "title": "7 · Evidence and release decision"
     }
   ],
   "cards": [
@@ -27,10 +39,10 @@
       "lane": "review",
       "title": "Check jack vs king jambs and facing",
       "owner": "You",
-      "due": "2026-10-15",
+      "due": "2026-10-17",
       "kind": "test",
       "panel": "QC-02 / QC-05 / CAS COMBO views",
-      "notes": "QC-05 intentionally splits inner jamb around the header. It is not Revit auto-join trimming. All 343 mock members have joins disabled at both ends and exact web cut lengths.",
+      "notes": "QC-05 intentionally splits inner jamb around the header. It is not Revit auto-join trimming. All 343 mock members have joins disabled at both ends and exact web cut lengths. Saturday review, 30 minutes: use the existing disposable mock. This is the first human geometry gate.",
       "acceptance": "Open QC-05: jack 84⅜ in, upper piece 31¾ in, outer king 119⅞ in. Compare QC-02's bearing arrangement. Check both window sides and C/T openings. Record any wrong member ID and screenshot.",
       "evidence": "Live Revit 2023 readback, 2026-10-12; native join audit",
       "priority": "high",
@@ -42,11 +54,11 @@
       "lane": "review",
       "title": "Approve opening framing combinations",
       "owner": "You",
-      "due": "2026-10-19",
+      "due": "2026-10-18",
       "kind": "test",
       "panel": "QC-01–07 / QC-10–16 / QC-19–20",
       "notes": "Sixteen supported mock recipes exist. Automated cut/facing/gap checks pass; engineering and visible detailing approval remains yours.",
-      "acceptance": "Check single/boxed/double headers, doubled jambs, sill ends and door bottom track behavior. Confirm R.O. arrows and original vs rough sizes. Note bearing and seat requirements; do not approve unsupported variants by substitution.",
+      "acceptance": "Sunday review, 45 minutes: check single/boxed/double headers, doubled jambs, sill ends and door bottom track behavior. Confirm the current compact allowance summary and Original / R.O. sizes. Record bearing/seat intent; unsupported variants need their own binding. No requirement to restore the superseded four-side arrows.",
       "evidence": "343-member combination mock; 24 measured top gaps",
       "priority": "high",
       "results": "",
@@ -57,10 +69,10 @@
       "lane": "review",
       "title": "Try custom studs, jambs and bad edits",
       "owner": "You",
-      "due": "2026-10-22",
+      "due": "2026-10-24",
       "kind": "test",
       "panel": "CUSTOM-01 / CUSTOM-02 / CUSTOM-03",
-      "notes": "Three real UI panels exported 95 members; 34 stress variants produced 12 ready and 22 correctly blocked cases. New custom-axis native placement is still a separate gate.",
+      "notes": "Three real UI panels exported 95 members; 34 stress variants produced 12 ready and 22 correctly blocked cases. New custom-axis native placement is still a separate gate. Saturday review, 30 minutes. Record custom member expectations before native placement.",
       "acceptance": "Copy a stud, shorten it to 60 in, mirror a jamb and Undo. Confirm Sketch, cuts and PDF agree. Invalid length, opening collisions and missing supports must block release. Record expected behavior before native custom-axis placement.",
       "evidence": "Real browser handlers at 1366 and 380 px; custom stress suite",
       "priority": "high",
@@ -69,55 +81,68 @@
     },
     {
       "id": "metadata-review",
-      "lane": "review",
+      "lane": "backlog",
       "title": "Confirm Revit template and gap inputs",
       "owner": "You",
-      "due": "2026-10-28",
+      "due": "2026-11-07",
       "kind": "test",
       "panel": "Native parameter mapping / SOURCE-01",
-      "notes": "The web accepts explicit normalized Revit settings with source labels and web overrides. The real exporter mapping has not shipped.",
+      "notes": "The web accepts explicit normalized Revit settings with source labels and web overrides. The real exporter mapping has not shipped. Saturday review, 30 minutes after the native read-only bridge is available. Remains Planned until prerequisites pass.",
       "acceptance": "After mapping is available, export a model wall with template name, gap, cutback, seating and end rules. Confirm inch conversion once, explicit zero/false, reload and Use Revit values. Confirm top gap replaces only top cutback.",
       "evidence": "Version 1 revit.framingSettings contract",
       "priority": "high",
       "results": "",
-      "number": 4
+      "number": 4,
+      "dependsOn": [
+        7,
+        12
+      ]
     },
     {
       "id": "workflow-review",
-      "lane": "review",
+      "lane": "backlog",
       "title": "Run complete workflow and scale acceptance",
       "owner": "You",
-      "due": "2026-11-09",
+      "due": "2026-11-22",
       "kind": "test",
       "panel": "Disposable model / final release candidate",
-      "notes": "Planned final acceptance after native writer, import ownership and bulk protections are implemented. Existing 343-member timing does not qualify thousands of walls.",
-      "acceptance": "Web import → resolve → native dry run → commit → compare → PDF and QR labels. Repeat without duplicates; update only owned members; cancel/Undo cleanly. On 1,000-wall synthetic test check responsive progress, counts and recovery. Review labels and one sheet per panel.",
+      "notes": "Sunday acceptance, 60 minutes on the packaged candidate. Require writer, recovery, two-user and scale evidence first. Existing 343-member mock timing does not qualify thousands of walls.",
+      "acceptance": "Load native source -> shared web resolve -> native change preview -> Apply -> independent Compare -> one sheet per panel and same QR/plain labels. Retry creates no duplicates. Update only CAS-owned members. Stop a large job at a panel boundary, retain completed panels, then resume safely. Check measured 100/1,000-wall evidence and record release blockers.",
       "evidence": "Depends on writer, scale and release QA cards",
       "priority": "high",
       "results": "",
-      "number": 5
+      "number": 5,
+      "dependsOn": [
+        14,
+        40
+      ]
     },
     {
       "id": "release-review",
-      "lane": "review",
-      "title": "Approve month-end scope and remaining limitations",
+      "lane": "backlog",
+      "title": "Approve the 45-day pilot and explicit support limits",
       "owner": "You",
-      "due": "2026-11-12",
+      "due": "2026-11-26",
       "kind": "task",
       "panel": "Release candidate",
-      "notes": "A target date is a planning commitment, not a claim that unsupported arrangements or native generation are complete.",
-      "acceptance": "Approve supported recipes and actual host versions tested. Explicitly accept or defer each remaining limitation. Any failure returns its card to In progress.",
-      "evidence": "Month-end review",
+      "notes": "Day 45 is an evidence-based release decision. Unavailable Revit versions, failed host combinations or unapproved recipes stay outside the pilot.",
+      "acceptance": "Review the support matrix and every open high-priority finding. Approve the actual tested scope or extend the affected gate. Record remaining limitations and next owners. November 26 may be a holiday; the sign-off can be asynchronous. A date alone never closes a failed test.",
+      "evidence": "Pilot target: October 13 through November 26, inclusive",
       "priority": "high",
       "results": "",
-      "number": 6
+      "number": 6,
+      "dependsOn": [
+        5,
+        42,
+        43
+      ]
     },
     {
       "id": "native-mapping",
       "lane": "backlog",
       "title": "Map native template parameters into web input",
       "owner": "Codex",
-      "due": "2026-10-23",
+      "due": "2026-10-20",
       "kind": "task",
       "panel": "Native exporter",
       "notes": "Identify actual readable template, deflection, cutback and end-rule parameters. Preserve explicit values and source identity; MWF fields remain read-only.",
@@ -125,29 +150,38 @@
       "evidence": "Existing web source settings support",
       "priority": "high",
       "results": "",
-      "number": 7
+      "number": 7,
+      "dependsOn": [
+        24
+      ]
     },
     {
       "id": "native-writer",
       "lane": "backlog",
-      "title": "Build guarded resolved-plan writer",
+      "title": "Build verified single-panel resolved-plan Apply",
       "owner": "Codex",
       "due": "2026-10-30",
       "kind": "task",
       "panel": "CAS_FRAMING",
-      "notes": "Production writer still pending. Use stable member ownership and exact web physical axes/cuts; disable joins for every new structural-framing end.",
-      "acceptance": "Validate supported features before creation. Dry run, one Undo step, unique ownership, idempotent updates, rollback on join/cut/facing mismatch, no MWF writes. Keep preparation off the Revit API thread.",
+      "notes": "Bounded writer in CAS_FRAMING DEV, initially driven by reviewed JSON. Use authoritative physical axes/cuts and disjoin both ends. UI-host integration is separate; no duplicated framing engine.",
+      "acceptance": "Preflight exact features, source and family binding; create only CAS-owned members. Check actual transaction results. Independently verify final cuts, axes, facing, top gap and joins while rollback is still possible, including commit-time effects inside a rollback-capable group. Write ownership and receipt with the panel changes. Failed verification leaves zero partial members; one successful small Apply has one Undo action. Regeneration corruption aborts the job immediately.",
       "evidence": "Mock prototype proves 343 members, not production import",
       "priority": "high",
       "results": "",
-      "number": 8
+      "number": 8,
+      "dependsOn": [
+        25,
+        26,
+        27,
+        29
+      ]
     },
     {
       "id": "custom-native",
       "lane": "backlog",
       "title": "Place custom-axis members in the native mock",
       "owner": "Codex",
-      "due": "2026-10-26",
+      "due": "2026-11-10",
       "kind": "task",
       "panel": "CUSTOM-01–03",
       "notes": "Custom sketch geometry is verified in the web. Translation of custom physical axes into actual Revit members has not been qualified.",
@@ -155,33 +189,44 @@
       "evidence": "Requires custom review; disposable model",
       "priority": "high",
       "results": "",
-      "number": 9
+      "number": 9,
+      "dependsOn": [
+        3,
+        27,
+        32
+      ]
     },
     {
       "id": "bulk",
       "lane": "backlog",
       "title": "Qualify generation for thousands of walls",
       "owner": "Codex",
-      "due": "2026-11-05",
+      "due": "2026-11-18",
       "kind": "task",
       "panel": "Repeated templates / native batches",
       "notes": "Native mock: 343 members in roughly 19 seconds including audit. No thousand-wall claim. Web has bounded template caching and async yields.",
-      "acceptance": "Benchmark 100/1,000-wall synthetic sets, native placement and audit separately. Bounded payloads, cancellation, stable ownership, no per-member regeneration, measured progress and recoverable Undo.",
+      "acceptance": "Measure 100 and 1,000-wall synthetic generation, verification, payload size, memory and UI stalls separately; use 5,000 only after those pass. Test repeated templates and mixed recipes. Tune batch size from results, preserve quantities, stop between panels, and resume without duplicates. Establish and record acceptable timings with the owner; do not claim arbitrary millisecond or memory caps from the reports as proven.",
       "evidence": "Existing web benchmark and live 343-member timing",
       "priority": "high",
       "results": "",
-      "number": 10
+      "number": 10,
+      "dependsOn": [
+        9,
+        34,
+        35,
+        36
+      ]
     },
     {
       "id": "unsupported",
       "lane": "backlog",
       "title": "Decide unsupported header and slope details",
       "owner": "You",
-      "due": "2026-10-23",
+      "due": "2026-10-20",
       "kind": "proposal",
       "panel": "QC-08 / QC-09 / QC-17 / QC-18",
       "notes": "Nested tracks, single-C header arrangement, native sloped end cuts and sloped deflection datum require approved physical details.",
-      "acceptance": "Record accepted diagrams/datums or defer each recipe. Keep export blocked until its exact arrangement has a tested native binding. Never silently replace it.",
+      "acceptance": "Record accepted diagrams/datums or defer each recipe. Default pilot excludes QC-08/09/17/18 until exact native arrangements pass. Keep unsupported Apply blocked, with an explicit reason. Do not substitute geometry or change fabrication tolerances to make a case pass.",
       "evidence": "Combination mock skipped four recipes",
       "priority": "high",
       "results": "",
@@ -190,28 +235,34 @@
     {
       "id": "embed",
       "lane": "backlog",
-      "title": "Prototype the Revit web workspace host",
+      "title": "Connect the qualified local web workspace to Revit",
       "owner": "Codex",
-      "due": "2026-11-06",
-      "kind": "proposal",
+      "due": "2026-11-05",
+      "kind": "task",
       "panel": "Revit window / shared web UI",
-      "notes": "Reuse the web workspace with a thin Revit bridge. The repository cautions against WebView2 in a dockable pane; use a regular owned WPF window for a feasibility prototype.",
-      "acceptance": "Define versioned messages, document identity, settings origin and ExternalEvent mutation. Check focus, resize and close/reopen; reuse the same resolver rather than duplicate framing logic.",
+      "notes": "Use the host selected in #028 with the same versioned local web bundle and a narrow transport-independent bridge. Model data stays local. Revit API work runs only through a valid ExternalEvent context.",
+      "acceptance": "Read selection, refresh source, locate, compare and save through versioned commands with schema, size, origin/peer, document and session checks. Reject stale or switched-document requests. Revit objects stay inside the adapter; background work gets DTOs only. Keep Apply disabled until #008/#031/#032 pass. Confirm actual keyboard, window and document lifecycle, not just compilation.",
       "evidence": "Host feasibility proposal; not implemented",
       "priority": "normal",
       "results": "",
-      "number": 12
+      "number": 12,
+      "dependsOn": [
+        7,
+        24,
+        25,
+        28
+      ]
     },
     {
       "id": "planning-sync",
       "lane": "backlog",
       "title": "Choose persistent shared board storage",
       "owner": "You",
-      "due": "2026-10-26",
+      "due": "2026-11-24",
       "kind": "proposal",
       "panel": "Project planning",
-      "notes": "This URL serves a published Git snapshot. Cloud edits are local browser drafts; downloaded JSON shares results with Codex. It is unlisted, not private or real-time shared.",
-      "acceptance": "Decide whether browser drafts plus Git updates are enough, or approve an authenticated shared backend. Never use the public page for client engineering data.",
+      "notes": "Deferred infrastructure option: the bookmark board and browser drafts plus JSON sharing remain sufficient for this pilot. Review whether authenticated shared storage is actually needed after pilot feedback.",
+      "acceptance": "Record a proceed/defer decision with a concrete collaboration need and privacy requirements. Do not activate a new backend, tracking service or dependency merely for the plan.",
       "evidence": "No new service or dependency required today",
       "priority": "low",
       "results": "",
@@ -222,30 +273,38 @@
       "lane": "backlog",
       "title": "Trial the workflow with a nontechnical user",
       "owner": "You",
-      "due": "2026-11-02",
-      "kind": "proposal",
+      "due": "2026-11-21",
+      "kind": "test",
       "panel": "Web / Revit task flow",
-      "notes": "Proposed usability session: measure time and uncertainty, not just visual preference.",
-      "acceptance": "Have a colleague import a panel, explain framing settings, locate a blocked issue, export one sheet and QR labels without coaching. Record time and confusing wording.",
+      "notes": "Saturday nontechnical pilot, 30 minutes with a colleague. Record time, errors and where coaching was needed.",
+      "acceptance": "Without coaching, load a native panel, read source/template/gap origins, find a blocked issue, review proposed changes, apply one supported panel and save its sheet and labels. Distinguish web draft Undo from Revit Undo. Record confusing wording and report reproducible failures.",
       "evidence": "Aim for one clear action at each stage",
       "priority": "normal",
       "results": "",
-      "number": 14
+      "number": 14,
+      "dependsOn": [
+        40
+      ]
     },
     {
       "id": "release-qa",
       "lane": "backlog",
       "title": "Run final regression and host compatibility checks",
       "owner": "Codex",
-      "due": "2026-11-10",
+      "due": "2026-11-19",
       "kind": "task",
       "panel": "Supported web and native release scope",
       "notes": "Release gates must distinguish unit/build checks from actual host and visual proof.",
-      "acceptance": "Keep frozen fixture goldens intact. Replay desktop/narrow handlers and actual downloads; verify supported Revit versions, changed ownership/cancellation/Undo and unsupported-feature rejection. Publish tested web build with an accurate limitations list.",
+      "acceptance": "Keep all frozen fixtures and quantities intact. Replay real desktop/narrow handlers, PDF/QR output and actual Revit operations. Qualify exact Revit patch/runtime/add-in/family combinations, including 2025.5/2026.5 .NET 10 where in the pilot fleet. Check document switching, stale requests, borrowed elements, failure, cancellation, Undo/Redo and unsupported rejection. Unsupported or unavailable hosts remain excluded, not marked passed.",
       "evidence": "Depends on planned native writer and user reviews",
       "priority": "high",
       "results": "",
-      "number": 15
+      "number": 15,
+      "dependsOn": [
+        10,
+        32,
+        37
+      ]
     },
     {
       "id": "board-month",
@@ -351,7 +410,409 @@
       "priority": "high",
       "results": "",
       "number": 22
+    },
+    {
+      "id": "sync-review-adoption",
+      "number": 23,
+      "title": "Adopt reviewed sync safety rules and the 45-day plan",
+      "due": "2026-10-13",
+      "notes": "Reassessed both PDFs and the pasted architecture review against the current add-in. Adopt a shared JS resolver, a thin native adapter, exact source validation, persistent ownership, panel rollback and explicit recovery. Host choice remains a qualification decision.",
+      "acceptance": "Record adoption/defer decisions, stable card numbers, dependencies, weekend checks and day-45 release gates. This completed planning card does not claim the native safeguards have been built.",
+      "dependsOn": [],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "done",
+      "panel": "Architecture and delivery plan",
+      "priority": "high",
+      "evidence": "Current code, Autodesk/Microsoft documentation and docs/native-handoff/FRAMING-SYNC-45-DAY-PLAN.md",
+      "results": ""
+    },
+    {
+      "id": "sync-identity",
+      "number": 24,
+      "title": "Define model, panel and member identity with baseline schema",
+      "due": "2026-10-19",
+      "notes": "Separate model lineage, current document session and file/save location. Persistent CAS member GUIDs are distinct from calculation memberKey, ElementId and display Mark. Keep current exchange identities valid until an explicit versioned migration is reviewed.",
+      "acceptance": "Define versioned schema and migrations; test copied members, copied files, Save As local copies versus intentional forks, detach and cloud identity. Preserve source wall UniqueId/panel identity without guessing by mark or nearest geometry. Specify baseline fields, precision and semantic plan/source hashes; ambiguous identity stops Apply.",
+      "dependsOn": [
+        23
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-freshness",
+      "number": 25,
+      "title": "Block Apply when source, settings or bindings have changed",
+      "due": "2026-10-21",
+      "notes": "Modeless UI snapshots become stale. Re-read the source in the valid Revit API context immediately before each panel is applied.",
+      "acceptance": "Changed wall/opening geometry, transform, template/settings, family binding, document/session or supported feature version blocks the old plan. Include linked-source revision/transform where supported. Re-resolve explicitly and preview again; no clicked-through warning. Test changes after preview and between queued batches.",
+      "dependsOn": [
+        7,
+        24
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-panel-claim",
+      "number": 26,
+      "title": "Design and prove panel ownership and first-creation claims",
+      "due": "2026-10-23",
+      "notes": "Prefer panel-scoped baseline/receipt storage over a routinely edited global ProjectInformation record. A DataStorage record alone cannot prevent two users creating the first record at once.",
+      "acceptance": "Choose and document an enforceable panel-claim mechanism, including first creation. Check returned checkout results and source freshness; cached status is advisory. Enumerate actual writes/dependencies and fail an incomplete checkout atomically. Disconnected central stays workshared. Avoid unrelated borrowing/relinquishment; prove two-session claim contention before writer integration.",
+      "dependsOn": [
+        24
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-family-binding",
+      "number": 27,
+      "title": "Qualify family bindings and independent physical checks",
+      "due": "2026-10-26",
+      "notes": "Reuse the calibrated facing/cut audit. Bind by actual loaded family/type behavior, role, insertion datum and physical section; a rotation parameter or FacingOrientation alone is insufficient.",
+      "acceptance": "Qualify supported C/T categories and recipes with independent solids/axes. Verify both ends disjoined, exact physical cuts and established web top-gap datum (gap replaces top cutback; no added web thickness). Use unrounded measurements with justified tolerances, preserving frozen fabrication outputs. Family reload/retype or axis/config changes invalidate affected caches. Reject unknown bindings.",
+      "dependsOn": [
+        1,
+        2,
+        11
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-host-spike",
+      "number": 28,
+      "title": "Qualify host and exact Revit runtime before choosing UI shell",
+      "due": "2026-10-22",
+      "notes": "Compare a read-only local WebView2 CasWindow with a separate companion if embedding fails. No dockable WebView2. No privileged bridge to the public Pages site. Neither architecture is assumed crash-proof.",
+      "acceptance": "Inventory actual Revit patches/runtime/add-ins early, starting with the available R23 test host. Test open/close, Home, Manage Links, Load Family, document switching and normal add-in coexistence. Include .NET 10 builds 2025.5/2026.5 when deployed. Record measured stability and deployment tradeoffs, choose a shell and list excluded hosts. No global runtime registry pinning or blanket framework retarget.",
+      "dependsOn": [
+        23
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Read-only host spike / runtime matrix",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-operation-receipts",
+      "number": 29,
+      "title": "Make retries idempotent with in-model operation receipts",
+      "due": "2026-10-27",
+      "notes": "Operation IDs and immutable request hashes distinguish retry from a changed command. Local logs are diagnostic; model receipts commit with the same member/baseline changes.",
+      "acceptance": "Same ID plus same payload returns an applied result only after current-state reconciliation; changed payload with that ID is rejected. Lost acknowledgment, duplicate queue events, Undo/Redo and missing receipts cannot duplicate members. Distinguish committed-in-session, saved and synchronized states. No SQLite dependency required for the first implementation.",
+      "dependsOn": [
+        24,
+        26
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-three-way",
+      "number": 30,
+      "title": "Preview web and native edits against the last applied baseline",
+      "due": "2026-10-28",
+      "notes": "Compare baseline, current Revit state and requested web plan. Native moves, deletes, retypes and copied ownership must not be silently overwritten or adopted.",
+      "acceptance": "Show adds/updates/deletes and unresolved conflicts by stable identity. Default to review for native drift. Explicitly adopt a native edit into a new resolved plan or restore the reviewed plan; reconcile cut lists/quantities before release. Test changes on one side, both sides, manual delete/recreate and ambiguous matches. Do not transfer edits by stud order or nearest geometry.",
+      "dependsOn": [
+        24,
+        25
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-panel-faults",
+      "number": 31,
+      "title": "Prove rollback, failure handling and Undo for one panel",
+      "due": "2026-11-01",
+      "notes": "Sunday technical checkpoint on a disposable model. A successful mock is insufficient for an Apply writer.",
+      "acceptance": "Inject mid-panel failure, unsupported join control and final verification mismatch: zero partial members/receipts remain. Undo and Redo restore geometry plus ownership/baseline. Check commit-time changes while a containing group can still roll back. Expected warnings are narrowly classified; unknown errors stop. Regeneration corruption aborts the whole job without further document reads or automatic retry.",
+      "dependsOn": [
+        8
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Disposable model / rollback harness",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-update",
+      "number": 32,
+      "title": "Implement owned-member Update without duplicate framing",
+      "due": "2026-11-04",
+      "notes": "Extend the verified single-panel path to explicit updates, retaining stable identity and native references wherever possible.",
+      "acceptance": "Repeat unchanged Apply with zero new members. Update moved openings and template details with a reviewed diff, delete only proven CAS-owned items, and preserve/revalidate tags and dimensions. Vendor/MWF members and p_*/BIMSF_* values remain untouched. Native drift and ambiguous copies require resolution. Verify same quantities and output plan after every update.",
+      "dependsOn": [
+        8,
+        30,
+        31
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-recovery",
+      "number": 33,
+      "title": "Reconcile crashes, lost acknowledgments and reopened models",
+      "due": "2026-11-06",
+      "notes": "Revit commit is not disk save or central synchronization. Treat journal state as a hint and inspect the actual reopened model before retrying.",
+      "acceptance": "Test lost response, UI crash, host termination before commit, after commit before save, after save and after sync in disposable files. Restart validates document lineage/session, receipt, baseline and actual members. Unsaved changes lost on reopen are not reported durable; safe retry recreates only missing intended work. Undo/Redo and Save As/fork paths stay consistent.",
+      "dependsOn": [
+        29,
+        32
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Disposable model / restart recovery",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-two-user",
+      "number": 34,
+      "title": "Run two-user worksharing acceptance including first creation",
+      "due": "2026-11-08",
+      "notes": "Sunday technical checkpoint using two independent user sessions and a disposable central model. If a second session is unavailable, keep the gate open.",
+      "acceptance": "Race first creation on one panel, edit the same panel, and edit different panels. Prove no duplicate ownership records or half assemblies. Exercise partial checkout, stale central changes, reload latest, sync failure and disconnected central. Respect existing user loans; modified/new elements need normal sync before release. Record clean blocks and confirm unrelated panels remain usable.",
+      "dependsOn": [
+        26,
+        32,
+        33
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Two-user disposable workshared model",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-bounded-batch",
+      "number": 35,
+      "title": "Add bounded panel batches with stop and resume",
+      "due": "2026-11-11",
+      "notes": "Large jobs use short ExternalEvent slices with closed transactions at every yield. Start conservatively and tune from measurements.",
+      "acceptance": "Keep each payload below consumer limits, validate partitions and cap any oversized panel explicitly. Progress counts completed/verified work. Stop at the next panel boundary, retain verified panels, mark the rest unattempted, and resume idempotently. Never hold a transaction/group across callbacks or await. State multiple Undo actions honestly; automatic whole-job compensation is deferred.",
+      "dependsOn": [
+        32,
+        33,
+        34
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-performance",
+      "number": 36,
+      "title": "Measure and tune collection, calibration and cache costs",
+      "due": "2026-11-13",
+      "notes": "Separate pure web calculation, serialization, Revit placement, regeneration and verification costs. The existing mock is a baseline, not a throughput promise.",
+      "acceptance": "Collect relevant instances/types once per validated snapshot; reuse bounded caches only with document/family/axis/settings invalidation. Avoid per-member collectors and unconditional regeneration. Record elapsed time, peak memory and UI delay for cold/warm repeated templates and mixed panels. Choose batch limits from evidence, not fixed 25-panel/2-MiB/one-regeneration claims.",
+      "dependsOn": [
+        35
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "CAS_FRAMING DEV",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-host-offline",
+      "number": 37,
+      "title": "Verify local assets, bridge security and document lifecycle",
+      "due": "2026-11-12",
+      "notes": "Qualify the selected host with the actual shared web UI. Packaged HTML alone does not make PDF/OCR offline.",
+      "acceptance": "Cold-cache network-disabled test of approved bundled scripts/workers/WASM/language assets and licenses. Narrow command allowlist; validate origin or authenticated IPC peer, nonce, document, schema and limits. Reject hostile navigation/frames, old sessions and document switching. Scope drafts per model; global preferences stay separate. Verify 100/150/200% DPI, keyboard, clipboard, save, close/reopen and no cross-document writes.",
+      "dependsOn": [
+        12
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Qualified local host / shared bundle",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-user-conflicts",
+      "number": 38,
+      "title": "Review conflicts and two-user messages in plain language",
+      "due": "2026-11-14",
+      "notes": "Saturday owner checkpoint, 30 minutes after implementation. Check whether a detailer understands what will change and why a panel is blocked.",
+      "acceptance": "Move/delete/retype one generated member, change an opening, and encounter a borrowed panel. Verify the preview identifies the exact conflict without losing edits, offers explicit next steps and never changes another user's members. Record confusing wording and confirm the native-edit resolution policy.",
+      "dependsOn": [
+        30,
+        32,
+        34
+      ],
+      "owner": "You",
+      "kind": "test",
+      "lane": "backlog",
+      "panel": "Disposable model / change preview",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-user-recovery",
+      "number": 39,
+      "title": "Rehearse stop, restart and recovery without duplicates",
+      "due": "2026-11-15",
+      "notes": "Sunday owner checkpoint, 30 minutes. Use disposable files and the prepared recovery harness.",
+      "acceptance": "Start a bounded batch, stop at a panel boundary, reopen the workspace and resume. Compare completed/remaining counts. Review saved versus unsaved crash outcomes and Undo/Redo. User can identify what is already in the model and what remains without guessing. No automatic retry on corruption.",
+      "dependsOn": [
+        33,
+        35
+      ],
+      "owner": "You",
+      "kind": "test",
+      "lane": "backlog",
+      "panel": "Disposable model / recovery rehearsal",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-pilot-package",
+      "number": 40,
+      "title": "Package a versioned DEV pilot with output parity",
+      "due": "2026-11-20",
+      "notes": "Pin the shared web bundle to the native release. Public website updates must not silently change the privileged Revit workspace.",
+      "acceptance": "Install/uninstall on a clean test machine with a recorded supported runtime. Verify manifest/bundle versions, startup diagnostics, current document context and modeless host. Export the same resolved plan, one sheet per panel and shared QR/plain labels with locked Panel/Mark/Qty. Keep unsupported hosts/features disabled with clear reasons.",
+      "dependsOn": [
+        10,
+        15,
+        37,
+        38,
+        39
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "DEV distribution / clean-machine pilot",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-deferred",
+      "number": 41,
+      "title": "Triage later architecture options from pilot evidence",
+      "due": "2026-11-24",
+      "notes": "Deferred: SQLite/WAL job database, automatic multi-slice compensating rollback, generic orphan geometry matching, global runtime pinning and unsupported geometry expansion. These are not prerequisites for the bounded pilot.",
+      "acceptance": "Keep deferred unless pilot measurements demonstrate a concrete need and a separately reviewed design. Record any future proposal with risk, benefit and acceptance tests. No silent adoption of report recommendations or dependency installations.",
+      "dependsOn": [
+        5
+      ],
+      "owner": "You",
+      "kind": "proposal",
+      "lane": "backlog",
+      "panel": "After-pilot proposals",
+      "priority": "low",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-support-handoff",
+      "number": 42,
+      "title": "Publish the tested support matrix and recovery runbook",
+      "due": "2026-11-24",
+      "notes": "Make the handoff usable by a detailer and support person. Document exact host patch/runtime/family/recipe evidence and known restrictions.",
+      "acceptance": "Include reproducible load/refresh/compare/apply/update steps, saved-versus-unsaved recovery, stop/resume and Undo scope. Document central ownership conflicts, identity forks and source/plan version checks. Keep private model data out of diagnostics. Only verified combinations enter the support matrix.",
+      "dependsOn": [
+        5,
+        40
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Pilot evidence / operational handoff",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
+    },
+    {
+      "id": "sync-buffer",
+      "number": 43,
+      "title": "Resolve pilot findings or narrow the release scope",
+      "due": "2026-11-25",
+      "notes": "Reserved correction and retest buffer. A failing gate moves the relevant card back to In progress; dates do not waive safety checks.",
+      "acceptance": "Close reproducible pilot defects with targeted tests and actual host evidence. Rerun affected regressions and update limits. If a gate cannot pass, explicitly exclude that host/recipe/workflow or extend its date before #006 sign-off.",
+      "dependsOn": [
+        5,
+        42
+      ],
+      "owner": "Codex",
+      "kind": "task",
+      "lane": "backlog",
+      "panel": "Pilot correction buffer",
+      "priority": "high",
+      "evidence": "Planned acceptance; not implemented or host-qualified",
+      "results": ""
     }
   ],
-  "nextNumber": 1001
+  "nextNumber": 1001,
+  "plan": {
+    "start": "2026-10-13",
+    "end": "2026-11-26",
+    "summary": "45-day pilot plan. Weekend checkpoints included. Dates are targets; prerequisites and recorded evidence decide readiness."
+  }
 }
