@@ -136,7 +136,24 @@ export class AllPlans {
 
     // A plan's walls in their colors: in full the first time, then only those whose color changed (no color:
     // intensity 0, the drawing as it is). Viewer3D setThemingColor: https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Viewer3D/
+    setVisibleWalls(ids) {
+        this.visibleWalls = ids === null ? null : new Set(ids);
+        for (const c of this.cells) this.visibilityCell(c);
+    }
+
+    visibilityCell(c) {
+        if (!this.viewer) return;
+        c.ids ??= c.names.flatMap(name => this.views.wallsByLevel.get(name) || []);
+        const hidden = new Set(this.visibleWalls ? c.ids.filter(id => !this.visibleWalls.has(id)) : []);
+        const prev = c.playbackHidden || new Set();
+        const show = [...prev].filter(id => !hidden.has(id)), hide = [...hidden].filter(id => !prev.has(id));
+        if (show.length) this.viewer.show(show,c.model);
+        if (hide.length) this.viewer.hide(hide,c.model);
+        c.playbackHidden = hidden;
+    }
+
     colorCell(c, prev = null) {
+        this.visibilityCell(c);
         if (!this.viewer) return;
         c.ids ??= c.names.flatMap(name => this.views.wallsByLevel.get(name) || []);
         if (!prev || !c.colored) {

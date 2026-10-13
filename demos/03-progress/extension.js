@@ -10,7 +10,7 @@ import { readSchedulePdf, renderPdfPage } from '../common/pdf-reader.mjs';
 import { scheduleRows } from '../common/p6-pdf.mjs';
 import {
     STAGE_NAMES, demoShift, assignDemoLevels, linkedLevelNames, levelPercents, topStage, parseDateText, decodeText, parseXer, scheduleFromXer, scheduleFromRows, parseCsv, calendarOf, linkActivities, matchLevel, matchStage,
-    stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, scheduleSpan, ganttRows, completeGroups, fmtDay as compactDay, addDays, dayMs, monthName,
+    stageCounts, modelProgress, compare, expectedPct, finishVariance, plannedStages, playbackStages, scheduleSpan, ganttRows, completeGroups, fmtDay as compactDay, addDays, dayMs, monthName,
     randomWallLinks, wallProgress, demoTarget,
 } from './p6.mjs';
 import { ganttHtml, calendarHtml, SCALES, ganttX } from './schedule-views.js';
@@ -18,7 +18,7 @@ import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
 import {demoStagesFromSchedule,hotelDemoSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
-import {dashboardDate,dashboardMetrics,labourSummary,activityInsight,dashboardIcon,DEMO_BIM} from '../../project-dashboard.mjs';
+import {dashboardDate,dashboardMetrics,labourSummary,activityInsight,dashboardIcon,DEMO_BIM,PLAYBACK_COLORS} from '../../project-dashboard.mjs';
 
 // Base64 for the source PDF kept with a schedule (state is JSON).
 const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -133,6 +133,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     setColorMode(mode) {
+        this.endPlayback();
         if (mode !== 'actual' && !this.schedule) {
             this.message('Planned and installed-vs-plan colors come from a schedule: load the sample or upload one in the Gantt tab.', 'warn');
             return;
@@ -221,6 +222,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     // --- The schedule ----------------------------------------------------------------------------------------------
 
     useSchedule(schedule) {
+        this.endPlayback();
         schedule.map ??= { levels: {}, stages: {}, activities: {} };
         this.schedule = schedule;
         this.cal = calendarOf(schedule);
@@ -540,7 +542,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         el.innerHTML = `<select data-color-mode title="How the model is colored">${Object.entries(COLOR_MODES).map(([k, l]) => `<option value="${k}" ${k === this.colorMode ? 'selected' : ''}>${l}</option>`).join('')}</select>
             <input type="range" data-cursor min="0" max="${days}" step="1" value="${Math.round((dayMs(this.cursor) - dayMs(this.span[0])) / 86400000)}" aria-label="Date the model shows the plan for" title="Slide to see the model as planned on a day">
             <b data-cursor-label class="pg-cursor-label"></b>
-            <button class="pg-btn" data-play title="Play the plan day by day">${this.options.standalone?'Play':'▶'}</button>
+            <button class="pg-btn" data-play title="Reveal activity walls from the start of the schedule; later activities update their colors">${this.options.standalone?'Play':'▶'}</button>
             <button class="pg-btn" data-cursor-dd title="Back to the schedule's data date">Data date</button>
             ${this.asOf ? `<button class="pg-btn" data-cursor-asof title="The day the field progress was recorded (${this.fmtDay(this.asOf)}): compare the walls with the plan then">Status</button>` : ''}
             <span class="pg-views" title="Schedule views">
@@ -692,6 +694,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             const st = STAGES.find(x => x.name === focus.stage);
             el.innerHTML = `<span class="tk-key"><span class="swatch" style="background:${st?.color || OTHER}"></span>${focus.walls ? `Its ${focus.walls.length} walls (${escapeHtml(focus.level)})` : `${escapeHtml(focus.level)} walls`} ${escapeHtml(focus.stage || '')} or later</span>
                 ${st ? `<span class="tk-key"><span class="swatch" style="background:${NOT_YET}"></span>not yet</span>` : ''}`;
+        } else if(this.playbackMode){
+            el.innerHTML=STAGES.filter(s=>s.color).map(s=>`<span class="tk-key"><span class="swatch" style="background:${PLAYBACK_COLORS[s.name]}"></span>${s.name}</span>`).join('')+'<span class="muted">Walls appear at activity start · Installed restores the full model</span>';
         } else if (this.colorMode === 'compare') {
             const c = this.compareCounts || {};
             el.innerHTML = Object.entries(COMPARE).map(([k, v]) => `<span class="tk-key"><span class="swatch" style="background:${v.color}"></span>${v.label} ${c[k] ?? 0}</span>`).join('');
@@ -703,15 +707,28 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
 
     // Day by day, one working day a step: the next step only once this one is drawn (the floor plans included, when they
     // are open), so the timeline never runs ahead of what the views show. At most one step every 280 ms.
+    playbackRange() {
+        const level=this.views.level?.name;
+        const acts=this.linked.filter(a=>a.scope!=='other'&&STAGE_NAMES.indexOf(a.stage)>0&&a.start&&(!level||a.level===level));
+        return scheduleSpan(acts.map(a=>({start:a.start,finish:a.finish||a.start})));
+    }
+
     play() {
-        this.setCursor(this.cursor >= this.span[1] ? this.span[0] : this.cursor);
+        const range=this.playbackRange();
+        if(!range){this.message('No wall activities are linked to this floor. Choose another floor or All levels.','warn');return;}
+        const resume=this.playbackMode&&this.cursor<range[1];
+        this.playbackMode=true;this.colorMode='planned';
+        this.setCursor(resume&&this.cursor>=range[0]?this.cursor:range[0]);
         const run = (this.playRun = (this.playRun || 0) + 1);
         const tick = async () => {
             if (run !== this.playRun || !this.playTimer) return;
             const t0 = performance.now();
+            const range=this.playbackRange();
+            if(!range){this.stopPlay();return;}
             let next = addDays(this.cursor, 1);
-            while (next < this.span[1] && !this.cal.isWork(next)) next = addDays(next, 1);
-            if (next >= this.span[1]) { this.setCursor(this.span[1]); this.stopPlay(); return; }
+            if(next<range[0])next=range[0];
+            while (next < range[1] && !this.cal.isWork(next)) next = addDays(next, 1);
+            if (next >= range[1]) { this.setCursor(range[1]); this.stopPlay(); return; }
             this.setCursor(next, { move: true });
             if (this.allPlans.isOpen) await this.allPlans.settled();
             if (run !== this.playRun || !this.playTimer) return;
@@ -726,6 +743,11 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             tick();
         }, 0);
         this.updateCursorUi();
+    }
+
+    endPlayback() {
+        this.stopPlay();this.playbackMode=false;
+        this.views.setPlaybackWalls(null);this.allPlans.setVisibleWalls(null);
     }
 
     stopPlay() {
@@ -900,7 +922,12 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         }
         const focus = this.focusActivity();
         let planned = null; // wall -> the stage planned by the timeline's date (with a schedule)
-        if (focus) {
+        if(this.playbackMode&&this.schedule){
+            colors.clear();planned=playbackStages(this.walls,this.linked,this.cursor);
+            for(const [w,k] of planned)colors.set(w.dbId,PLAYBACK_COLORS[STAGE_NAMES[k]]);
+            const ids=[...planned.keys()].map(w=>w.dbId);
+            this.views.setPlaybackWalls(ids);this.allPlans.setVisibleWalls(ids);
+        } else if (focus) {
             // A selected activity: its level's walls at its stage (or later) in the stage's color, the rest grey.
             colors.clear();
             const k = STAGE_NAMES.indexOf(focus.stage), st = STAGES[k];
@@ -925,7 +952,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             this.compareCounts = c;
         }
         this.views.setColors(colors);
-        if(this.options.standalone)document.dispatchEvent(new CustomEvent('progress-summary',{detail:{walls:this.walls.length,finished:counts[FINISHED],counts,levels:this.levels.filter(l=>l!==NOT_SET).length,activities:this.schedule?.activities.length||0,attention:this.linked.filter(a=>compare(this.modelOf(a),a.pct)?.state==='behind').length,asOf:this.asOf,dataDate:this.schedule?.project.dataDate,demo:!!(this.schedule?.source.sample||this.schedule?.source.demo),colorMode:this.colorMode,dashboard:this.dashboardState()}}));
+        if(this.options.standalone)document.dispatchEvent(new CustomEvent('progress-summary',{detail:{walls:this.walls.length,finished:counts[FINISHED],counts,levels:this.levels.filter(l=>l!==NOT_SET).length,activities:this.schedule?.activities.length||0,attention:this.linked.filter(a=>compare(this.modelOf(a),a.pct)?.state==='behind').length,asOf:this.asOf,dataDate:this.schedule?.project.dataDate,demo:!!(this.schedule?.source.sample||this.schedule?.source.demo),colorMode:this.colorMode,playback:!!this.playbackMode,dashboard:this.dashboardState()}}));
         if (this.allPlans.isOpen) this.allPlans.setColors(colors);
         if (this.views.apart) this.updateFloorLabels(planned);
         this.renderColorLegend();
@@ -1096,6 +1123,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     selectActivity(id) {
+        if(this.playbackMode)this.endPlayback();
         this.selectedAct = this.selectedAct === id ? null : id;
         this.reveal = !!this.selectedAct;
         const a = this.focusActivity();

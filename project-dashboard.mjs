@@ -1,3 +1,5 @@
+// Playback colors identify construction stages; dashboard status colors retain their usual meaning.
+export const PLAYBACK_COLORS=Object.freeze({Framed:'#bd8728',Boarded:'#467ba2',Taped:'#8b6ca3',Finished:'#287d63'});
 // Display preferences and illustrative cost data. Never changes model/schedule quantities.
 export const DEMO_COSTS=Object.freeze({budget:3600000,committed:2840000,spent:1420000,forecast:3720000});
 export const DEMO_BIM=Object.freeze({packages:50,shopIssued:46,prefabReady:39,materialDelivered:34,revision:'R07',phase:'Interior fit-out'});
@@ -103,5 +105,5 @@ export const INTEGRATIONS=Object.freeze([
     {id:'revit',name:'Revit / BIM',description:'Model identity, level, wall ID and revision',fields:[['Element Unique ID','Model element'],['Level name','Schedule location'],['Revision','Model revision']],rows:[['RVT-DEMO-1001','6TH FLOOR','WH07F'],['RVT-DEMO-1002','7TH FLOOR','WH08B'],['RVT-DEMO-1003','8TH FLOOR','WH09T']]},
     {id:'schedule',name:'Project schedule',description:'Activity code, dates and installation stage',fields:[['Activity ID','Schedule activity'],['Location','Model level'],['Install stage','Field stage']],rows:[['WH07F','6TH FLOOR','Framed'],['WH08B','7TH FLOOR','Boarded'],['WH09T','8TH FLOOR','Taped']]},
     {id:'cost',name:'Cost management',description:'Cost codes, commitments and forecast',fields:[['Cost code','Work package'],['Budget / committed','Cost summary'],['Forecast at completion','Forecast']],rows:[['09-2216','Metal framing','$1,480,000'],['09-2900','Drywall & finish','$1,870,000'],['09-9000','Closeout & contingency','$370,000']]},
-    {id:'labour',name:'Internal labour tool',description:'Crew allocation, weekly hours and labour forecast',fields:[['Project reference / week start','Project / reporting week'],['Activity ID / level / cost code','Schedule / model / work package'],['Crew count / regular / overtime hours','Crew and weekly hours'],['Budget / forecast hours / loaded rate','Labour cost included in project cost']],rows:[]},
+    {id:'labour',name:'Internal Production Tracking Tool',description:'Crew allocation, weekly hours and labour forecast',fields:[['Project reference / week start','Project / reporting week'],['Activity ID / level / cost code','Schedule / model / work package'],['Crew count / regular / overtime hours','Crew and weekly hours'],['Budget / forecast hours / loaded rate','Labour cost included in project cost']],rows:[]},
 ]);

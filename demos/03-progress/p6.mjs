@@ -471,6 +471,22 @@ export function plannedStages(walls, linked, dayStr, cal) {
     return out;
 }
 
+// Playback reveals all of an activity's walls at its start, retaining them afterward.
+// The latest started wall activity supplies the stage. Explicit wall sets override level links.
+export function playbackStages(walls, linked, day) {
+    const known = new Map(walls.map(w => [w.dbId, w])), byLevel = new Map(), out = new Map();
+    for (const w of walls) (byLevel.get(w.level) || byLevel.set(w.level, []).get(w.level)).push(w);
+    const started = linked.filter(a => a.scope !== 'other' && STAGE_NAMES.indexOf(a.stage) > 0 &&
+        /^\d{4}-\d{2}-\d{2}$/.test(a.start || '') && Number.isFinite(dayMs(a.start)) &&
+        isoDay(dayMs(a.start)) === a.start && a.start <= day)
+        .slice().sort((a,b) => a.start.localeCompare(b.start) || STAGE_NAMES.indexOf(a.stage) - STAGE_NAMES.indexOf(b.stage));
+    for (const a of started) {
+        const k = STAGE_NAMES.indexOf(a.stage), list = a.walls ?? byLevel.get(a.level) ?? [];
+        for (const candidate of list) { const w = known.get(candidate.dbId); if (w) out.set(w, k); }
+    }
+    return out;
+}
+
 // The date range to draw: every current and planned date, a few days either side.
 export function scheduleSpan(activities) {
     const days = activities.flatMap(a => [a.start, a.finish, a.plannedStart, a.plannedFinish]).filter(Boolean).sort();

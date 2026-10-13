@@ -10,7 +10,7 @@
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
 import { PlanPop } from './plan-pop.mjs';
 import { frameMove, PICK, SET, selectionFloor } from './frame-move.mjs';
-import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
+import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, getObjectTree, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
 const PLAN_OTHER_WALLS = '#e1e5e9'; // on the plan, walls outside the isolated set (faded)
@@ -223,6 +223,7 @@ export class Views {
             viewer.showModel(main);
             this.applyColors(viewer, main);
             this.isolateIn(viewer, main);
+            this.applyPlaybackVisibility(viewer, main);
             this.placeApartLabels();
             if (!names?.length) { this.frameBuilding(); return; }
         }
@@ -254,6 +255,7 @@ export class Views {
             });
             this.applyColors(viewer, model);
             this.isolateIn(viewer, model);
+            this.applyPlaybackVisibility(viewer, model);
             if (i === 0) this.frameApart(); // the first one loaded takes the viewer to the model's own (far) extents
             this.placeApartLabels();
         }
@@ -341,6 +343,65 @@ export class Views {
         if (this.showing2d && plan && plan !== this.model2d?.getDocumentNode()) await this.openSheet(plan);
     }
 
+    // Playback owns a separate mask, reapplied on sheet loads and Show all.
+    // Public Viewer3D hide/show/setGhosting/getState and Model.getObjectTree (references above).
+    setPlaybackWalls(ids) {
+        const next = ids === null ? null : new Set(ids);
+        if (next === null && this.playbackWalls == null) return;
+        if (next && this.playbackWalls && next.size === this.playbackWalls.size && [...next].every(id => this.playbackWalls.has(id))) return;
+        this.playbackWalls = next;
+        if (next === null && this.playbackGhosting !== undefined) {
+            this.viewer3d.setGhosting(this.playbackGhosting);this.playbackGhosting=undefined;
+        }
+        this.playbackVersion = (this.playbackVersion || 0) + 1;
+        for (const [viewer,model] of this.active) this.applyPlaybackVisibility(viewer,model);
+    }
+
+    async applyPlaybackVisibility(viewer,model,{reset=false}={}) {
+        this.playbackStates ??= new WeakMap();
+        let state = this.playbackStates.get(model);
+        if (!state) {
+            if (this.playbackWalls == null) return;
+            state = {hidden:new Set(),tree:getObjectTree(model)};
+            this.playbackStates.set(model,state);
+        }
+        const version = this.playbackVersion;
+        try {
+            const tree = await state.tree;
+            if (version !== this.playbackVersion || !this.active.some(([v,m]) => v === viewer && m === model)) return;
+            if (!state.nodes) {
+                state.nodes=[tree.getRootId()];state.parents=new Map();
+                for(let i=0;i<state.nodes.length;i++)tree.enumNodeChildren(state.nodes[i],child=>{
+                    state.parents.set(child,state.nodes[i]);state.nodes.push(child);
+                },false);
+            }
+            if (reset) state.hidden = new Set();
+            const is3d = viewer === this.viewer3d;
+            if (is3d && this.playbackWalls !== null) {
+                if (this.playbackGhosting === undefined) this.playbackGhosting = viewer.getState({renderOptions:true})?.renderOptions?.appearance?.ghostHidden ?? true;
+                viewer.setGhosting(false);
+            }
+            let hidden = new Set();
+            if (this.playbackWalls !== null) {
+                const allowed = new Set();
+                for (const id of this.playbackWalls) {
+                    allowed.add(id);tree.enumNodeChildren(id,child => allowed.add(child),true);
+                    for(let parent=state.parents.get(id);parent!==undefined&&!allowed.has(parent);parent=state.parents.get(parent))allowed.add(parent);
+                }
+                const candidates = is3d ? state.nodes : [...this.wallLevel.keys()];
+                hidden = new Set(candidates.filter(id => !allowed.has(id)));
+            }
+            const keepHidden = new Set([...this.hidden,...(is3d ? this.ignored || [] : []),...(is3d && this.level ? this.ceilings || [] : [])]);
+            const show = [...state.hidden].filter(id => !hidden.has(id) && !keepHidden.has(id));
+            // Showing a composite can reveal its children; reapply the mask after that operation.
+            const hide = show.some(id=>tree.getChildCount(id)>0) ? [...hidden] : [...hidden].filter(id => !state.hidden.has(id));
+            if (show.length) viewer.show(show,model);
+            if (hide.length) viewer.hide(hide,model);
+            if (show.length && keepHidden.size) viewer.hide([...keepHidden],model);
+            state.hidden = hidden;
+        } catch (err) {this.setSheetStatus(`Playback visibility needs a retry (${err.message}).`,'error');}
+    }
+
     hide(ids) {
         this.hidden = [...new Set([...this.hidden, ...ids])];
         for (const [viewer, model] of this.active) viewer.hide(ids, model);
@@ -351,6 +412,7 @@ export class Views {
         this.hidden = [];
         for (const [viewer, model] of this.active) {
             viewer.showAll();
+            this.applyPlaybackVisibility(viewer,model,{reset:true});
             if (viewer === this.viewer2d) this.applyColors(viewer, model);
         }
         if (this.ignored?.length && this.viewer3d.model) this.viewer3d.hide(this.ignored, this.viewer3d.model);
@@ -841,6 +903,7 @@ export class Views {
             if (viewer.model !== model) return;
             this.applyColors(viewer, model); // with the isolated walls highlighted (no Viewer isolation on plans)
             if (this.hidden.length) viewer.hide(this.hidden, model);
+            this.applyPlaybackVisibility(viewer,model);
             const selection = this.viewer3d.getSelection();
             this.applyingSheet = true; // re-selecting what 3D has selected is not a new pick (no zoomToPick)
             try {
