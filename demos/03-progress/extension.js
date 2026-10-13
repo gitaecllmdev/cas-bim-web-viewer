@@ -18,6 +18,7 @@ import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
 import {demoStagesFromSchedule,hotelDemoSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
+import {costSummary} from '../../project-dashboard.mjs';
 
 // Base64 for the source PDF kept with a schedule (state is JSON).
 const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -61,8 +62,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         this.stages = {}; // externalId -> stage name (walls without an entry are "Not started")
         this.selected = [];
         const params = new URLSearchParams(location.search);
-        this.tabs=this.options.standalone?{stages:'Overview',gantt:'Timeline',calendar:'Calendar',lookahead:'Lookahead'}:TABS;
-        this.tab = this.tabs[params.get('tab')] ? params.get('tab') : 'stages';
+        this.tabs=this.options.standalone?{management:'Dashboard',stages:'Field',gantt:'Timeline',calendar:'Calendar',lookahead:'Lookahead'}:TABS;
+        this.tab = this.tabs[params.get('tab')] ? params.get('tab') : this.options.standalone?'management':'stages';
         this.colorMode = 'actual';
         // Schedule views: only the walls linked to the schedule, the floors apart (views.setLevelsApart), all floor plans.
         this.linkedOnly = false;
@@ -425,7 +426,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     render() {
         const s = this.schedule;
         const d = s?.source.demo;
-        this.panel.innerHTML = `<div class="demo-panel pg">
+        this.panel.innerHTML = `<div class="demo-panel pg ${this.tab==='management'?'management':''}">
             <div class="tk-head pg-head">
                 <div class="pg-row">
                     <b class="pg-title">${this.options.standalone?'Project workspace':'Install Progress'}</b>
@@ -447,7 +448,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     ${this.options.standalone?'':'<button class="pg-btn" data-switch-demo title="Switch to the Panel Tracker (Demo 7): the prefab panels from BIM review to framing complete, on this model">⇄ Panels</button>'}
                 </div>
                 ${s ? '<div class="pg-row pg-colorbar" data-colorbar></div>' : ''}
-                ${s ? `<div class="pg-row pg-search" data-search ${this.tab === 'stages' ? 'hidden' : ''}>
+                ${s ? `<div class="pg-row pg-search" data-search ${['stages','management'].includes(this.tab) ? 'hidden' : ''}>
                     <input type="search" data-kw autocomplete="off" aria-label="Search the schedule" value="${escapeHtml(this.kw.typed)}"
                         placeholder="Search activities: framing, finish, drywall L3, &quot;tape and finish&quot;… (Enter keeps a keyword)">
                     <span class="pg-s-chips" data-kw-chips></span>
@@ -506,11 +507,12 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     setTab(tab) {
         this.tab = tab;
         const params = new URLSearchParams(location.search);
-        if (tab === 'stages') params.delete('tab'); else params.set('tab', tab);
-        history.replaceState(null, '', `${location.pathname}?${params}`);
+        params.set('tab',tab);
+        history.replaceState(null, '', `${location.pathname}?${params}${location.hash}`);
+        this.panel.querySelector('.pg').classList.toggle('management',tab==='management');
         this.panel.querySelectorAll('[data-tab]').forEach(b => {b.classList.toggle('active', b.dataset.tab === tab);b.setAttribute('aria-selected',b.dataset.tab===tab);});
         const search = this.panel.querySelector('[data-search]');
-        if (search) search.hidden = tab === 'stages';
+        if (search) search.hidden = ['stages','management'].includes(tab);
         this.renderBody();
     }
 
@@ -745,7 +747,8 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             if (sample2) sample2.onclick = () => this.loadSample().then(() => this.saveSchedule()).catch(err => this.message(err.message, 'warn'));
             return;
         }
-        if (this.tab === 'gantt') this.renderGantt(body);
+        if (this.tab === 'management'&&this.options.standalone)this.renderManagement(body);
+        else if (this.tab === 'gantt') this.renderGantt(body);
         else if (this.tab === 'calendar') this.renderCalendar(body);
         else if (this.tab === 'lookahead'&&this.options.standalone) this.renderLookahead(body);
         else this.renderStages(body);
@@ -754,6 +757,19 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     }
 
     // --- Stages tab (the tracker) ----------------------------------------------------------------------------------
+
+    renderManagement(body){
+        this.counts=stageCounts(this.walls,w=>this.stageOf(w));
+        const costs=costSummary(),money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
+        const risks=this.linked.map(a=>({a,m:this.modelOf(a)})).filter(r=>compare(r.m,r.a.pct)?.state==='behind').sort((x,y)=>(y.a.pct-y.m.pct)-(x.a.pct-x.m.pct));
+        const open=this.linked.filter(a=>(a.pct??0)<100),complete=this.linked.length-open.length;
+        const week=lookaheadWeeks(open,this.asOf||DEMO_DATE).weeks[0];
+        body.innerHTML=`<div class="management-title"><div><span class="eyebrow">PROJECT PULSE</span><h3>Progress, priorities & forecast</h3><p>Model-linked field context with an illustrative cost plan.</p></div><span class="demo-badge">Demo costs</span></div><div class="management-metrics"><article><span>Schedule activities complete</span><b>${complete}<small> / ${this.linked.length}</small></b><p>Activity % at 100%</p></article><article><span>Work open this week</span><b>${week.activities.length}</b><p>${fmtDay(week.start)} – ${fmtDay(week.finish)}</p></article><article><span>Demo forecast vs budget</span><b>+${costs.variancePct.toFixed(1)}%</b><p>${money(costs.variance)} over demo budget</p></article></div><div class="pg-main float"><div class="management-sections"><section class="management-section"><header><h3>Needs a decision</h3><span>${risks.length} activities</span></header><p class="muted">Model progress more than 10 percentage points behind the schedule. Choose one to see its walls.</p><div class="management-priorities">${risks.slice(0,6).map(({a,m})=>`<button data-priority="${escapeHtml(a.id)}"><span><small>${escapeHtml(a.level||'Project')} · ${escapeHtml(a.id)}</small><b>${escapeHtml(a.name)}</b></span><em>${a.pct-m.pct} pts behind</em></button>`).join('')||'<p class="management-clear">No linked activities currently need attention.</p>'}</div></section><section class="management-section cost-plan"><header><h3>Interior buildout cost plan</h3><span class="demo-badge">Illustrative only</span></header><div class="cost-total"><span>Forecast at completion</span><b>${money(costs.forecast)}</b></div><div class="cost-breakdown">${[['Budget',costs.budget],['Committed',costs.committed],['Spent to date',costs.spent],['Variance to budget',costs.variance]].map(([label,n])=>`<div><span>${label}</span><b>${money(n)}</b></div>`).join('')}</div><p class="muted">Sample cost records. These dollars are not calculated from the model or imported schedule.</p><button data-management-integrations>Preview Revit & cost links →</button></section></div><div class="pg-side" data-details></div></div><div class="management-next"><b>Keep the meeting moving</b><span>Inspect priority walls, review the lookahead, then capture a model screenshot from Review.</span><button data-management-lookahead>Open lookahead</button></div>`;
+        body.querySelectorAll('[data-priority]').forEach(b=>b.onclick=async()=>{const a=this.activity(b.dataset.priority);if(a?.level)await this.views.setLevel(a.level);this.selectActivity(b.dataset.priority);});
+        body.querySelector('[data-management-integrations]').onclick=()=>document.dispatchEvent(new CustomEvent('dashboard-integrations'));
+        body.querySelector('[data-management-lookahead]').onclick=()=>this.setTab('lookahead');
+        this.renderDetails(body.querySelector('[data-details]'));
+    }
 
     renderLookahead(body) {
         const plan=lookaheadWeeks(this.visibleActivities('open'),this.cursor);
