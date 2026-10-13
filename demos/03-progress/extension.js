@@ -767,6 +767,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
     async resetDemo(){
         if(!this.options.standalone)return;
         this.stopPlay();this.clearFocus();this.asOf=DEMO_DATE;
+        this.viewingOriginal=false;this.adjustedSchedule=null;
         this.kw.active=[];this.kw.typed='';this.gantt.show='all';this.colorMode='actual';
         this.views.setLevel(null);await this.loadSample({quiet:true});
         await this.setStages(this.demoStageSnapshot(),{undo:true});await this.saveSchedule();this.render();

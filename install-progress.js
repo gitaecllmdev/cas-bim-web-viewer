@@ -1,9 +1,7 @@
 import {initViewer,loadModel} from './viewer.js';
 import {Views} from './views.js';
 import {fetchJson,onModelReady} from './helpers.js';
-import {TOOLS_EXTENSION_ID} from './tools.js';
 import {CONFIG} from './config.js';
-import './demos/03-progress/extension.js';
 const $=id=>document.getElementById(id);
 let tracker,views;
 $('it-brief').onclick=()=>$('briefing').showModal();
@@ -16,6 +14,8 @@ document.addEventListener('progress-summary',e=>{const s=e.detail;for(const [id,
     if(s.asOf)$('snapshot-date').textContent=new Date(s.asOf+'T12:00:00').toLocaleDateString('en-US',{year:'numeric',month:'long',day:'numeric'});
 });
 async function start(){
+    if(!window.Autodesk?.Viewing?.GuiViewer3D)throw Error('The Autodesk Viewer could not load. Check the IT network access to the Autodesk CDN, then retry.');
+    const [{TOOLS_EXTENSION_ID}]=await Promise.all([import('./tools.js'),import('./demos/03-progress/extension.js')]);
     const params=new URLSearchParams(location.search);if(!params.has('layout')){params.set('layout','3d');history.replaceState(null,'',location.pathname+'?'+params+location.hash);}
     const models=await fetchJson('samples/urns.json'),model=models.find(m=>m.sampleSchedule);if(!model)throw Error('The public demonstration model is unavailable.');
     const access=await fetch(CONFIG.tokenUrl,{cache:'no-store'});if(!access.ok)throw Error(`Model access service returned ${access.status}. Retry when the connection is available.`);
