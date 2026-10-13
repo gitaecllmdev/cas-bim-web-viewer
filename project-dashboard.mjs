@@ -5,6 +5,34 @@ export function costSummary(values=DEMO_COSTS){
     if(Object.values(valid).some(v=>!Number.isFinite(v)||v<0))throw Error('Cost values must be non-negative numbers.');
     return{...valid,variance:valid.forecast-valid.budget,variancePct:valid.budget?(valid.forecast-valid.budget)/valid.budget*100:null};
 }
+// Synthetic work-package allocations, separate from model quantities and field stages.
+export const DEMO_LABOUR=Object.freeze([
+    Object.freeze({id:'LAB-001',code:'09-2216',name:'Metal framing',stage:'Framed',crew:16,plannedWeek:720,regular:576,overtime:72,budgetHours:11000,forecastHours:12000,rate:60}),
+    Object.freeze({id:'LAB-002',code:'09-2900',name:'Drywall & finish',stage:'Boarded',crew:12,plannedWeek:540,regular:432,overtime:48,budgetHours:16500,forecastHours:18000,rate:60}),
+    Object.freeze({id:'LAB-003',code:'09-9000',name:'Closeout',stage:'Taped',crew:4,plannedWeek:180,regular:144,overtime:24,budgetHours:2500,forecastHours:3000,rate:60}),
+]);
+export function labourSummary(rows=DEMO_LABOUR,costs=DEMO_COSTS){
+    const total={crew:0,plannedWeek:0,regular:0,overtime:0,budgetHours:0,forecastHours:0,budgetCost:0,forecastCost:0};
+    for(const row of rows){
+        for(const key of ['crew','plannedWeek','regular','overtime','budgetHours','forecastHours','rate']){
+            if(!Number.isFinite(row[key])||row[key]<0||key==='crew'&&!Number.isInteger(row[key]))throw Error('Labour values must be non-negative numbers; crew must be a whole number.');
+            if(key!=='rate')total[key]+=row[key];
+        }
+        total.budgetCost+=row.budgetHours*row.rate;total.forecastCost+=row.forecastHours*row.rate;
+    }
+    const cost=costSummary(costs);
+    if(total.budgetCost>cost.budget||total.forecastCost>cost.forecast)throw Error('Labour must be included within the total project cost.');
+    return{...total,weekHours:total.regular+total.overtime,hourVariance:total.forecastHours-total.budgetHours,costVariance:total.forecastCost-total.budgetCost,otherBudget:cost.budget-total.budgetCost,otherForecast:cost.forecast-total.forecastCost};
+}
+export function labourAssignments(activities,asOf='2026-10-12'){
+    return DEMO_LABOUR.map(row=>{
+        const matches=activities.filter(a=>a.stage===row.stage&&a.level&&a.scope!=='other');
+        const active=matches.find(a=>a.start<=asOf&&a.finish>=asOf&&(a.pct??0)<100);
+        const next=[...matches].filter(a=>a.start>asOf&&(a.pct??0)<100).sort((a,b)=>a.start.localeCompare(b.start))[0];
+        const activity=active||next||matches[0];
+        return{...row,activityId:activity?.id||'',level:activity?.level||'',weekStart:asOf};
+    });
+}
 export function clampSplit(value,width){
     const number=Number(value),requested=Number.isFinite(number)?number:.42;
     if(!Number.isFinite(width)||width<600)return Math.min(.72,Math.max(.28,requested));
@@ -51,4 +79,5 @@ export const INTEGRATIONS=Object.freeze([
     {id:'revit',name:'Revit / BIM',description:'Model identity, level, wall ID and revision',fields:[['Element Unique ID','Model element'],['Level name','Schedule location'],['Revision','Model revision']],rows:[['RVT-DEMO-1001','6TH FLOOR','WH07F'],['RVT-DEMO-1002','7TH FLOOR','WH08B'],['RVT-DEMO-1003','8TH FLOOR','WH09T']]},
     {id:'schedule',name:'Project schedule',description:'Activity code, dates and installation stage',fields:[['Activity ID','Schedule activity'],['Location','Model level'],['Install stage','Field stage']],rows:[['WH07F','6TH FLOOR','Framed'],['WH08B','7TH FLOOR','Boarded'],['WH09T','8TH FLOOR','Taped']]},
     {id:'cost',name:'Cost management',description:'Cost codes, commitments and forecast',fields:[['Cost code','Work package'],['Budget / committed','Cost summary'],['Forecast at completion','Forecast']],rows:[['09-2216','Metal framing','$1,480,000'],['09-2900','Drywall & finish','$1,870,000'],['09-9000','Closeout & contingency','$370,000']]},
+    {id:'labour',name:'Internal labour tool',description:'Crew allocation, weekly hours and labour forecast',fields:[['Project reference / week start','Project / reporting week'],['Activity ID / level / cost code','Schedule / model / work package'],['Crew count / regular / overtime hours','Crew and weekly hours'],['Budget / forecast hours / loaded rate','Labour cost included in project cost']],rows:[]},
 ]);
