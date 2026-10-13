@@ -19,6 +19,7 @@ export const textOn = (hex) => {
 // g: { rows (p6.ganttRows), span: [from, to], scale, cal, dataDate, today, cursor, selectedId, linkMode: 'selected'|'all'|'none',
 //      links, colorOf(a), modelOf(a) -> { done, total, pct } | null, cmpOf(a) -> { delta, state } | null }
 export function ganttHtml(g) {
+    const displayDay=g.formatDay||fmtDay;
     const ppd = SCALES[g.scale].ppd, from = g.span[0], days = Math.round((dayMs(g.span[1]) - dayMs(from)) / DAY) + 1;
     const W = Math.ceil(days * ppd), H = g.rows.length * ROW;
     const x = (d) => ((dayMs(d) - dayMs(from)) / DAY) * ppd;
@@ -43,8 +44,8 @@ export function ganttHtml(g) {
         }
         for (let i = 0; i < days; i++) {
             const d = addDays(from, i), wd = new Date(dayMs(d)).getUTCDay();
-            if (g.scale === 'day') bot.push(`<span class="${g.cal.isWork(d) ? '' : 'off'}" style="left:${i * ppd}px;width:${ppd}px" title="${DOW[wd]} ${fmtDay(d)}">${+d.slice(8)}</span>`);
-            else if (wd === 1) bot.push(`<span style="left:${i * ppd}px;width:${7 * ppd}px" title="Week of ${fmtDay(d)}">${+d.slice(8)}</span>`);
+            if (g.scale === 'day') bot.push(`<span class="${g.cal.isWork(d) ? '' : 'off'}" style="left:${i * ppd}px;width:${ppd}px" title="${DOW[wd]} ${displayDay(d)}">${+d.slice(8)}</span>`);
+            else if (wd === 1) bot.push(`<span style="left:${i * ppd}px;width:${7 * ppd}px" title="Week of ${displayDay(d)}">${+d.slice(8)}</span>`);
         }
     }
     // Background: days off (days and weeks scales), month lines, today / data date / 4D date lines.
@@ -52,7 +53,7 @@ export function ganttHtml(g) {
     if (g.scale !== 'month') for (let i = 0; i < days; i++) { const d = addDays(from, i); if (!g.cal.isWork(d)) bg.push(`<i class="off${g.cal.isHoliday(d) ? ' hol' : ''}" style="left:${i * ppd}px;width:${ppd}px"></i>`); }
     for (const m of monthStarts) if (m > from) bg.push(`<i class="month" style="left:${x(m)}px"></i>`);
     const line = (d, cls, title) => (d && d >= from && d <= g.span[1] ? `<i class="line ${cls}" style="left:${x(d) + (cls === 'dd' ? 0 : ppd / 2)}px" title="${title}"></i>` : '');
-    bg.push(line(g.today, 'today', `Today ${fmtDay(g.today)}`), line(g.dataDate, 'dd', `Data date ${fmtDay(g.dataDate)}`), line(g.cursor, 'cursor', `Model shown as planned on ${fmtDay(g.cursor)}`));
+    bg.push(line(g.today, 'today', `Today ${displayDay(g.today)}`), line(g.dataDate, 'dd', `Data date ${displayDay(g.dataDate)}`), line(g.cursor, 'cursor', `Model shown as planned on ${displayDay(g.cursor)}`));
     // Rows.
     const rowOf = new Map();
     g.rows.forEach((r, i) => { if (r.kind === 'act') rowOf.set(r.a.id, i); });
@@ -62,13 +63,13 @@ export function ganttHtml(g) {
             const state = r.complete ? '<span class="pg-done" title="Every activity in this group is complete">✓ complete</span>' : r.active ? '<span class="pg-wip" title="Work in progress">in progress</span>' : '';
             return `<div class="pg-g-row wbs${r.complete ? ' done' : ''}" data-wbs="${escapeHtml(r.id)}" title="${r.collapsed ? 'Click to open' : 'Click to fold'}">
                 <div class="pg-g-cells"><span class="pg-g-name" style="padding-left:${r.depth * 12}px"><b class="pg-tw">${r.collapsed ? '▸' : '▾'}</b>${escapeHtml(r.name)} <span class="muted">(${r.count})</span> ${state}</span>
-                    <span class="c-date">${fmtDay(r.start)}</span><span class="c-date">${fmtDay(r.finish)}</span><span class="c-dur"></span><span class="num">${pctText(r.pct)}</span><span></span></div>
+                    <span class="c-date">${displayDay(r.start)}</span><span class="c-date">${displayDay(r.finish)}</span><span class="c-dur"></span><span class="num">${pctText(r.pct)}</span><span></span></div>
                 <div class="pg-g-track"><b class="pg-sum" style="left:${a}px;width:${Math.max(2, b - a)}px"></b></div></div>`;
         }
         const a = r.a, color = g.colorOf(a), m = g.modelOf(a), c = g.cmpOf(a);
         const s = x(a.start), e = x(a.finish) + ppd, ps = x(a.plannedStart), pe = x(a.plannedFinish) + ppd;
         const crit = a.status !== 'complete' && a.float != null && a.float <= 0;
-        const tip = `${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)}${a.plannedStart ? ` (planned ${fmtDay(a.plannedStart)} → ${fmtDay(a.plannedFinish)})` : ''}\nP6 ${a.pct == null ? 'not printed' : a.pct + '%'}${m ? ` · model ${m.pct}% (${m.done} of ${m.total} walls)` : ''}${a.float != null && a.status !== 'complete' ? ` · float ${a.float} d` : ''}`;
+        const tip = `${a.id} ${a.name}\n${displayDay(a.start)} → ${displayDay(a.finish)}${a.plannedStart ? ` (planned ${displayDay(a.plannedStart)} → ${displayDay(a.plannedFinish)})` : ''}\nP6 ${a.pct == null ? 'not printed' : a.pct + '%'}${m ? ` · model ${m.pct}% (${m.done} of ${m.total} walls)` : ''}${a.float != null && a.status !== 'complete' ? ` · float ${a.float} d` : ''}`;
         const ms = a.type === 'start' || a.type === 'finish';
         const bar = ms
             ? `<em class="pg-ms ${a.status === 'complete' ? 'done' : ''} ${crit ? 'crit' : ''}" style="left:${(a.type === 'start' ? s : e) - 7}px">◆</em>`
@@ -80,7 +81,7 @@ export function ganttHtml(g) {
         return `<div class="pg-g-row act st-${a.status} ${a.id === g.selectedId ? 'sel' : ''} ${crit ? 'crit' : ''}${other ? ' other' : ''}" data-act="${escapeHtml(a.id)}" title="${escapeHtml(other ? `${tip}\nNot wall work (${a.scopeHow}): not linked to walls` : tip)}">
             <div class="pg-g-cells"><span>${escapeHtml(a.id)}</span>
                 <span class="pg-g-name" style="padding-left:${r.depth * 12}px"><i class="swatch" style="background:${color}"></i>${escapeHtml(a.name)}</span>
-                <span class="c-date ${a.actualStart ? 'act' : ''}">${fmtDay(a.start)}${a.actualStart ? ' A' : ''}</span><span class="c-date ${a.actualFinish ? 'act' : ''}">${fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}</span>
+                <span class="c-date ${a.actualStart ? 'act' : ''}">${displayDay(a.start)}${a.actualStart ? ' A' : ''}</span><span class="c-date ${a.actualFinish ? 'act' : ''}">${displayDay(a.finish)}${a.actualFinish ? ' A' : ''}</span>
                 <span class="num c-dur">${ms ? '' : Math.round(a.dur)}</span><span class="num">${ms ? '' : pctText(a.pct)}</span>
                 <span class="num">${m ? `<span class="pg-cmp ${c?.state || ''}">${m.pct}%</span>` : '<span class="muted" title="Not linked to walls">–</span>'}</span></div>
             <div class="pg-g-track">${planned}${bar}${label}</div></div>`;
@@ -124,6 +125,7 @@ export const ganttX = (span, scale, d) => ((dayMs(d) - dayMs(span[0])) / DAY) * 
 // c: { month: 'YYYY-MM', activities (linked, filtered), cal, dataDate, today, cursor, selectedId, colorOf(a) }
 const LANES = 7, LANE = 18, HEAD = 22;
 export function calendarHtml(c) {
+    const displayDay=c.formatDay||fmtDay;
     const first = `${c.month}-01`;
     const startOffset = (new Date(dayMs(first)).getUTCDay() + 6) % 7; // weeks start on Monday
     let weekStart = addDays(first, -startOffset);
@@ -144,14 +146,14 @@ export function calendarHtml(c) {
             const cont = `${a.start < weekStart ? ' from-l' : ''}${a.finish > weekEnd ? ' to-r' : ''}`;
             bars.push(`<div class="pg-cal-ev${ms ? ' ms' : ''}${a.scope === 'other' ? ' other' : ''}${a.id === c.selectedId ? ' sel' : ''}${cont}" data-act="${escapeHtml(a.id)}"
                 style="left:calc(${(s / 7) * 100}% + 2px);width:calc(${((e - s + 1) / 7) * 100}% - 4px);top:${HEAD + lane * LANE}px;${ms ? '' : `background:${color};color:${textOn(color)}`}"
-                title="${escapeHtml(`${a.id} ${a.name}\n${fmtDay(a.start)} → ${fmtDay(a.finish)} · P6 ${a.pct == null ? 'not printed' : a.pct + '%'}`)}">${ms ? '◆ ' : ''}${escapeHtml(a.name)}</div>`);
+                title="${escapeHtml(`${a.id} ${a.name}\n${displayDay(a.start)} → ${displayDay(a.finish)} · P6 ${a.pct == null ? 'not printed' : a.pct + '%'}`)}">${ms ? '◆ ' : ''}${escapeHtml(a.name)}</div>`);
         }
         const shown = Math.min(lanes.length, LANES) + (hidden.some(Boolean) ? 1 : 0);
         const days = Array.from({ length: 7 }, (_, k) => {
             const d = addDays(weekStart, k), cls = [
                 d.slice(0, 7) !== c.month ? 'other' : '', c.cal.isWork(d) ? '' : 'off', c.cal.isHoliday(d) ? 'hol' : '',
                 d === c.today ? 'today' : '', d === c.cursor ? 'sel' : '', d === c.dataDate ? 'dd' : ''].filter(Boolean).join(' ');
-            return `<div class="pg-cal-day ${cls}" data-day="${d}" title="${DOW[new Date(dayMs(d)).getUTCDay()]} ${fmtDay(d)}${c.cal.isHoliday(d) ? ' · holiday' : ''}${d === c.dataDate ? ' · data date' : ''}">
+            return `<div class="pg-cal-day ${cls}" data-day="${d}" title="${DOW[new Date(dayMs(d)).getUTCDay()]} ${displayDay(d)}${c.cal.isHoliday(d) ? ' · holiday' : ''}${d === c.dataDate ? ' · data date' : ''}">
                 <span class="n">${+d.slice(8)}</span>${c.cal.isHoliday(d) ? '<span class="tag">Holiday</span>' : d === c.dataDate ? '<span class="tag dd">Data date</span>' : ''}
                 ${hidden[k] ? `<span class="more" style="top:${HEAD + LANES * LANE}px">+${hidden[k]} more</span>` : ''}</div>`;
         }).join('');
