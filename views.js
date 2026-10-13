@@ -670,7 +670,7 @@ export class Views {
         b.disabled = !this.level || !name;
         const isMaster = this.level && name && this.masters[this.level.name] === name;
         b.classList.toggle('active', !!isMaster);
-        b.textContent = isMaster ? '★ Master view' : '☆ Set as master';
+        b.textContent = b.hasAttribute('data-clean-labels') ? (isMaster ? 'Saved plan' : 'Save as default') : (isMaster ? '★ Master view' : '☆ Set as master');
         b.title = this.level ? `${isMaster ? 'This is' : 'Make this'} the view ${this.level.name} opens with` : 'Pick a level first';
     }
 

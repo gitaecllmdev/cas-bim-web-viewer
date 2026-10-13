@@ -18,7 +18,7 @@ import { AllPlans } from './all-plans.js';
 import { parseKeywords, matchRows, keywordCounts, remember } from '../../p6-keywords.mjs'; // the P6 Converter's keyword search
 import { DemoToolbar } from '../../toolbar.js';
 import {demoStagesFromSchedule,hotelDemoSchedule,lookaheadWeeks,DEMO_DATE} from './presentation.mjs';
-import {dashboardDate,dashboardMetrics,labourSummary} from '../../project-dashboard.mjs';
+import {dashboardDate,dashboardMetrics,labourSummary,activityInsight,dashboardIcon} from '../../project-dashboard.mjs';
 
 // Base64 for the source PDF kept with a schedule (state is JSON).
 const toBase64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
@@ -440,7 +440,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
                     ${s?.source.original || this.viewingOriginal ? `<button class="pg-btn ${this.viewingOriginal ? 'active' : ''}" data-original title="${this.viewingOriginal ? 'Back to the demo schedule (dates adjusted)' : 'The schedule as imported: its own project, data date and dates (view only)'}">${this.viewingOriginal ? 'Original dates' : 'Show original'}</button>` : ''}
                     ${d?.day ? `<span class="pg-chip demo" title="Demo: dates moved ${d.shiftDays.toLocaleString()} days (whole weeks) so ${this.fmtDay(d.day)} falls today. Original: ${escapeHtml(d.originalProject)} (data date ${d.originalDataDate ? this.fmtDay(d.originalDataDate) : '–'}). Schedule ⋯ › Undo restores them.">dates adjusted</span>`
                         : d ? `<span class="pg-chip demo" title="Demo: dates moved ${d.years >= 0 ? '+' : ''}${d.years} years (${d.shiftDays.toLocaleString()} days) from ${escapeHtml(d.originalProject)} (${d.originalDataDate ? this.fmtDay(d.originalDataDate) : 'earliest start'}). Schedule ⋯ › Undo restores them.">${d.years ? `demo ${d.years > 0 ? '+' : ''}${d.years} y` : 'demo'}</span>` : ''}
-                    <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">⬆ Upload<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
+                    <label class="pg-btn" title="Upload a P6 schedule: PDF, XER, Excel (.xlsx) or CSV">${this.options.standalone?'Upload':'⬆ Upload'}<input type="file" data-upload accept=".pdf,.xer,.xlsx,.csv,.txt" ${this.importController ? 'disabled' : ''} hidden></label>
                     <label class="pg-check" title="Demo: an uploaded schedule is moved to this year and shown as this project (dates by whole weeks; locations and walls assigned to the model). Shifted holidays are not the new year's real holidays."><input type="checkbox" data-demo-move ${this.demoMove ? 'checked' : ''}>Demo</label>
                     ${s ? `<button class="pg-btn" data-links-toggle title="Links: which model level and install stage each activity stands for">${this.options.standalone?'Activity links':'🔗'}</button>` : ''}
                     ${document.body.classList.contains('dock-bottom') ? '<button class="pg-btn" data-dock title="Give the schedule most of the screen; click again to bring the model back">⤢</button>' : ''}
@@ -773,7 +773,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const state=this.dashboardState(),labour=labourSummary(),label=a=>{const action={Finished:'Finish closeout',Taped:'Complete taping',Boarded:'Finish boarding',Framed:'Finish framing'}[a.stage]||'Confirm work';return `${action} on ${a.level||'the project'}`;};
         body.innerHTML=`<section class="labour-overview" aria-label="Labour overview"><header><b>Labour this week</b><span class="demo-badge">Demo data</span><button data-labour-open>Labour & cost</button></header><div><p><b>${labour.crew}</b><span>people allocated</span><small>+4 vs last week · demo</small></p><p><b>${labour.weekHours.toLocaleString()} <small>hrs</small></b><span>of ${labour.plannedWeek.toLocaleString()} planned this week</span><small>${labour.overtime} overtime hrs included</small></p><p><b>${labour.forecastHours.toLocaleString()} <small>hrs</small></b><span>project labour forecast</span><small>+${labour.hourVariance.toLocaleString()} hrs over budget</small></p></div></section><section class="decisions-week"><header><h3>Decisions this week</h3><p>Ordered by schedule impact. Reviewed means acknowledged, not resolved.</p></header><div class="pg-main float"><div class="decision-groups">${['This week','Coming up'].map(group=>`<section><h4>${group}</h4>${state.decisions.filter(a=>a.group===group).map(a=>`<article class="decision-card ${a.reviewed?'reviewed':''}" data-severity="${a.severity}"><div class="decision-heading"><b>${escapeHtml(label(a))}</b><span class="status-word ${a.severity}">${a.reviewed?'Reviewed':a.overdue?'Overdue':a.critical?'No buffer':'Review'}</span></div><p class="decision-impact">${escapeHtml(a.reason)}${a.finish?' · due '+this.fmtDay(a.finish):''}</p><small>${escapeHtml(a.id)}${a.float>0?' · '+a.float+' days of schedule buffer':''}</small><div class="decision-actions"><button data-decision-model="${escapeHtml(a.id)}">Show on model</button><button data-decision-next="${escapeHtml(a.id)}">See in next 3 weeks</button><button data-decision-review="${escapeHtml(a.id)}" aria-pressed="${a.reviewed}">${a.reviewed?'Reviewed · undo':'Mark as reviewed'}</button></div></article>`).join('')||'<p class="management-clear">No decisions in this group.</p>'}</section>`).join('')}</div><div class="pg-side" data-details></div></div></section>`;
         body.querySelector('[data-labour-open]').onclick=()=>document.dispatchEvent(new CustomEvent('dashboard-integrations',{detail:{step:'labour'}}));
-        body.querySelectorAll('[data-decision-model]').forEach(b=>b.onclick=async()=>{const a=this.activity(b.dataset.decisionModel);if(a?.level)await this.views.setLevel(a.level);this.selectActivity(b.dataset.decisionModel);document.dispatchEvent(new CustomEvent('dashboard-focus'));});
+        body.querySelectorAll('[data-decision-model]').forEach(b=>b.onclick=async()=>{const a=this.activity(b.dataset.decisionModel);if(a?.level)await this.views.setLevel(a.level);if(this.selectedAct===b.dataset.decisionModel)this.selectedAct=null;this.selectActivity(b.dataset.decisionModel);});
         body.querySelectorAll('[data-decision-next]').forEach(b=>b.onclick=()=>{const id=b.dataset.decisionNext,a=this.activity(id);this.kw.active=[];this.kw.typed='';this.views.setLevel(null);const date=this.asOf||this.schedule.project.dataDate||DEMO_DATE;this.cursor=date;this.calMonth=this.cursor.slice(0,7);this.selectedAct=null;this.setTab('lookahead');this.selectActivity(id);});
         body.querySelectorAll('[data-decision-review]').forEach(b=>b.onclick=()=>{const id=b.dataset.decisionReview;if(this.reviewed[id])delete this.reviewed[id];else this.reviewed[id]=new Date().toISOString();this.saveReviewed();this.refresh();this.renderBody();});
         this.renderDetails(body.querySelector('[data-details]'));
@@ -1109,6 +1109,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         }
         this.refresh();
         this.renderBody();
+        if(this.options.standalone&&this.selectedAct)document.dispatchEvent(new CustomEvent('dashboard-focus'));
     }
 
     clearFocus() {
@@ -1282,7 +1283,7 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
             el.innerHTML = el.closest('.pg-main.side') ? '<div class="pg-details empty"><b>No activity picked</b><span class="muted">Click a bar or a row to see its walls in the model, its dates, progress and links.</span></div>' : '';
             return;
         }
-        const m = this.modelOf(a), c = compare(m, a.pct), v = finishVariance(a, this.cal);
+        const m = this.modelOf(a), c = compare(m, a.pct), v = finishVariance(a, this.cal), insight=activityInsight(a,m);
         const dd = this.schedule.project.dataDate;
         const plannedByDd = dd ? expectedPct(a, addDays(dd, -1), this.cal, { planned: true }) : null;
         const name = (id) => escapeHtml(this.activity(id)?.name || '');
@@ -1293,24 +1294,27 @@ class ProgressExtension extends Autodesk.Viewing.Extension {
         const own = this.schedule.map.activities?.[a.id] || {};
         const levelOptions = `<option value="__auto">Auto${own.level === undefined ? `: ${escapeHtml(a.level || 'none')}` : ''}</option>${this.levels.map(l => `<option ${own.level === l ? 'selected' : ''}>${escapeHtml(l)}</option>`).join('')}<option value="" ${own.level === '' ? 'selected' : ''}>Not in the model</option>`;
         const stageOptions = `<option value="__auto">Auto${own.stage === undefined ? `: ${escapeHtml(a.stage || 'none')}` : ''}</option>${STAGE_NAMES.slice(1).map(s => `<option ${own.stage === s ? 'selected' : ''}>${s}</option>`).join('')}<option value="" ${own.stage === '' ? 'selected' : ''}>No stage</option>`;
+        const linkFacts=`                ${ms ? '' : `<dt>Scope</dt><dd><select data-own="scope"><option value="__auto">Auto: ${a.scope === 'other' ? 'not wall work' : 'wall work'}</option><option value="wall" ${own.scope === 'wall' ? 'selected' : ''}>Wall work</option><option value="other" ${own.scope === 'other' ? 'selected' : ''}>Not wall work</option></select><span class="muted pg-how">${escapeHtml(a.scopeHow || '')}</span></dd>`}
+                <dt>Level</dt><dd><select data-own="level">${levelOptions}</select><span class="muted pg-how">${escapeHtml(a.levelHow || '')}</span></dd>
+                ${ms ? '' : `<dt>Stage</dt><dd><select data-own="stage">${stageOptions}</select><span class="muted pg-how">${escapeHtml(a.stageHow || '')}</span></dd>`}
+`;
         el.innerHTML = `<div class="pg-details">
             <div class="pg-d-head"><span class="swatch" style="background:${this.colorOf(a)}"></span><b class="pg-d-name" title="${escapeHtml(`${a.id} ${a.name}`)}">${escapeHtml(a.id)} · ${escapeHtml(a.name)}</b>
-                <button class="pg-x" data-clear-act title="Close and show every wall again">✕</button></div>
+                <button class="pg-x" data-clear-act aria-label="Close activity details" title="Close and show every wall again">${this.options.standalone?dashboardIcon('close'):'✕'}</button></div>
             <div class="pg-d-tags">${status}${a.scope === 'other' ? `<span class="tk-src" title="${escapeHtml(a.scopeHow || '')}">not wall work</span>` : ''}${a.float != null && a.status !== 'complete' ? `<span class="tk-src ${a.float <= 0 ? 'bad' : ''}">float ${a.float} d${a.float <= 0 ? ' · critical' : ''}</span>` : ''}
                 ${m ? `<span class="pg-cmp ${c.state}" title="Model: ${m.done} of ${m.total} walls ${escapeHtml(a.stage)} or later">model ${m.pct}%</span>` : ''}
                 ${a.level && a.scope !== 'other' ? '<span class="pg-d-acts"><button class="pg-btn" data-show-level title="Cut the model at this level and open its plan">Level</button><button class="pg-btn" data-select-walls title="Select these walls, then set their stage on the Stages tab">Select walls</button></span>' : ''}</div>
+            ${this.options.standalone?`<section class="activity-insight" data-state="${insight.state}" aria-label="Activity explanation"><h4>${escapeHtml(insight.title)}</h4><p>${escapeHtml(insight.summary)}</p><div><b>Suggested check</b><span>${escapeHtml(insight.action)}</span></div><small>Field record ${this.fmtDay(this.asOf||dd)} · Schedule data date ${this.fmtDay(dd)}. This comparison does not establish the cause.</small></section>`:''}
             <dl class="pg-d-facts">
                 <dt>Dates</dt><dd>${this.fmtDay(a.start)}${a.actualStart ? ' A' : ''} → ${this.fmtDay(a.finish)}${a.actualFinish ? ' A' : ''}${ms ? '' : ` · ${Math.round(a.dur)} d${a.status === 'active' ? `, ${Math.round(a.rem)} left` : ''}`}</dd>
                 <dt>Planned</dt><dd>${this.fmtDay(a.plannedStart)} → ${this.fmtDay(a.plannedFinish)} · ${v > 0 ? `<span class="warn">${v} d late</span>` : v < 0 ? `${-v} d early` : 'on time'}</dd>
                 ${ms ? '' : `<dt>Progress</dt><dd>P6 ${a.pct == null ? 'not printed' : a.pct + '%'}${plannedByDd != null ? ` <span class="muted">(plan ${plannedByDd}%)</span>` : ''} · model ${m ? `${m.pct}% <span class="muted">(${m.done}/${m.total} walls)</span>${c.state === 'behind' ? ` <span class="warn">${-c.delta} pts behind</span>` : c.state === 'ahead' ? ` <span class="muted">${c.delta} pts ahead</span>` : ''}` : '<span class="muted">not linked</span>'}</dd>`}
-                ${ms ? '' : `<dt>Scope</dt><dd><select data-own="scope"><option value="__auto">Auto: ${a.scope === 'other' ? 'not wall work' : 'wall work'}</option><option value="wall" ${own.scope === 'wall' ? 'selected' : ''}>Wall work</option><option value="other" ${own.scope === 'other' ? 'selected' : ''}>Not wall work</option></select><span class="muted pg-how">${escapeHtml(a.scopeHow || '')}</span></dd>`}
-                <dt>Level</dt><dd><select data-own="level">${levelOptions}</select><span class="muted pg-how">${escapeHtml(a.levelHow || '')}</span></dd>
-                ${ms ? '' : `<dt>Stage</dt><dd><select data-own="stage">${stageOptions}</select><span class="muted pg-how">${escapeHtml(a.stageHow || '')}</span></dd>`}
+                ${this.options.standalone?`<dt>Location</dt><dd>${escapeHtml(a.level||'Unlinked')}</dd><dt>Work stage</dt><dd>${escapeHtml(a.stage||'Unlinked')}</dd>`:linkFacts}
                 ${Object.keys(a.codes || {}).length ? `<dt>Codes</dt><dd>${Object.entries(a.codes).map(([k, val]) => `${escapeHtml(k)}: ${escapeHtml(val)}`).join(' · ')}</dd>` : ''}
                 ${this.pdfBytes && this.schedule.source.pdfRows?.[a.id] ? `<dt>Source</dt><dd>PDF page ${this.schedule.source.pdfRows[a.id][0]} <button class="pg-btn" data-in-pdf title="The page of the imported PDF, this activity's row highlighted">Show in the PDF</button></dd>` : ''}
                 <dt>Before</dt><dd>${preds.map(l => rel(l, l.from)).join(', ') || '<span class="muted">none</span>'}</dd>
                 <dt>After</dt><dd>${succs.map(l => rel(l, l.to)).join(', ') || '<span class="muted">none</span>'}</dd>
-            </dl></div>`;
+            </dl>${this.options.standalone?`<details class="activity-mapping"><summary>Link settings</summary><dl class="pg-d-facts">${linkFacts}</dl></details>`:''}</div>`;
         el.querySelectorAll('[data-goto]').forEach(x => x.onclick = (e) => { e.preventDefault(); this.selectActivity(x.dataset.goto); });
         el.querySelector('[data-clear-act]').onclick = () => this.selectActivity(a.id);
         el.querySelector('[data-in-pdf]')?.addEventListener('click', () => this.showInPdf(a));

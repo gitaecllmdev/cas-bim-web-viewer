@@ -2,7 +2,7 @@ import {initViewer,loadModel} from './viewer.js';
 import {Views} from './views.js';
 import {fetchJson,onModelReady,escapeHtml} from './helpers.js';
 import {CONFIG} from './config.js';
-import {clampSplit,INTEGRATIONS,dashboardDate,sourceFreshness,costSummary,labourSummary,labourAssignments} from './project-dashboard.mjs';
+import {clampSplit,INTEGRATIONS,dashboardDate,sourceFreshness,costSummary,labourSummary,labourAssignments,dashboardIcon} from './project-dashboard.mjs';
 const $=id=>document.getElementById(id);
 const sourceLabel=id=>({revit:'Model',schedule:'Schedule',cost:'Cost',labour:'Labour'})[id];
 const money=n=>new Intl.NumberFormat('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}).format(n);
@@ -11,14 +11,14 @@ let tracker,views,tools,summary,share=.42,resizeFrame,links={},linkKey='',integr
 try{const saved=localStorage.getItem('cas-project-dashboard:split');if(saved!==null)share=clampSplit(Number(saved));const choice=localStorage.getItem('cas-project-dashboard:mode');if(['model','both','schedule'].includes(choice))mode=choice;}catch{}
 const main=$('main'),divider=$('workspace-divider');
 function resizeWorkspace(value=share,save=false){
-    const width=main.clientWidth-64;share=clampSplit(value,width);main.style.setProperty('--model-width',`${Math.round(width*share)}px`);
+    const width=main.clientWidth-40;share=clampSplit(value,width);main.style.setProperty('--model-width',`${Math.round(width*share)}px`);
     divider.setAttribute('aria-valuenow',Math.round(share*100));divider.setAttribute('aria-valuetext',`${Math.round(share*100)}% model, ${Math.round((1-share)*100)}% schedule`);
     if(save)try{localStorage.setItem('cas-project-dashboard:split',String(share));}catch{}
     cancelAnimationFrame(resizeFrame);resizeFrame=requestAnimationFrame(()=>views?.resize());
 }
 function setWorkspaceMode(value,save=true){mode=value;main.dataset.workspaceMode=mode;document.querySelectorAll('[data-workspace-mode]').forEach(b=>b.setAttribute('aria-pressed',b.dataset.workspaceMode===mode));if(save)try{localStorage.setItem('cas-project-dashboard:mode',mode);}catch{}resizeWorkspace();}
 divider.onpointerdown=e=>{if(e.button!==0||mode!=='both')return;divider.setPointerCapture(e.pointerId);document.body.classList.add('workspace-resizing');e.preventDefault();};
-divider.onpointermove=e=>{if(divider.hasPointerCapture(e.pointerId))resizeWorkspace((e.clientX-main.getBoundingClientRect().left)/(main.clientWidth-64));};
+divider.onpointermove=e=>{if(divider.hasPointerCapture(e.pointerId))resizeWorkspace((e.clientX-main.getBoundingClientRect().left)/(main.clientWidth-40));};
 const finishResize=()=>{document.body.classList.remove('workspace-resizing');resizeWorkspace(share,true);};
 divider.onpointerup=finishResize;divider.onlostpointercapture=finishResize;divider.onpointercancel=finishResize;
 divider.ondblclick=()=>resizeWorkspace(.42,true);
@@ -41,12 +41,20 @@ function labourHtml(){
 async function focusLabour(id,target){
     const activity=tracker?.activity(id);if(!activity)return;
     closeConnect();tracker.clearFocus();await views.setLevel(activity.level);
-    tracker.setTab('gantt');tracker.selectActivity(id);setWorkspaceMode(target==='model'?'model':'both');renderDrill();
+    tracker.setTab('gantt');tracker.selectActivity(id);showActivityContext();renderDrill();
+}
+function sourceRecordsHtml(source,kind){
+    return `<h4>Sample records <small>3 examples, not model totals</small></h4><div class="integration-table" data-source-records><table><thead><tr><th>Source ID</th><th>Context</th><th>${kind==='cost'?'Forecast':'Linked value'}</th></tr></thead><tbody>${source.rows.map(row=>`<tr>${row.map(v=>`<td>${escapeHtml(v)}${String(v).startsWith('$')?'<span class="demo-badge">Demo data</span>':''}</td>`).join('')}</tr>`).join('')}</tbody></table></div>`;
+}
+function decorateControls(){
+    const groups=[['[data-ui-icon]',''],['#integrations-open,#sources-connect','connect'],['#help','help'],['#present','present'],['[data-review="fit"]','home'],['.model-review>summary','tools'],['[data-tab="management"]','both'],['[data-tab="stages"]','review'],['[data-tab="gantt"]','schedule'],['[data-tab="lookahead"]','next'],['.pg-menu>summary','more'],['[data-links-toggle]','connect'],['[data-decision-model],[data-labour-model]','model'],['[data-decision-next],[data-labour-schedule]','schedule'],['[data-decision-review]','review'],['[data-labour-open]','crew']];
+    for(const [selector,icon] of groups)document.querySelectorAll(selector).forEach(b=>{if(!b.querySelector('[data-dashboard-icon]'))b.insertAdjacentHTML('afterbegin',dashboardIcon(b.dataset.uiIcon||icon));});
+    const upload=$('panel').querySelector('[data-upload]')?.closest('label');if(upload&&!upload.querySelector('[data-dashboard-icon]'))upload.insertAdjacentHTML('afterbegin',dashboardIcon('upload'));
 }
 function renderIntegration(){
     const source=INTEGRATIONS.find(s=>s.id===integration),saved=links[integration];
     $('integration-tabs').innerHTML=INTEGRATIONS.map((s,i)=>`<button data-integration="${s.id}" aria-pressed="${s.id===integration}"><b>${i+1}. ${sourceLabel(s.id)}</b><small>${links[s.id]?.mode==='setup'?'Setup only':links[s.id]?'Sample ready':'Choose source'}</small></button>`).join('');
-    $('integration-body').innerHTML=`<div class="integration-source-head"><h3>${escapeHtml(source.name)}</h3><span>${saved?.mode==='setup'?'Setup saved; sync not enabled':saved?'Sample data ready':'Choose how to supply data'}</span></div><p>${escapeHtml(source.description)}</p><div class="integration-actions"><button id="integration-demo">Use demo data</button><button id="integration-connect">Connect</button></div><div id="connection-form" hidden><h4>Connection setup</h4><p>Save the proposed system and project reference. External sync is not enabled here.</p><label class="integration-system">System <select id="connection-system">${(integration==='cost'?['Procore','Autodesk Cost Management','Sage / ERP','Other cost system']:integration==='labour'?['Internal labour tool']:integration==='revit'?['Revit export / future bridge']:['Schedule file / P6']).map(s=>`<option>${escapeHtml(s)}</option>`).join('')}</select></label><label class="integration-system">Project reference <input id="connection-project" placeholder="Project name or reference" value="${escapeHtml(saved?.project||'')}"></label>${integration==='schedule'?'<button id="connection-file">Choose schedule file</button>':''}<div class="integration-actions"><button id="connection-save">Save setup</button><button id="connection-cancel">Cancel</button></div></div><h4>Field mapping</h4><div class="integration-mappings">${source.fields.map(([from,to])=>`<div><b>${escapeHtml(from)}</b><span>→</span><span>${escapeHtml(to)}</span></div>`).join('')}</div>${integration==='labour'?labourHtml():`<h4>Sample records <small>3 examples, not model totals</small></h4><div class="integration-table"><table><thead><tr><th>Source ID</th><th>Context</th><th>`}${integration==='cost'?financeHtml()+'<button data-connect-step="labour">View labour source</button>':''}${saved?'<button id="integration-unlink">Remove source setup</button>':''}<p class="integration-origin">${saved?'Last checked '+dashboardDate(saved.at):'No external account connection is active. Use demo data to preview the flow.'}</p>`;
+    $('integration-body').innerHTML=`<div class="integration-source-head"><h3>${escapeHtml(source.name)}</h3><span>${saved?.mode==='setup'?'Setup saved; sync not enabled':saved?'Sample data ready':'Choose how to supply data'}</span></div><p>${escapeHtml(source.description)}</p><div class="integration-actions"><button id="integration-demo">Use demo data</button><button id="integration-connect">Connect</button></div><div id="connection-form" hidden><h4>Connection setup</h4><p>Save the proposed system and project reference. External sync is not enabled here.</p><label class="integration-system">System <select id="connection-system">${(integration==='cost'?['Procore','Autodesk Cost Management','Sage / ERP','Other cost system']:integration==='labour'?['Internal labour tool']:integration==='revit'?['Revit export / future bridge']:['Schedule file / P6']).map(s=>`<option>${escapeHtml(s)}</option>`).join('')}</select></label><label class="integration-system">Project reference <input id="connection-project" placeholder="Project name or reference" value="${escapeHtml(saved?.project||'')}"></label>${integration==='schedule'?'<button id="connection-file">Choose schedule file</button>':''}<div class="integration-actions"><button id="connection-save">Save setup</button><button id="connection-cancel">Cancel</button></div></div><h4>Field mapping</h4><div class="integration-mappings">${source.fields.map(([from,to])=>`<div><b>${escapeHtml(from)}</b><span>→</span><span>${escapeHtml(to)}</span></div>`).join('')}</div>${integration==='labour'?labourHtml():sourceRecordsHtml(source,integration)}${integration==='cost'?financeHtml()+'<button data-connect-step="labour">View labour source</button>':''}${saved?'<button id="integration-unlink">Remove source setup</button>':''}<p class="integration-origin">${saved?'Last checked '+dashboardDate(saved.at):'No external account connection is active. Use demo data to preview the flow.'}</p>`;
     if(['labour','cost'].includes(integration)){
         const body=$('integration-body'),heading=[...body.querySelectorAll('h4')].find(h=>h.textContent==='Field mapping');
         const mappings=heading.nextElementSibling,details=document.createElement('details'),label=document.createElement('summary');
@@ -76,14 +84,15 @@ $('integration-refresh').onclick=()=>{const at=new Date().toISOString();for(cons
 $('demo-reset').onclick=async()=>{if(!tracker||!confirm('Start over with demo data? Current field stages, schedule and reviewed decisions will be replaced.'))return;$('demo-reset').disabled=true;try{await tracker.resetDemo();tracker.reviewed={};tracker.saveReviewed();links=Object.fromEntries(INTEGRATIONS.map(s=>[s.id,{at:new Date().toISOString(),system:s.name,mode:'demo'}]));saveLinks();tracker.render();renderIntegration();$('integration-feedback').textContent='Demo data restored.';}finally{$('demo-reset').disabled=false;}};
 async function backOverview(){closeConnect();tracker?.clearFocus();await views?.setLevel(null);tracker?.setTab('management');tracker?.refresh();setWorkspaceMode('both');renderDrill();}
 function renderDrill(context={}){const level=views?.level?.name,act=tracker?.selectedAct,tab=tracker?.tab;const show=!!(level||act||tab&&tab!=='management');$('drill-context').hidden=!show;$('drill-label').textContent=[level,act,tab&&tab!=='management'?({stages:'Progress by floor',gantt:'Schedule',calendar:'Schedule',lookahead:'Next 3 weeks'})[tab]:null].filter(Boolean).join(' · ');}
-$('back-overview').onclick=backOverview;document.addEventListener('dashboard-context',e=>renderDrill(e.detail));
-document.addEventListener('dashboard-focus',()=>setWorkspaceMode('model'));
+$('back-overview').onclick=backOverview;document.addEventListener('dashboard-context',e=>{renderDrill(e.detail);decorateControls();});
+function showActivityContext(){setWorkspaceMode('both');views?.setLayout('split');$('panel').hidden=false;$('connect-page').hidden=true;const panel=tracker?.panel,details=panel?.querySelector('.pg-details');if(details){const head=panel.querySelector('.pg-head');panel.scrollTop+=details.getBoundingClientRect().top-panel.getBoundingClientRect().top-(head?.offsetHeight||0)-12;}}
+document.addEventListener('dashboard-focus',showActivityContext);
 document.querySelectorAll('[data-headline]').forEach(b=>b.onclick=()=>{if(!tracker)return;setWorkspaceMode('both');$('connect-page').hidden=true;$('panel').hidden=false;const key=b.dataset.headline;if(key==='cost')openConnect('cost');else{tracker.setTab(key==='finish'?'gantt':key==='progress'?'stages':'management');if(key==='decisions')$('panel').querySelector('.decisions-week')?.scrollIntoView({block:'start'});}renderDrill();});
 document.querySelectorAll('[data-review]').forEach(b=>b.onclick=async()=>{if(!tools)return;const action=b.dataset.review;if(action==='shot')tools.screenshot('3d');else if(action==='top')tools.look([0,0,1]);else if(action==='iso')tools.look([1,-1,.8]);else{tracker?.clearFocus();await views.setLevel(null);views.showAll();tools.look([1,-1,.8]);views.fitShown();tracker?.refresh();tracker?.renderBody();}const detail=b.closest('details');if(detail)detail.open=false;});
 $('model-progress-colors').onclick=()=>tracker?.setColorMode('actual');$('model-status-colors').onclick=()=>tracker?.setColorMode('compare');
 $('help').onclick=()=>$('briefing').showModal();
 $('present').onclick=async()=>{try{if(document.fullscreenElement)await document.exitFullscreen();else await document.documentElement.requestFullscreen();}catch{$('save-notice').textContent='Use the browser full-screen command to present.';}};
-document.addEventListener('fullscreenchange',()=>$('present').textContent=document.fullscreenElement?'Exit presentation':'Present');
+document.addEventListener('fullscreenchange',()=>{$('present').textContent=document.fullscreenElement?'Exit presentation':'Present';decorateControls();});
 document.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelectorAll('details[open]').forEach(d=>d.open=false);});
 document.addEventListener('progress-summary',e=>{
     summary=e.detail;const s=summary,m=s.dashboard;if(!m)return;
@@ -97,7 +106,7 @@ document.addEventListener('progress-summary',e=>{
     $('model-legend').innerHTML=(s.colorMode==='compare'?[['green','On or ahead of plan'],['red','Behind plan'],['neutral','Not started']]:[['neutral','Not started'],['amber','In progress'],['green','Finished'],['red','Behind selected activity']]).map(([color,label])=>`<span><i class="${color}"></i>${label}</span>`).join('');
     renderSources();renderDrill();
 });
-renderSources();
+renderSources();decorateControls();
 async function start(){
     if(!window.Autodesk?.Viewing?.GuiViewer3D)throw Error('The Autodesk Viewer could not load. Check your internet connection to the Autodesk services, then retry.');
     const [{TOOLS_EXTENSION_ID}]=await Promise.all([import('./tools.js'),import('./demos/03-progress/extension.js')]);
