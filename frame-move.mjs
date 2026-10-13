@@ -16,3 +16,9 @@ export function frameMove({ share, onScreen }, { min = 0.05, max = Infinity, tar
 // same. A filtered set (a floor, a scope): kept from 1/3 of the view up to 1.6 times it, else fitted with a little room.
 export const PICK = { min: 0.03, minPx: 16, target: 0.1 };
 export const SET = { min: 0.33, max: 1.6, target: 0.85 };
+
+// Only follow one unambiguous wall floor; mixed-floor selections keep their context.
+export function selectionFloor(ids, levelById) {
+    const levels=new Set(ids.map(id=>levelById.get(id)).filter(Boolean));
+    return levels.size===1?[...levels][0]:null;
+}

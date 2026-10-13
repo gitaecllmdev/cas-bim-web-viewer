@@ -9,7 +9,7 @@
 // Document / BubbleNode (search for 2D viewables; levelName comes from the Revit manifest):
 //   https://aps.autodesk.com/en/docs/viewer/v7/reference/Viewing/Document/
 import { PlanPop } from './plan-pop.mjs';
-import { frameMove, PICK, SET } from './frame-move.mjs';
+import { frameMove, PICK, SET, selectionFloor } from './frame-move.mjs';
 import { toThemingColor, getLevels, loadPropertyMap, findWalls, findCategory, findIgnored, setBuildingCenter, getBulkProperties, propValue, escapeHtml, fetchJson, loadState, saveState, markCopiesOf, unmarkCopiesOf } from './helpers.js';
 
 const LAYOUTS = ['3d', 'split', '2d'];
@@ -35,7 +35,7 @@ export class Views {
         this.sheets = []; // { node, folder, levelName }
         this.masters = {}; // level name -> master 2D view name (samples/level-views.json, then the user's ★ choices)
         this.extensions2d = new Map(); // extension id -> options, (re)loaded on the 2D viewer after each sheet
-        this.listeners = { level: new Set(), sheet: new Set(), ready: new Set(), viewer2d: new Set() };
+        this.listeners = { level: new Set(), sheet: new Set(), ready: new Set(), viewer2d: new Set(), selectioncontext: new Set() };
         this.el = {
             views: document.getElementById('views'),
             levels: document.getElementById('levels'),
@@ -45,8 +45,8 @@ export class Views {
             container2d: document.getElementById('viewer2d'),
             layoutButtons: [...document.querySelectorAll('[data-layout]')],
         };
-        this.el.levels.onchange = () => this.setLevel(this.el.levels.value || null);
-        this.el.sheets.onchange = () => this.openSheet(this.sheets[Number(this.el.sheets.value)]?.node);
+        this.el.levels.onchange = () => { if(this.selectionFollow)this.cancelSelectionFollow();this.setLevel(this.el.levels.value || null); };
+        this.el.sheets.onchange = () => { if(this.selectionFollow)this.cancelSelectionFollow();this.openSheet(this.sheets[Number(this.el.sheets.value)]?.node); };
         this.el.layoutButtons.forEach(b => b.onclick = () => this.setLayout(b.dataset.layout));
         this.el.master.onclick = () => this.setMaster();
         this.syncSelection(viewer3d);
@@ -174,12 +174,13 @@ export class Views {
             if (this.planHighlight && (same(current, ids) || (current.length && !same(current, this.planHighlight)))) return;
             this.planHighlight = [...ids];
             this.quietUntil = performance.now() + 300; // don't mirror this selection to the 3D view
-            viewer.select(ids, model);
+            const syncing=this.syncing;this.syncing=true;
+            try { viewer.select(ids, model); } finally { this.syncing=syncing; }
         } else if (this.planHighlight) {
             const ours = same(current, this.planHighlight);
             this.planHighlight = null;
             this.quietUntil = performance.now() + 300;
-            if (ours) viewer.clearSelection();
+            if (ours) { const syncing=this.syncing;this.syncing=true;try { viewer.clearSelection(); } finally { this.syncing=syncing; } }
         }
     }
 
@@ -362,8 +363,11 @@ export class Views {
     async applyCeilings() {
         const model = this.viewer3d.model;
         if (!model) return;
-        if (this.ceilingsOf !== model) { this.ceilingsOf = model; this.ceilings = await findCategory(model, 'Revit Ceilings').catch(() => []); }
-        if (!this.ceilings.length || this.viewer3d.model !== model) return;
+        if (this.ceilingsOf !== model) { this.ceilingsOf = model; this.ceilingsTask = findCategory(model, 'Revit Ceilings').catch(() => []); }
+        const ceilings=await this.ceilingsTask;
+        if (this.viewer3d.model !== model || this.ceilingsOf !== model) return;
+        this.ceilings=ceilings;
+        if (!ceilings.length) return;
         if (this.level) this.viewer3d.hide(this.ceilings, model); else this.viewer3d.show(this.ceilings, model);
     }
 
@@ -376,6 +380,10 @@ export class Views {
         viewer.addEventListener(Autodesk.Viewing.SELECTION_CHANGED_EVENT, () => {
             // Swapping the plan's sheet clears its selection: that isn't the user's, so it isn't mirrored to 3D.
             if (viewer === this.viewer2d && this.swappingSheet) return;
+            if(this.selectionFollow){
+                if(this.syncing||this.applyingSheet)return;
+                this.followSelection(viewer.getSelection(),viewer);return;
+            }
             if (this.syncing || performance.now() < (this.quietUntil || 0)) return; // the plan's own highlight: not mirrored
             const other = viewer === this.viewer3d ? this.viewer2d : this.viewer3d;
             const ids = viewer.getSelection();
@@ -390,6 +398,62 @@ export class Views {
             }
             this.zoomToPick(ids);
         });
+    }
+
+    // Opt-in dashboard behavior: floor/plan context follows selection independently of camera zoom.
+    // Existing SDK select/getSelection, SELECTION_CHANGED_EVENT and isLoadDone APIs (references above).
+    setSelectionFollow(on) { this.selectionFollow=!!on;this.cancelSelectionFollow(); }
+
+    cancelSelectionFollow() {
+        clearTimeout(this.selectionFollowTimer);
+        this.selectionFollowVersion=(this.selectionFollowVersion||0)+1;
+        this.pickToken=(this.pickToken||0)+1;
+    }
+
+    copySelection(viewer,ids) {
+        if(!viewer?.model)return;
+        const current=viewer.getSelection()||[];
+        if(ids.length===current.length&&ids.every(id=>current.includes(id)))return;
+        const syncing=this.syncing;this.syncing=true;
+        try { if(ids.length)viewer.select(ids,viewer.model);else viewer.clearSelection(); }
+        finally { this.syncing=syncing; }
+    }
+
+    followSelection(ids,source) {
+        ids=[...ids]; // SDK selection arrays can be emptied by a camera fit or section change.
+        this.cancelSelectionFollow();
+        const token=this.selectionFollowVersion,level=selectionFloor(ids,this.wallLevel);
+        this.copySelection(this.viewer3d,ids);
+        if(!level){
+            this.copySelection(source===this.viewer3d?this.viewer2d:this.viewer3d,ids);
+            this.emit('selectioncontext',{ids:[...ids],level:null});return;
+        }
+        const follow=async()=>{
+            if(token!==this.selectionFollowVersion)return;
+            this.setLayout('split',{open:false});
+            if(this.apart)await this.setLevelsApart(null);
+            if(token!==this.selectionFollowVersion)return;
+            const syncing=this.syncing;this.syncing=true;
+            try { this.showAll(); } finally { this.syncing=syncing; }
+            if(this.level?.name!==level)await this.setLevel(level,{plan:false});
+            else await this.applySection();
+            if(token!==this.selectionFollowVersion||this.level?.name!==level)return;
+            this.copySelection(this.viewer3d,ids);
+            const plan=this.planFor(level);
+            if(plan&&(plan!==this.model2d?.getDocumentNode()||this.sheetWanted&&this.sheetWanted!==plan))await this.openSheet(plan);
+            if(token!==this.selectionFollowVersion)return;
+            this.copySelection(this.viewer2d,ids);
+            this.emit('selectioncontext',{ids:[...ids],level,plan:plan?.name()||''});
+            const framing=this.syncing;this.syncing=true;
+            try { this.showSet(this.wallsByLevel.get(level)); } finally { this.syncing=framing; }
+            this.copySelection(this.viewer3d,ids);
+            this.copySelection(this.viewer2d,ids);
+        };
+        this.selectionFollowTimer=setTimeout(()=>{
+            this.selectionFollowQueue=(this.selectionFollowQueue||Promise.resolve()).then(follow,follow).catch(err=>{
+                if(token===this.selectionFollowVersion)this.setSheetStatus(`Selection context needs a retry (${err.message}).`,'error');
+            });
+        },60);
     }
 
     // Show objects (one picked wall, or a filtered set) without losing the view the user has (frame-move.mjs): measure how
@@ -563,6 +627,7 @@ export class Views {
     // plan: false keeps the 2D sheet that is open (a demo following the plan the user opened); fit: frame the 3D view on
     // the level's walls ('now', or animated: true), else only a model with far-away extents is framed.
     async setLevel(name, { plan = true, fit = false } = {}) {
+        const version=this.selectionFollow?(this.levelVersion=(this.levelVersion||0)+1):null;
         const level = this.levels.find(l => l.name === name) || null;
         this.level = level;
         const params = new URLSearchParams(location.search); // keep the level in the link, so it can be sent
@@ -570,7 +635,9 @@ export class Views {
         history.replaceState(null, '', `?${params}${location.hash}`);
         this.el.levels.value = level?.name || '';
         await this.applySection();
+        if(version!==null&&version!==this.levelVersion)return;
         await this.applyCeilings();
+        if(version!==null&&version!==this.levelVersion)return;
         // A model with far-away extents (see setModel), or asked for: frame the level's walls (or the building's).
         if ((fit || this.farExtents) && this.viewer3d.model && !this.apart) {
             const walls = level ? this.wallsByLevel.get(level.name) : [...this.wallsByLevel.values()].flat();
@@ -581,6 +648,7 @@ export class Views {
             if (plan && plan !== this.viewer2d?.model?.getDocumentNode()) await this.openSheet(plan);
             else this.frame2d();
         }
+        if(version!==null&&version!==this.levelVersion)return;
         this.updateMasterButton();
         this.emit('level', level);
     }
@@ -591,14 +659,17 @@ export class Views {
     async applySection() {
         const level = this.level, model = this.viewer3d.model;
         const section = this.viewer3d.getExtension('Autodesk.Section') || await this.viewer3d.loadExtension('Autodesk.Section');
-        if (!level || !model) { section.deactivate(false); return; }
+        if(this.selectionFollow&&level!==this.level)return;
+        if (!level || !model) { const syncing=this.syncing;if(this.selectionFollow)this.syncing=true;try { section.deactivate(false); } finally { this.syncing=syncing; }return; }
         const ext = this.levelExtent(level.name), b = this.building;
         // Before the geometry is in (nothing to measure yet): around the building, as wide as its framing distance.
         const c = ext?.center || b?.center, r = ext ? ext.radius * 1.04 + 1 : b ? b.radius * 1.5 : 0;
         const world = model.getBoundingBox();
         const min = c ? new THREE.Vector3(c.x - r, c.y - r, 0) : world.min, max = c ? new THREE.Vector3(c.x + r, c.y + r, 0) : world.max;
         const top = Math.max(level.bottom + 4, level.top - 1.4);
-        section.setSectionBox(new THREE.Box3(new THREE.Vector3(min.x, min.y, level.bottom), new THREE.Vector3(max.x, max.y, top)));
+        const syncing=this.syncing;if(this.selectionFollow)this.syncing=true;
+        try { section.setSectionBox(new THREE.Box3(new THREE.Vector3(min.x, min.y, level.bottom), new THREE.Vector3(max.x, max.y, top))); }
+        finally { this.syncing=syncing; }
     }
 
     // A level's walls: the middle and the radius of the sphere around them, measured once the geometry is in. The trial

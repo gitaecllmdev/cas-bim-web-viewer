@@ -1,5 +1,14 @@
 // Display preferences and illustrative cost data. Never changes model/schedule quantities.
 export const DEMO_COSTS=Object.freeze({budget:3600000,committed:2840000,spent:1420000,forecast:3720000});
+export const DEMO_BIM=Object.freeze({packages:50,shopIssued:46,prefabReady:39,materialDelivered:34,revision:'R07',phase:'Interior fit-out'});
+export function demoBimSnapshot(now=new Date()){
+    const date=new Date(now);if(!Number.isFinite(date.getTime()))throw Error('A valid date is needed for the demo BIM snapshot.');
+    return{...DEMO_BIM,updatedAt:new Date(date.getTime()-45*60000).toISOString(),shopPct:Math.round(DEMO_BIM.shopIssued/DEMO_BIM.packages*100),prefabPct:Math.round(DEMO_BIM.prefabReady/DEMO_BIM.packages*100),deliveryPct:Math.round(DEMO_BIM.materialDelivered/DEMO_BIM.packages*100)};
+}
+export function dashboardTimestamp(value){
+    const date=new Date(value);if(!Number.isFinite(date.getTime()))return 'Not available';
+    return new Intl.DateTimeFormat('en-US',{month:'short',day:'numeric',year:'numeric',hour:'numeric',minute:'2-digit',timeZone:'America/Los_Angeles'}).format(date);
+}
 export function costSummary(values=DEMO_COSTS){
     const valid=Object.fromEntries(['budget','committed','spent','forecast'].map(k=>[k,Number(values[k])]));
     if(Object.values(valid).some(v=>!Number.isFinite(v)||v<0))throw Error('Cost values must be non-negative numbers.');
@@ -76,7 +85,7 @@ export function sourceFreshness(at,now=new Date().toISOString()){
     return days>7?{state:'stale',label:`Stale · ${days} days old`}:{state:'current',label:'Current'};
 }
 export function dashboardIcon(name){
-    const paths={model:'<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8"/>',both:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',schedule:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h3m-3 4h7m-3 4h7"/>',home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-7h4v7"/>',connect:'<path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(1 0) scale(.9)"/>',help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-1 .7-1.5 1-1.5 2M12 16h.01"/>',present:'<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',tools:'<path d="M5 4v16M12 4v16M19 4v16M2 8h6m1 8h6m1-7h6"/>',upload:'<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',review:'<path d="m4 12 5 5L20 6"/>',next:'<path d="M4 12h16m-6-6 6 6-6 6"/>',crew:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m3 9v-2a5 5 0 0 0-3-4"/>'};
+    const paths={history:'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18m-14 4h3m4 0h3"/>',drawings:'<path d="M4 3h12l4 4v14H4zM16 3v5h4M7 11h10M7 15h4m-4 3h10"/>',model:'<path d="m12 3 9 5v8l-9 5-9-5V8zM3 8l9 5 9-5M12 13v8"/>',both:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M12 4v16"/>',schedule:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8h3m-3 4h7m-3 4h7"/>',home:'<path d="m3 10 9-7 9 7M5 9v11h14V9M10 20v-7h4v7"/>',connect:'<path d="m10 14 4-4M8 16l-2 2a4 4 0 0 1-6-6l5-5a4 4 0 0 1 6 0M16 8l2-2a4 4 0 0 1 6 6l-5 5a4 4 0 0 1-6 0" transform="translate(1 0) scale(.9)"/>',help:'<circle cx="12" cy="12" r="9"/><path d="M9.5 9a2.5 2.5 0 1 1 4 2c-1 .7-1.5 1-1.5 2M12 16h.01"/>',present:'<path d="M9 3H3v6m12-6h6v6M3 15v6h6m12-6v6h-6"/>',tools:'<path d="M5 4v16M12 4v16M19 4v16M2 8h6m1 8h6m1-7h6"/>',upload:'<path d="M12 16V3m-5 5 5-5 5 5M4 16v5h16v-5"/>',more:'<circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/>',close:'<path d="m6 6 12 12M6 18 18 6"/>',review:'<path d="m4 12 5 5L20 6"/>',next:'<path d="M4 12h16m-6-6 6 6-6 6"/>',crew:'<circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2M16 5a3 3 0 0 1 0 6m3 9v-2a5 5 0 0 0-3-4"/>'};
     return paths[name]?`<svg class="dashboard-icon" data-dashboard-icon aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">${paths[name]}</svg>`:'';
 }
 export function activityInsight(activity,model){
