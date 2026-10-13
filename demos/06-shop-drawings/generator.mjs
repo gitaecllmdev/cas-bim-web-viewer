@@ -725,6 +725,9 @@ export function panelLayout(panel) {
     layout.notes.push(...builtUp);
     Object.assign(layout, placeClips(layout, panel.clips));
     if (layout.clipList.length) layout.notes.push(`Clips: ${layout.clipList.map(c => `${c.mark} ${c.type} (${c.qty})`).join(', ')}; on each stud's web.`);
+    // Each opening's name as the notes give it (W1, D1, ...): drawn on the sheet, so a note finds its opening.
+    const keys = openingKeys(panel);
+    layout.openings = layout.openings.map(o => { const i = keys.indexOf(o.key); return i >= 0 ? { ...o, name: openingName(panel.openings, i) } : o; });
     return panel.sideB ? flipLayout(layout) : layout;
 }
 // One note per opening with framing beyond the plain one: its rough opening (when offset), its jamb studs, a header or

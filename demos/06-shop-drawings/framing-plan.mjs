@@ -282,7 +282,8 @@ export function resolveFramingPlan(snapshot, detailing, catalog = null, engineer
     // quantities or source geometry are added/changed by these annotations.
     for (const so of plan.source.openings.filter(s => smallKeys.has(s.sourceKey))) {
         const box = { ...so.actual, top: so.actual.top ?? H };
-        layout.openings.push({ ...box, key: so.sourceKey, kind: so.kind, clear: { ...box }, unframed: true });
+        const at = panel.openings.findIndex(o => o.key === so.sourceKey);
+        layout.openings.push({ ...box, key: so.sourceKey, kind: so.kind, clear: { ...box }, unframed: true, ...(at >= 0 ? { name: G.openingName(panel.openings, at) } : {}) });
     }
     return done(layout);
 }

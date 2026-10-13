@@ -13,7 +13,7 @@ import { labelPages } from './labels.mjs';
 import { qrEncode, qrRects } from '../common/qr.mjs';
 import { isoView } from './iso.mjs';
 import { prefabState, PREFAB_COLORS } from './prefab.mjs';
-import { openingCallout, allowanceArrows } from './opening-callouts.mjs';
+import { openingAnnotations, openingCallout } from './opening-callouts.mjs';
 
 // Sheet sizes (landscape, inches). 'auto' takes the smallest one that draws the panel at 1/4" = 1'-0" or larger, so
 // long exterior walls stay readable; past 36 x 48 the sheet is 36" tall and as wide as the panel needs (a roll plot).
@@ -325,7 +325,8 @@ export function sheetOps(layout, info) {
         ly = Math.max(ly, qrTop + qrSize + 0.32);
     }
     // Only the exceptions from the scan (a gap across the wall, lifts, double rows): the rest is on the panel page.
-    for (const note of layout.notes) {
+    const smallNotes = openings.filter(o => o.unframed && o.name).map(o => `${o.name}: ${openingCallout(o).lines.join('; ')}.`);
+    for (const note of [...layout.notes, ...smallNotes]) {
         for (const ln of wrap(note.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
     }
     // The revisions (info.revisions: newest last), under a heading; the changes not issued yet said so.
@@ -349,6 +350,7 @@ export function sheetOps(layout, info) {
         ly += 0.34;
         out.push(rect(cx - 0.04, ly - 0.16, tableW + 0.08, 0.23, { fill: '#b00020', stroke: 'none', width: 0 }));
         out.push(text(cx + 0.05, ly, `FRAMING CHECK FAILED (${issues.length}) - DO NOT RELEASE`, { size: 0.1, weight: 'bold', fill: '#ffffff' }));
+        ly += 0.08; // clear the banner before the first note's ascenders
         for (const issue of issues.slice(0, 8)) {
             for (const ln of wrap(issue.message.toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#b00020' })); }
         }
@@ -361,6 +363,7 @@ export function sheetOps(layout, info) {
         ly += 0.34;
         out.push(rect(cx - 0.04, ly - 0.16, tableW + 0.08, 0.23, { fill: '#c25e00', stroke: 'none', width: 0 }));
         out.push(text(cx + 0.05, ly, `PRELIMINARY - ${open.length} CHOICE${open.length === 1 ? '' : 'S'} OPEN - NOT FOR FABRICATION`, { size: 0.1, weight: 'bold', fill: '#ffffff' }));
+        ly += 0.08;
         for (const msg of open.slice(0, 6)) for (const ln of wrap(String(msg).toUpperCase(), 0.068, tableW)) { ly += 0.12; out.push(text(cx, ly, ln, { size: 0.068, fill: '#8a4100' })); }
         if (open.length > 6) { ly += 0.12; out.push(text(cx, ly, `+ ${open.length - 6} MORE`, { size: 0.068, weight: 'bold', fill: '#8a4100' })); }
     }
@@ -463,39 +466,7 @@ export function sheetOps(layout, info) {
             out.push(rect(X(o.clear.left), Y(o.clear.top), (o.clear.right - o.clear.left) * s, (o.clear.top - o.clear.bottom) * s,
                 { stroke: COLORS.openingDim, width: 0.003 }));
         }
-        // Original size, with the actual framed R.O. directly below it.
-        {
-            const lines = openingCallout(o).lines;
-            // Small openings retain an explicit original/R.O. label even when the
-            // panel scale cannot fit it inside; the external callout has a leader.
-            const size = Math.min(0.07, ((o.right - o.left) * s * 0.9) / (Math.max(...lines.map(l => l.length)) * 0.62));
-            if (size >= 0.04) {
-                const cx = X((o.left + o.right) / 2), cy = Y(o.bottom + (o.top - o.bottom) * 0.3);
-                // The model's name for it (family : type), smaller, in its trade's color, when it fits across.
-                const nm = look?.name || '', nSize = nm ? Math.min(size * 0.85, ((o.right - o.left) * s * 0.9) / (nm.length * 0.58)) : 0, showName = nSize >= 0.035;
-                const bw = Math.max(...lines.map(l => textWidth(l, size, true)), showName ? textWidth(nm, nSize, false) : 0) + 0.04, bh = lines.length * size * 1.25 + 0.02 + (showName ? nSize * 1.3 : 0);
-                out.push(rect(cx - bw / 2, cy - size - 0.01, bw, bh, { fill: '#ffffff', stroke: 'none', width: 0 }));
-                lines.forEach((l, k) => out.push(text(cx, cy + k * size * 1.25, l, { size, anchor: 'middle', weight: k ? 'normal' : 'bold', fill: COLORS.openingDim })));
-                if (showName) out.push(text(cx, cy + (lines.length - 1) * size * 1.25 + nSize * 1.35, nm, { size: nSize, anchor: 'middle', fill: openingInk(look.color) }));
-                ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - size - 0.01, y1: cy - size - 0.01 + bh });
-            } else {
-                const cx = X((o.left + o.right) / 2), cy = Y(o.bottom) + 0.15;
-                const bw = Math.max(...lines.map(l => textWidth(l, 0.045, true))) + 0.04;
-                out.push(rect(cx - bw / 2, cy - 0.05, bw, 0.15, { fill: '#ffffff', stroke: 'none', width: 0 }));
-                out.push(line(cx, Y(o.bottom), cx, cy - 0.06, { stroke: COLORS.openingDim, width: 0.005 }));
-                lines.forEach((l, k) => out.push(text(cx, cy + k * 0.055, l, { size: 0.045, anchor: 'middle', fill: COLORS.openingDim })));
-                ink.push({ x0: cx - bw / 2, x1: cx + bw / 2, y0: cy - 0.05, y1: cy + 0.1 });
-            }
-        }
-        out.push(...allowanceArrows(o, { X, Y, scale: s, color: COLORS.openingDim }));
-        // An MEP opening or a steel penetration says what it is (doors and windows read from their framing).
-        // (The model's trade for it, when it says: PLUMBING, ELECTRICAL, ...)
-        const kind = openingKind(o), kt = look?.kindText || OPENING_KINDS[kind];
-        if ((kind === 'mep' || kind === 'steel') && (o.right - o.left) * s > textWidth(kt, 0.06, true) + 0.08) { // when the name fits across it
-            out.push(rect(X((o.left + o.right) / 2) - 0.03 - textWidth(kt, 0.06, true) / 2, Y((o.bottom + o.top) / 2) - 0.07, textWidth(kt, 0.06, true) + 0.06, 0.1, { fill: '#ffffff', stroke: 'none', width: 0 }));
-            out.push(text(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, { size: 0.06, anchor: 'middle', weight: 'bold', fill: look?.kindText ? openingInk(look.color) : COLORS.openingDim }));
-            ink.push(textBox(X((o.left + o.right) / 2), Y((o.bottom + o.top) / 2), kt, 0.06, 'middle'));
-        }
+        // Its name, sizes and allowances: after the members and their tags, clear of them (below).
     }
     const topGap = members.find(m => m.topGapIn)?.topGapIn;
     if (topGap) out.push(text(X(L / 2), Y(HT) - 0.16, `TOP DEFLECTION GAP ${inchesText(topGap)} - NO TOP CUTBACK`, { size: 0.07, anchor: 'middle', fill: COLORS.openingDim }));
@@ -542,24 +513,37 @@ export function sheetOps(layout, info) {
     const minGap = verticals.slice(1).reduce((g, m, i) => Math.min(g, (m.x - verticals[i].x) * s), Infinity);
     const level = minGap >= 0.22;
     const overlapsY = (a, b) => a.y < b.y + b.h && b.y < a.y + a.h;
+    const meets = (b, list) => list.some(t => b.x0 < t.x1 && t.x0 < b.x1 && b.y0 < t.y1 && t.y0 < b.y1);
+    const openBoxes = openings.map(o => ({ x0: X(o.left) + 0.01, x1: X(o.right) - 0.01, y0: Y(o.top) + 0.01, y1: Y(o.bottom) - 0.01 }));
     for (const m of verticals) {
-        const my = Y(m.y + m.h / 2), fill = hi(m) ? COLORS.hiStroke : COLORS.text;
+        const fill = hi(m) ? COLORS.hiStroke : COLORS.text, tag = tagOf(m);
         const gap = (side) => {
             const others = verticals.filter(o => o !== m && overlapsY(o, m) && (side < 0 ? o.x + o.w <= m.x + 0.01 : o.x >= m.x + m.w - 0.01));
             const near = side < 0 ? Math.max(-Infinity, ...others.map(o => o.x + o.w)) : Math.min(Infinity, ...others.map(o => o.x));
             return Number.isFinite(near) ? Math.abs(side < 0 ? m.x - near : near - (m.x + m.w)) * s : Infinity;
         };
-        const right = gap(-1) < 0.08 && gap(1) > gap(-1);
-        if (level) {
-            const tx = right ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025;
-            out.push(text(tx, my + 0.025, tagOf(m), { size: 0.075, anchor: right ? 'start' : 'end', weight: 'bold', fill }));
-            ink.push(textBox(tx, my + 0.025, tagOf(m), 0.075, right ? 'start' : 'end'));
-        } else {
-            // Rotated a quarter turn, the letters stand to the left of the baseline.
-            const tx = right ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015, half = textWidth(tagOf(m), 0.075, true) / 2 + 0.02;
-            out.push(text(tx, my, tagOf(m), { size: 0.075, anchor: 'middle', rotate: -90, weight: 'bold', fill }));
-            ink.push({ x0: tx - 0.075, x1: tx + 0.02, y0: my - half, y1: my + half });
+        const pref = gap(-1) < 0.08 && gap(1) > gap(-1) ? 1 : -1, half = textWidth(tag, 0.075, true) / 2 + 0.02;
+        const need = level ? textWidth(tag, 0.075, true) + 0.06 : 0.1;
+        // Level, or rotated a quarter turn (the letters stand to the left of the baseline).
+        const spot = (side, y) => {
+            if (level) { const tx = side > 0 ? X(m.x + m.w) + 0.025 : X(m.x) - 0.025, anchor = side > 0 ? 'start' : 'end'; return { tx, ty: y + 0.025, anchor, box: textBox(tx, y + 0.025, tag, 0.075, anchor) }; }
+            const tx = side > 0 ? X(m.x + m.w) + 0.07 : X(m.x) - 0.015;
+            return { tx, ty: y, anchor: 'middle', box: { x0: tx - 0.075, x1: tx + 0.02, y0: y - half, y1: y + half } };
+        };
+        // At mid-height on the side clear of a neighbor; never over an opening (a jamb's goes to its other side, else up or
+        // down its length), nor over another tag.
+        let at = null;
+        for (const f of [0.5, 0.36, 0.64, 0.22, 0.78, 0.1, 0.9]) {
+            for (const side of [pref, -pref]) {
+                if (side !== pref && gap(side) < need) continue;
+                const c = spot(side, Y(m.y + m.h * f));
+                if (!meets(c.box, openBoxes) && !meets(c.box, ink)) { at = c; break; }
+            }
+            if (at) break;
         }
+        at ||= spot(pref, Y(m.y + m.h / 2));
+        out.push(text(at.tx, at.ty, tag, { size: 0.075, anchor: at.anchor, weight: 'bold', fill, ...(level ? {} : { rotate: -90 }) }));
+        ink.push(at.box);
     }
     // Horizontals: centered on the member (hTagY: outside the panel for its tracks, inside the opening for heads and sills).
     for (const m of members.filter(m => m.orient === 'h')) {
@@ -607,7 +591,7 @@ export function sheetOps(layout, info) {
             lastY = y;
             if (e.fromX != null) { // across the panel
                 out.push(line(X(e.fromX), y, edge, y, { stroke: COLORS.dim, width: 0.004, dash: '0.03 0.02' }));
-                ink.push({ x0: Math.min(X(e.fromX), edge), x1: Math.max(X(e.fromX), edge), y0: y - 0.012, y1: y + 0.012 });
+                ink.push({ x0: Math.min(X(e.fromX), edge), x1: Math.max(X(e.fromX), edge), y0: y - 0.012, y1: y + 0.012, line: true }); // a thin line: an arrow may cross it, text not
             }
             out.push(line(edge + dir * 0.04, y, edge + dir * reach, y, { stroke: COLORS.dim, width: 0.005 }));
             out.push(text(edge + dir * reach, below ? y + 0.1 : y - 0.03, fmtFtIn(e.y), { size: 0.08, anchor: side === 'left' ? 'start' : 'end', fill: COLORS.dim }));
@@ -616,6 +600,21 @@ export function sheetOps(layout, info) {
     ordColumn('left');
     ordColumn('right');
 
+    // Each opening's name, sizes and allowances (opening-callouts.mjs), clear of the tags, the dimension lines and each
+    // other: inside it when they fit (across, or along a tall narrow one), else its name with a leader; its note under
+    // the cut list always has the sizes and allowances. An MEP opening or a steel penetration says what it is (the
+    // model's trade when it says: PLUMBING, ELECTRICAL, ...); a model's opening, its family : type in its trade's color.
+    {
+        const solid = members.map(m => { const ys = m.pts ? m.pts.map(q => q[1]) : [m.y, m.y + m.h];
+            return { x0: X(m.x) - 0.01, x1: X(m.x + m.w) + 0.01, y0: Y(Math.max(...ys)) - 0.01, y1: Y(Math.min(...ys)) + 0.01 }; });
+        for (const o of openings) {
+            const look = info.openingLooks?.[o.key], kind = openingKind(o), ink2 = look ? openingInk(look.color) : COLORS.openingDim;
+            const r = openingAnnotations(o, { X, Y, scale: s, name: o.name || '', kindText: kind === 'mep' || kind === 'steel' ? look?.kindText || (kind === 'mep' ? 'MEP' : 'STEEL') : '',
+                modelName: look?.name || '', busy: [...taken, ...ink], solid, color: COLORS.openingDim, nameColor: ink2, tagColor: ink2 });
+            out.push(...r.ops);
+            ink.push(...r.boxes);
+        }
+    }
     // Panel mark: where it covers nothing. Inside the panel, nearest the upper middle, clear of every member, tag, note
     // and dimension line, and of the openings (a smaller size before giving up); then just outside the panel, under it
     // or over it; then inside over an opening's dashed X; failing all that, the upper middle as before.
