@@ -432,8 +432,8 @@
       "number": 24,
       "title": "Define model, panel and member identity with baseline schema",
       "due": "2026-10-19",
-      "notes": "Separate model lineage, current document session and file/save location. Persistent CAS member GUIDs are distinct from calculation memberKey, ElementId and display Mark. Keep current exchange identities valid until an explicit versioned migration is reviewed.",
-      "acceptance": "Define versioned schema and migrations; test copied members, copied files, Save As local copies versus intentional forks, detach and cloud identity. Preserve source wall UniqueId/panel identity without guessing by mark or nearest geometry. Specify baseline fields, precision and semantic plan/source hashes; ambiguous identity stops Apply.",
+      "notes": "Separate model lineage, current document session and file/save location. Persistent CAS member GUIDs are distinct from calculation memberKey, ElementId and display Mark. Keep current exchange identities valid until an explicit versioned migration is reviewed. DocumentVersion is revision evidence, not permanent model identity or a complete freshness gate. Position-derived SlotId values are matching hints, not persistent member GUIDs.",
+      "acceptance": "Define versioned schema and migrations; test copied members, copied files, Save As local copies versus intentional forks, detach and cloud identity. Preserve source wall UniqueId/panel identity without guessing by mark or nearest geometry. Specify baseline fields, precision and semantic plan/source hashes; ambiguous identity stops Apply. Test moved openings and changed stud spacing without matching by bay ordinal or rounded station alone; ambiguous remapping needs explicit review.",
       "dependsOn": [
         23
       ],
@@ -470,7 +470,7 @@
       "title": "Design and prove panel ownership and first-creation claims",
       "due": "2026-10-23",
       "notes": "Prefer panel-scoped baseline/receipt storage over a routinely edited global ProjectInformation record. A DataStorage record alone cannot prevent two users creating the first record at once.",
-      "acceptance": "Choose and document an enforceable panel-claim mechanism, including first creation. Check returned checkout results and source freshness; cached status is advisory. Enumerate actual writes/dependencies and fail an incomplete checkout atomically. Disconnected central stays workshared. Avoid unrelated borrowing/relinquishment; prove two-session claim contention before writer integration.",
+      "acceptance": "Choose and document an enforceable panel-claim mechanism, including first creation. Check returned checkout results and source freshness; cached status is advisory. Enumerate actual writes/dependencies and fail an incomplete checkout atomically. Disconnected central stays workshared. Avoid unrelated borrowing/relinquishment; prove two-session claim contention before writer integration. Block grouped target members with a clear reason before writing; never ungroup automatically. Measure the actual borrow set, including indirect family/level/host dependencies, and prove that supported independent placement does not unexpectedly borrow source walls.",
       "dependsOn": [
         24
       ],
@@ -488,7 +488,7 @@
       "title": "Qualify family bindings and independent physical checks",
       "due": "2026-10-26",
       "notes": "Reuse the calibrated facing/cut audit. Bind by actual loaded family/type behavior, role, insertion datum and physical section; a rotation parameter or FacingOrientation alone is insufficient.",
-      "acceptance": "Qualify supported C/T categories and recipes with independent solids/axes. Verify both ends disjoined, exact physical cuts and established web top-gap datum (gap replaces top cutback; no added web thickness). Use unrounded measurements with justified tolerances, preserving frozen fabrication outputs. Family reload/retype or axis/config changes invalidate affected caches. Reject unknown bindings.",
+      "acceptance": "Qualify supported C/T categories and recipes with independent solids/axes. Verify both ends disjoined, exact physical cuts and established web top-gap datum (gap replaces top cutback; no added web thickness). Use unrounded measurements with justified tolerances, preserving frozen fabrication outputs. Family reload/retype or axis/config changes invalidate affected caches. Reject unknown bindings. Include inactive family types, nested GeometryInstances and modified instances returning top-level solids. Separate physical measurement from reference-based annotation; traverse actual geometry and transforms. End reversal is not proof of correct cross-section facing.",
       "dependsOn": [
         1,
         2,
@@ -525,7 +525,7 @@
       "number": 29,
       "title": "Make retries idempotent with in-model operation receipts",
       "due": "2026-10-27",
-      "notes": "Operation IDs and immutable request hashes distinguish retry from a changed command. Local logs are diagnostic; model receipts commit with the same member/baseline changes.",
+      "notes": "Operation IDs and immutable request hashes distinguish retry from a changed command. Local logs are diagnostic; model receipts commit with the same member/baseline changes. Reuse existing JSONL diagnostics with correlated operation/panel IDs, immutable request hash, intent, verified commit and acknowledgment stages. Logs record observations, not a second authoritative model or automatic restore source; avoid full model snapshots in diagnostic logs.",
       "acceptance": "Same ID plus same payload returns an applied result only after current-state reconciliation; changed payload with that ID is rejected. Lost acknowledgment, duplicate queue events, Undo/Redo and missing receipts cannot duplicate members. Distinguish committed-in-session, saved and synchronized states. No SQLite dependency required for the first implementation.",
       "dependsOn": [
         24,
@@ -602,7 +602,7 @@
       "title": "Reconcile crashes, lost acknowledgments and reopened models",
       "due": "2026-11-06",
       "notes": "Revit commit is not disk save or central synchronization. Treat journal state as a hint and inspect the actual reopened model before retrying.",
-      "acceptance": "Test lost response, UI crash, host termination before commit, after commit before save, after save and after sync in disposable files. Restart validates document lineage/session, receipt, baseline and actual members. Unsaved changes lost on reopen are not reported durable; safe retry recreates only missing intended work. Undo/Redo and Save As/fork paths stay consistent.",
+      "acceptance": "Test lost response, UI crash, host termination before commit, after commit before save, after save and after sync in disposable files. Restart validates document lineage/session, receipt, baseline and actual members. Unsaved changes lost on reopen are not reported durable; safe retry recreates only missing intended work. Undo/Redo and Save As/fork paths stay consistent. Also test unavailable or truncated JSONL and a matching receipt whose members were subsequently edited or deleted. Report diagnostic failure clearly; never acknowledge success from a stamp or log alone.",
       "dependsOn": [
         29,
         32
@@ -621,7 +621,7 @@
       "title": "Run two-user worksharing acceptance including first creation",
       "due": "2026-11-08",
       "notes": "Sunday technical checkpoint using two independent user sessions and a disposable central model. If a second session is unavailable, keep the gate open.",
-      "acceptance": "Race first creation on one panel, edit the same panel, and edit different panels. Prove no duplicate ownership records or half assemblies. Exercise partial checkout, stale central changes, reload latest, sync failure and disconnected central. Respect existing user loans; modified/new elements need normal sync before release. Record clean blocks and confirm unrelated panels remain usable.",
+      "acceptance": "Race first creation on one panel, edit the same panel, and edit different panels. Prove no duplicate ownership records or half assemblies. Exercise partial checkout, stale central changes, reload latest, sync failure and disconnected central. Respect existing user loans; modified/new elements need normal sync before release. Record clean blocks and confirm unrelated panels remain usable. Include grouped targets and a source wall already owned by the other user. Capture before/after ownership of source walls, panel metadata and members; prove the documented claim policy without unexpected wall borrowing or automatic ungrouping.",
       "dependsOn": [
         26,
         32,
@@ -661,7 +661,7 @@
       "title": "Measure and tune collection, calibration and cache costs",
       "due": "2026-11-13",
       "notes": "Separate pure web calculation, serialization, Revit placement, regeneration and verification costs. The existing mock is a baseline, not a throughput promise.",
-      "acceptance": "Collect relevant instances/types once per validated snapshot; reuse bounded caches only with document/family/axis/settings invalidation. Avoid per-member collectors and unconditional regeneration. Record elapsed time, peak memory and UI delay for cold/warm repeated templates and mixed panels. Choose batch limits from evidence, not fixed 25-panel/2-MiB/one-regeneration claims.",
+      "acceptance": "Collect relevant instances/types once per validated snapshot; reuse bounded caches only with document/family/axis/settings invalidation. Avoid per-member collectors and unconditional regeneration. Record elapsed time, peak memory and UI delay for cold/warm repeated templates and mixed panels. Choose batch limits from evidence, not fixed 25-panel/2-MiB/one-regeneration claims. Measure inactive-type activation and nested/direct-solid traversal separately; activate each required inactive type in a valid transaction and recheck after reload/retype. Cache numeric results or DTOs with invalidation, not live Revit geometry across callbacks.",
       "dependsOn": [
         35
       ],
@@ -736,7 +736,7 @@
       "title": "Package a versioned DEV pilot with output parity",
       "due": "2026-11-20",
       "notes": "Pin the shared web bundle to the native release. Public website updates must not silently change the privileged Revit workspace.",
-      "acceptance": "Install/uninstall on a clean test machine with a recorded supported runtime. Verify manifest/bundle versions, startup diagnostics, current document context and modeless host. Export the same resolved plan, one sheet per panel and shared QR/plain labels with locked Panel/Mark/Qty. Keep unsupported hosts/features disabled with clear reasons.",
+      "acceptance": "Install/uninstall on a clean test machine with a recorded supported runtime. Verify manifest/bundle versions, startup diagnostics, current document context and modeless host. Export the same resolved plan, one sheet per panel and shared QR/plain labels with locked Panel/Mark/Qty. Keep unsupported hosts/features disabled with clear reasons. Record the DEV pilot artifact and its dependency closure. Any later production promotion must use qualified source and resources without shipping or depending on the DEV add-in. Verify Revit API references are not copied into the payload; retain the shared JS resolver and record the exact native patch plus web-bundle version.",
       "dependsOn": [
         10,
         15,
@@ -757,7 +757,7 @@
       "number": 41,
       "title": "Triage later architecture options from pilot evidence",
       "due": "2026-11-24",
-      "notes": "Deferred: SQLite/WAL job database, automatic multi-slice compensating rollback, generic orphan geometry matching, global runtime pinning and unsupported geometry expansion. These are not prerequisites for the bounded pilot.",
+      "notes": "Deferred: SQLite/WAL job database, automatic multi-slice compensating rollback, generic orphan geometry matching, global runtime pinning and unsupported geometry expansion. These are not prerequisites for the bounded pilot. AssemblyLoadContext isolation is also deferred unless a reproduced dependency collision justifies a scoped design and host tests; it is not a blanket guarantee for native browser conflicts.",
       "acceptance": "Keep deferred unless pilot measurements demonstrate a concrete need and a separately reviewed design. Record any future proposal with risk, benefit and acceptance tests. No silent adoption of report recommendations or dependency installations.",
       "dependsOn": [
         5
