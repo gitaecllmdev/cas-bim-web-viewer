@@ -19,10 +19,11 @@ import { frameWall, flipLayout, webOnRight, topAt, underAt, SEAT_ALLOWANCE_IN } 
 import * as G from './generator.mjs';
 import { sha256Hex } from '../common/sha256.mjs';
 import { checkStyleBindings } from './style-catalog.mjs';
+import { baseAt } from '../common/bottom-profile.mjs';
 
 export const SNAPSHOT_FORMAT = 'cas-panel-snapshot', DETAILING_FORMAT = 'cas-panel-detailing', PLAN_FORMAT = 'cas-framing-plan', CATALOG_FORMAT = 'cas-member-catalog';
 export const CONTRACT_VERSION = 1;
-export const RULE_VERSION = 'cas-web-framing/1';
+export const RULE_VERSION = 'cas-web-framing/2';
 export const UNIT = 'in';
 export const AXES = {
     x: 'along the panel from its left end as seen from side A',
@@ -55,6 +56,7 @@ export function snapshotFromPanel(panel, { documentId = null } = {}) {
         identity: { documentId: model ? documentId ?? null : null, panelUniqueId: model ? p.revit.uniqueId ?? null : null, elementId: model ? p.revit.elementId ?? null : null,
             mark: p.mark, displayNumber: model ? p.revit.panelNumber ?? null : null, webPanelId: p.id },
         profile: { shape: structuredClone(p.shape), lengthIn, heightIn, top: top ? top.map(q => [q[0], q[1]]) : [[0, heightIn], [lengthIn, heightIn]],
+            ...(G.shapeBottom(p.shape)?{bottom:G.shapeBottom(p.shape)}:{}),
             ...(model && p.outline ? { outline: p.outline } : {}) },
         wall: { thicknessIn: model && finite(p.revit.thicknessIn) ? p.revit.thicknessIn : null },
         openings,
@@ -66,7 +68,7 @@ export function snapshotFromPanel(panel, { documentId = null } = {}) {
 // Exact values (no display rounding), openings in key order (their list order does not matter), outline order does.
 export function snapshotFingerprint(s) {
     return `sha256:${sha256Hex(canonical({ v: 'cas-panel-snapshot/1', identity: [s.identity?.documentId ?? null, s.identity?.panelUniqueId ?? null],
-        profile: { lengthIn: s.profile?.lengthIn, heightIn: s.profile?.heightIn, top: s.profile?.top, outline: s.profile?.outline ?? null }, thicknessIn: s.wall?.thicknessIn ?? null,
+        profile: { lengthIn: s.profile?.lengthIn, heightIn: s.profile?.heightIn, top: s.profile?.top, outline: s.profile?.outline ?? null,...(s.profile?.bottom?{bottom:s.profile.bottom}:{}) }, thicknessIn: s.wall?.thicknessIn ?? null,
         openings: [...(s.openings || [])].sort((a, b) => (a.sourceKey < b.sourceKey ? -1 : a.sourceKey > b.sourceKey ? 1 : 0))
             .map(o => [o.sourceKey, o.kind, o.leftIn, o.widthIn, o.heightIn, o.sillIn, !!o.locked]) }))}`;
 }
@@ -142,6 +144,10 @@ function checkInputs(snapshot, detailing, catalog, issue) {
         if (snapshot.unit !== UNIT) issue('input.unit', 'error', 'snapshot', `The snapshot's unit must be "${UNIT}".`);
         if (!['model', 'standalone'].includes(snapshot.kind)) issue('input.snapshot_kind', 'error', 'snapshot', 'The snapshot kind must be model or standalone.');
         const pr = snapshot.profile;
+        if(pr?.bottom||G.shapeBottom(pr?.shape)){
+            const b=pr?.bottom,expected=G.shapeBottom(pr?.shape);
+            if(!Array.isArray(b)||b.length!==2||!b.every(q=>Array.isArray(q)&&q.length===2&&q.every(finite))||canonical(b)!==canonical(expected))issue('source.invalid_profile','error','source.profile','The bottom profile must match the source shape endpoints.');
+        }
         const okTop = Array.isArray(pr?.top) && pr.top.length >= 2 && pr.top.every((q, i) => Array.isArray(q) && finite(q[0]) && finite(q[1]) && q[1] > 0 && (i === 0 || q[0] > pr.top[i - 1][0]));
         if (!isObj(pr) || !finite(pr.lengthIn) || !(pr.lengthIn > 0) || !finite(pr.heightIn) || !(pr.heightIn > 0) || !okTop || !isObj(pr.shape))
             issue('source.invalid_profile', 'error', 'source.profile', 'The panel profile needs a positive finite length, height and top line (points left to right).');
@@ -214,7 +220,7 @@ export function resolveFramingPlan(snapshot, detailing, catalog = null, engineer
     const model = snapshot.kind === 'model', panel = panelFrom(snapshot, detailing), H = snapshot.profile.heightIn;
     // Source facts, as given (the actual rough openings) and as they will be framed.
     plan.source = { kind: snapshot.kind, identity: { ...snapshot.identity }, fingerprint: snapshotFingerprint(snapshot), lock: snapshot.lock ? { ...snapshot.lock } : null,
-        profile: { lengthIn: snapshot.profile.lengthIn, heightIn: H, top: snapshot.profile.top }, openings: [] };
+        profile: { lengthIn: snapshot.profile.lengthIn, heightIn: H, top: snapshot.profile.top,...(snapshot.profile.bottom?{bottom:snapshot.profile.bottom}:{}) }, openings: [] };
     if (model && snapshot.lock?.status === 'mismatch') issue('source.lock_mismatch', 'error', snapshot.identity.panelUniqueId, 'The locked geometry differs from what the model exported (its profile hash does not match): re-export the wall; nothing is framed.');
     if (model && snapshot.lock?.status === 'not-provided') issue('source.lock_not_provided', 'warning', snapshot.identity.panelUniqueId, 'The export has no profile hash: the locked geometry cannot be checked against the model.');
     if (model && snapshot.lock?.status === 'unverifiable') issue('source.lock_unverifiable', 'warning', snapshot.identity.panelUniqueId, 'The profile hash cannot be computed from this export (location line, height, thickness or orientation missing).');
@@ -261,6 +267,7 @@ export function resolveFramingPlan(snapshot, detailing, catalog = null, engineer
         if (f && so.status !== 'unsupported:small-penetration') so.framed = { left: f.left, right: f.right, bottom: f.bottom, top: f.through ? null : f.top };
     }
     const catalogUsed = catalog || designatorCatalog(layout.members.flatMap(m => (m.parts?.length ? m.parts.map(q => q.name) : [m.type])));
+    if(layout.bottom)issue('bottom.bearing_details','needs-resolution','source.profile','Sloped bottom: verify bearing, bottom end cuts and any door threshold before native placement.');
     const keyFor = expandMembers(layout, inputs, panel, plan, catalogUsed, issue);
     // A bay wider than the spacing (the engine's own rule, generator.wideBayList): reported per bay, by its two members.
     const n4 = (v) => String(Number(v.toFixed(4)));
@@ -344,9 +351,9 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
         return { angleDeg: Math.atan(Math.abs(k)) * 180 / Math.PI, longSide: k > 0 ? '+x' : k < 0 ? '-x' : 'none', ...(T.slice(1, -1).some(q => Math.abs(q[0] - x) <= 1e-6) ? { atCorner: true } : {}) };
     };
     const cut = (m, xc = null) => {
-        const sloped = m.orient === 'v' && !!T && (m.pts || m.full);
-        const ends = m.orient === 'v' ? { bottom: 'square', top: sloped ? 'slope' : 'square', ...(sloped ? { topSlope: slopeAt(xc) } : {}) }
-            : m.role === 'top track' && m.slope ? { start: 'plumb', end: 'plumb', plumb: slopeAt(m.x + m.w / 2) } : { start: 'square', end: 'square' };
+        const sloped = m.orient === 'v' && !!T && (m.atTop || m.full);
+        const ends = m.orient === 'v' ? { bottom: m.atBottom&&m.bottomSlope?'slope':'square', ...(m.atBottom&&m.bottomSlope?{bottomSlope:{angleDeg:Math.atan(Math.abs(m.bottomSlope))*180/Math.PI,longSide:m.bottomSlope>0?'-x':'+x'}}:{}),top: sloped ? 'slope' : 'square', ...(sloped ? { topSlope: slopeAt(xc) } : {}) }
+            : m.baseTrack&&m.slope?{start:'plumb',end:'plumb',plumb:{angleDeg:Math.atan(Math.abs(m.slope))*180/Math.PI,longSide:m.slope>0?'+x':'-x'}}:m.role === 'top track' && m.slope ? { start: 'plumb', end: 'plumb', plumb: slopeAt(m.x + m.w / 2) } : { start: 'square', end: 'square' };
         return { lengthIn: m.lengthIn, rule: m.topGapIn ? 'top-deflection-gap' : cutRule(m), allowanceIn: m.topGapIn ? 0 : m.orient === 'v' ? layout.cutbackIn ?? SEAT_ALLOWANCE_IN : 0, rounding: ROUND, ends,
             ...(m.topGapIn ? { topGapIn: m.topGapIn } : {}) };
     };
@@ -361,7 +368,7 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
         const record = (rec) => { push({ role: m.role, ...rec }, m); graphic.memberKeys.push(rec.memberKey); };
         if (m.orient === 'v') {
             const xc = m.x + m.w / 2, right = webOnRight(m, layout);
-            const axis = m.manualAxis || m.topAxis;
+            const axis = m.manualAxis || m.baseAxis || m.topAxis;
             const y0 = axis ? axis[0] : m.full ? 0 : m.y, y1 = axis ? axis[1] : m.full ? (T ? topAt(T, xc, H) : H) : m.pts ? underAt(T, xc, H, LEG) : m.y + m.h;
             const fr = m.of ? framingOf.get(m.of) : null;
             const jambUnresolved = m.jamb && fr && fr.plies > 1 && !fr.jambStyleSet;
@@ -386,10 +393,10 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
             // web at the rough opening's top, a sill track's at its bottom); a sloped top track along the slope.
             const x0 = m.x, x1 = m.x + m.w, fr = m.of ? framingOf.get(m.of) : null;
             const along = (y) => [v3(x0, y, D / 2), v3(x1, y, D / 2)];
-            if (m.role === 'top track' && m.slope) {
-                const ya = topAt(T, x0, H), yb = topAt(T, x1, H), len = Math.hypot(x1 - x0, yb - ya);
+            if (m.role === 'top track' && m.slope || m.baseTrack) {
+                const ya = m.baseTrack?baseAt(layout.bottom,x0):topAt(T, x0, H), yb = m.baseTrack?baseAt(layout.bottom,x1):topAt(T, x1, H), len = Math.hypot(x1 - x0, yb - ya);
                 record({ memberKey, catalogKey: keyOf(m.type), designator: m.type, start: v3(x0, ya, D / 2), end: v3(x1, yb, D / 2), placementLengthIn: len, cut: cut(m),
-                    orientation: open((yb - ya) / len, -(x1 - x0) / len, 0), assemblyKey: '', partKey: '', tags: tagsOf(m) });
+                    orientation: open((m.baseTrack?-1:1)*(yb - ya) / len, (m.baseTrack?1:-1)*(x1 - x0) / len, 0), assemblyKey: '', partKey: '', tags: tagsOf(m) });
             } else if ((m.role === 'head track' || m.role === 'sill track') && fr && (m.role === 'head track' ? fr.head : fr.sill)) {
                 const spec = m.role === 'head track' ? fr.head : fr.sill, head = m.role === 'head track';
                 const parts = m.typeSources ? G.specParts((m.parts || [{ qty: 1, name: m.type }]).map(p => `(${p.qty}) ${p.name}`).join(' WITH ')) : spec.parts;
@@ -453,6 +460,7 @@ function cutListOf(layout, members) {
 function featuresOf(panel, inputs, layout, members, plan) {
     const f = new Set();
     if (layout.top) f.add('sloped-top');
+    if (layout.bottom) f.add('sloped-bottom');
     if (Number(panel.deflectionGapIn) > 0) f.add('deflection-gap');
     if (inputs.openings.some(o => o.through)) f.add('steel-through-top');
     if (members.some(m => m.assemblyKey && /:jamb:/.test(m.assemblyKey))) f.add('jamb-plies');
@@ -467,6 +475,7 @@ function featuresOf(panel, inputs, layout, members, plan) {
     if (plan.accessories.length) f.add('clips');
     if (inputs.openings.some(o => o.clear)) f.add('framing-offset');
     if (members.some(m => m.manual) || layout.manual?.deleted) f.add('manual-members');
+    if(Object.values(panel.manual?.members||{}).some(m=>m.followProfile))f.add('profile-follow-spacing');
     if (layout.manual?.typeCount) f.add('member-type-overrides');
     if (layout.members.some(m => m.seat)) f.add('seated-pieces');
     if (panel.openings.some(o => G.offsetsVary(o))) f.add('framing-offset-sides');

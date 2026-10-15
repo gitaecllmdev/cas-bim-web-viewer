@@ -33,6 +33,9 @@ import * as IM from './demos/06-shop-drawings/import-merge.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 import { siteHits, mountHits } from './hits.js';
+import { WallSketchControls } from './wall-sketch-controls.js';
+import * as SK from './demos/06-shop-drawings/sketch-editing.mjs';
+import { baseAt } from './demos/common/bottom-profile.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos', profiles: 'cas-shopgen:profiles', engineering: 'cas-shopgen:engineering', reviewer: 'cas-shopgen:reviewer',
@@ -73,6 +76,8 @@ let hover = null; // what the pointer is over: 'op:2', 'edge:3', 'pt:1', 'peak',
 let drag = null, rectDraw = null, peri = null, svgEl = null, view = null;
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
+const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:fmtFtIn,parse:G.parseLength,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},
+    change:(next,label)=>{historyHint={label};replacePanel(next);changed();renderAll();},selectMember:key=>{const record=current.plan?.members.find(m=>m.memberKey===key||m.memberKey.startsWith(key+':'));if(record)selectTarget({kind:'member',key:record.memberKey});}});
 const studName = (m) => G.parseMember(m.stud)?.name || m.stud;
 const bottomTrack = (m) => G.parseMember(m.track)?.name || G.trackFor(m.stud) || m.track;
 
@@ -117,14 +122,17 @@ main.addEventListener('input', (e) => {
         v = Number(v);
         if (!Number.isFinite(v)) return;
     }
+    const beforeShape=path.startsWith('shape.')?structuredClone(p):null;
     const right = /^openings\.(\d+)\.__right$/.exec(path), kind = /^openings\.(\d+)\.kind$/.exec(path);
     if (right) { const o = p.openings[Number(right[1])]; o.leftIn = Math.max(0, G.shapeTop(p.shape).lengthIn - v - o.widthIn); syncCatalogueFields(); }
+    else if(path==='shape.lengthIn'&&SK.pinned(p,'right')){try{const next=SK.panelDimension(p,'width',v,'right');Object.assign(p,next);}catch(e){notice(e.message,true);renderAll();return;}}
     else if (path === 'shape.lengthIn' && p.shape.kind === 'custom') { setCustomLength(p, v); syncPointEnds(); }
     else if (path === 'shape.lengthIn' && p.shape.kind === 'gable' && Math.abs((p.shape.peakAtIn ?? 0) - p.shape.lengthIn / 2) < 1 / 8) {
         p.shape.lengthIn = v; p.shape.peakAtIn = v / 2; // a centered peak stays centered
         const peak = main.querySelector('[data-f="shape.peakAtIn"]');
         if (peak) peak.value = lenText(v / 2);
     } else setPath(onSet ? set : p, onSet ? path.slice(4) : path, v);
+    if(beforeShape){const error=SK.pinError(beforeShape,p);if(error){replacePanel(beforeShape);notice(error,true);renderAll();return;}}
     if (kind) { setKind(p, Number(kind[1]), v); renderCatalogue(); renderChips(); }
     if (path === 'optimizeOpenings') notice(v ? 'Opening optimizer on: the studs on center start where the openings take the fewest stud pieces, every bay within the spacing.' : `Opening optimizer off: studs on center from the ${p.layoutFromRight ? 'right' : 'left'} end.`);
     if (path === 'flipStuds') notice(v ? 'Flip studs on: the studs on center face the other way (end studs and jambs still close their side).' : 'Flip studs off: the studs on center face the left end, as usual.');
@@ -253,13 +261,13 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
             if (G.isFromModel(p) && !confirm(`Duplicate ${p.mark} as an unlinked copy?\n\nThe copy is not linked to the Revit wall: its outline and openings become editable, and it no longer reports to the model. ${p.mark} itself stays linked.`)) return;
             addPanel(G.copyPanel(p, set.panels.map(x => x.mark))); if (G.isFromModel(p)) notice(`${cur().mark} is an unlinked copy of ${p.mark}: not linked to the Revit wall, change anything on it.`);
         },
-        shape: () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its shape'); p.shape = G.changeShape(p.shape, b.dataset.kind); renderElevHead(); renderShapeTable(); fit(); changed(); },
+        shape: () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its shape');const next={...p,shape:G.changeShape(p.shape,b.dataset.kind)},error=SK.pinError(p,next);if(error){notice(error,true);return;} p.shape = next.shape; renderElevHead(); renderShapeTable(); fit(); changed(); },
         tool: () => (b.dataset.tool === 'perimeter' && !G.canEdit(p, 'shape') ? lockedNotice('its perimeter') : setTool(b.dataset.tool)),
         'add-op': () => addOpening(p, b.dataset.kind),
         'select-op': () => { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); },
         done: () => { sel = null; ask = null; renderCatalogue(); renderChips(); renderSketch(); },
-        'add-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); addPoint(p); renderShapeTable(); changed(); },
-        'del-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top'); if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
+        'add-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top');if(SK.pinned(p,'top')){notice('Unlock the top line before changing its points.',true);return;} addPoint(p); renderShapeTable(); changed(); },
+        'del-point': () => { if (!G.canEdit(p, 'shape')) return lockedNotice('its top');if(SK.pinned(p,'top')){notice('Unlock the top line before changing its points.',true);return;} if (p.shape.points.length > 2) p.shape.points.splice(i, 1); renderShapeTable(); changed(); },
         'del-op': () => { if (!G.canEdit(p, `openings.${i}`)) return lockedNotice('the model\'s openings'); p.openings.splice(i, 1); sel = null; ask = null; renderCatalogue(); renderChips(); changed(); },
         center: () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = Math.round(((G.shapeTop(p.shape).lengthIn - o.widthIn) / 2) * 16) / 16; syncCatalogueFields(); changed(); },
         preview: () => setView('elevation'),
@@ -528,6 +536,7 @@ function refresh(now = false) {
     if (!cur()) return;
     if (!drag && tool !== 'perimeter') fit(); // the view follows the panel's size, but holds still while dragging
     renderSketch();
+    if(!$('#wall-sketch-constraints')?.contains(document.activeElement))sketchControls.render();
     clearTimeout(refreshTimer);
     refreshTimer = setTimeout(() => { renderPreview(); renderSet(); renderChips(); renderLayoutInfo(); refreshOpeningRule(); }, now ? 0 : drag ? 160 : 90);
 }
@@ -750,6 +759,7 @@ function renderDatalists() {
 
 // --- Tools ---------------------------------------------------------------------------------------------------------------
 function renderTools() {
+    sketchControls.render();
     const t = (key, label, title) => `<button class="${tool === key ? 'on' : 'secondary'}" data-act="tool" data-tool="${key}" title="${esc(title)}">${label}</button>`;
     $('#tools').innerHTML = `<div class="seg" role="group" aria-label="Tool">${t('select', '↖ Select &amp; move', 'Pick an opening to see its dimensions and members; drag it or the round handles')}
             ${G.canEdit(cur(), 'shape') ? t('perimeter', '✎ Draw perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')
@@ -780,7 +790,7 @@ function renderHint() {
     } else if (tool === 'opening') {
         el.innerHTML = '<b>Drawing an opening:</b> drag a rectangle on the panel. Touching the floor it is a door; up through the top a steel penetration; else a window (make it an MEP opening on the right). Esc to stop.';
     } else {
-        el.textContent = `${cur().shape.kind === 'custom' ? 'Click above the top line to add a point there; double-click a point to remove it. ' : ''}Point at an opening, a stud, an edge or a corner to see its dimensions; drag an opening or a round handle to change it. Right-click for options.`;
+        el.textContent = `${cur().shape.kind === 'custom' ? 'Click above the top line to add a point there; double-click a point to remove it. ' : ''}Click a blue dimension to edit it. Lock a reference line to hold it; the other side moves. Select a stud for its spacing. Right-click for options.`;
     }
 }
 function setTool(next, render = true) {
@@ -788,6 +798,7 @@ function setTool(next, render = true) {
     drag = null; rectDraw = null;
     peri = next === 'perimeter' ? { pts: [], cursor: null, typed: '' } : null;
     if (next === 'perimeter') { sel = null; ask = null; }
+    if(next!=='select')$('#sketch-member-tools').hidden=true;
     if (!render) return;
     fit(); renderTools(); renderCatalogue(); renderSketch();
 }
@@ -815,13 +826,13 @@ function renderSketch() {
     svgEl.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svgEl.dataset.tool = tool;
     const u = Math.max(view.w, view.h) / 100, fs = u * 2.5, at = (x) => topAt(top, x, H), Y = (y) => -y;
-    const t = (x, y, s, { a = 'middle', cls = 'sk-label', size = fs, rot = 0 } = {}) => `<text x="${x}" y="${y}" text-anchor="${a}" font-size="${size}" class="${cls}"${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${esc(s)}</text>`;
+    const t = (x, y, s, { a = 'middle', cls = 'sk-label', size = fs, rot = 0,edit=null,pin=null } = {}) => `<text x="${x}" y="${y}" text-anchor="${a}" font-size="${size}" class="${cls}${edit?' sk-edit-dim':''}${pin?' sk-line-pin':''}"${edit?` data-sketch-dim="${esc(JSON.stringify(edit))}" role="button" tabindex="0" aria-label="Edit ${esc(s)}"`:''}${pin?` data-sketch-pin="${esc(pin)}" role="button" tabindex="0"`:''}${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${esc(s)}</text>`;
     // Dimension strings: horizontal at height y, vertical at x; ticks at both ends, the value above / left of the line.
     const cs = fs * 0.88; // context dimensions: a little smaller than the panel's own
-    const dimH = (x1, x2, y, label, cls = 'sk-ctx', below = false, size = cls === 'sk-dim' ? fs : cs) => (Math.abs(x2 - x1) < 1 / 16 ? '' : `<g class="${cls}"><line x1="${x1}" y1="${Y(y)}" x2="${x2}" y2="${Y(y)}"/>
-        <line x1="${x1}" y1="${Y(y) - u}" x2="${x1}" y2="${Y(y) + u}"/><line x1="${x2}" y1="${Y(y) - u}" x2="${x2}" y2="${Y(y) + u}"/>${t((x1 + x2) / 2, Y(y) + (below ? size * 1.15 : -size * 0.35), label, { cls: `${cls.split(' ')[0]}-t`, size })}</g>`);
-    const dimV = (x, y1, y2, label, cls = 'sk-ctx', right = false, size = cls === 'sk-dim' ? fs : cs) => (Math.abs(y2 - y1) < 1 / 16 ? '' : `<g class="${cls}"><line x1="${x}" y1="${Y(y1)}" x2="${x}" y2="${Y(y2)}"/>
-        <line x1="${x - u}" y1="${Y(y1)}" x2="${x + u}" y2="${Y(y1)}"/><line x1="${x - u}" y1="${Y(y2)}" x2="${x + u}" y2="${Y(y2)}"/>${t(x + (right ? size * 1.05 : -size * 0.35), Y((y1 + y2) / 2), label, { cls: `${cls.split(' ')[0]}-t`, rot: -90, size })}</g>`);
+    const dimH = (x1, x2, y, label, cls = 'sk-ctx', below = false, size = cls === 'sk-dim' ? fs : cs,edit=null) => (Math.abs(x2 - x1) < 1 / 16 ? '' : `<g class="${cls}"><line x1="${x1}" y1="${Y(y)}" x2="${x2}" y2="${Y(y)}"/>
+        <line x1="${x1}" y1="${Y(y) - u}" x2="${x1}" y2="${Y(y) + u}"/><line x1="${x2}" y1="${Y(y) - u}" x2="${x2}" y2="${Y(y) + u}"/>${t((x1 + x2) / 2, Y(y) + (below ? size * 1.15 : -size * 0.35), label, { cls: `${cls.split(' ')[0]}-t`, size,edit })}</g>`);
+    const dimV = (x, y1, y2, label, cls = 'sk-ctx', right = false, size = cls === 'sk-dim' ? fs : cs,edit=null) => (Math.abs(y2 - y1) < 1 / 16 ? '' : `<g class="${cls}"><line x1="${x}" y1="${Y(y1)}" x2="${x}" y2="${Y(y2)}"/>
+        <line x1="${x - u}" y1="${Y(y1)}" x2="${x + u}" y2="${Y(y1)}"/><line x1="${x - u}" y1="${Y(y2)}" x2="${x + u}" y2="${Y(y2)}"/>${t(x + (right ? size * 1.05 : -size * 0.35), Y((y1 + y2) / 2), label, { cls: `${cls.split(' ')[0]}-t`, rot: -90, size,edit })}</g>`);
     const parts = [];
     if (tool !== 'select') { // a 1 ft grid to draw on
         for (let x = Math.ceil(view.x / 12) * 12; x < view.x + view.w; x += 12) parts.push(`<line x1="${x}" y1="${view.y}" x2="${x}" y2="${view.y + view.h}" class="sk-grid${x % 60 ? '' : ' major'}"/>`);
@@ -829,12 +840,13 @@ function renderSketch() {
     }
     parts.push(`<line x1="${view.x}" y1="0" x2="${view.x + view.w}" y2="0" class="sk-floor"/>`);
     const valid = L > 0 && H > 0;
-    const outline = valid ? [[0, 0], [L, 0], ...(top ? [...top].reverse() : [[L, H], [0, H]])] : [];
+    const bottom=G.shapeBottom(p.shape),base=x=>baseAt(bottom,x),free=tool==='select'&&G.canEdit(p,'shape');
+    const outline = valid ? [[0, base(0)], [L, base(L)], ...(top ? [...top].reverse() : [[L, H], [0, H]])] : [];
     if (valid) {
         parts.push(`<polygon points="${outline.map(([x, y]) => `${x},${Y(y)}`).join(' ')}" class="sk-wall${tool === 'perimeter' ? ' ghost' : ''}"/>`);
         if (tool === 'select') outline.forEach(([x, y], i) => { const [x2, y2] = outline[(i + 1) % outline.length]; parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit" data-hover="edge:${i}"/>`); });
         // Always: the length under it, the height at each end, each peak or break.
-        parts.push(dimH(0, L, -fs * 1.4, fmtFtIn(L), 'sk-dim', true), dimV(-fs * 1.6, 0, at(0), fmtFtIn(at(0)), 'sk-dim'), dimV(L + fs * 1.6, 0, at(L), fmtFtIn(at(L)), 'sk-dim', true));
+        parts.push(dimH(0, L, -fs * 1.4, fmtFtIn(L), 'sk-dim', true,fs,free?{kind:'width',value:L}:null), dimV(-fs * 1.6, base(0), at(0), fmtFtIn(at(0)-base(0)), 'sk-dim',false,fs,free?{kind:'height-left',value:at(0)-base(0)}:null), dimV(L + fs * 1.6, base(L), at(L), fmtFtIn(at(L)-base(L)), 'sk-dim', true,fs,free?{kind:'height-right',value:at(L)-base(L)}:null));
         for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, fmtFtIn(h), { cls: 'sk-dim-t' }));
     }
     if (tool !== 'perimeter' && valid) parts.push(contextLayer(p, L, H, top, fs, t, Y));
@@ -883,7 +895,7 @@ function renderSketch() {
         const pts = G.shapePoints(s);
         pts.slice(1).forEach(([x1, h1], k) => { const [x0, h0] = pts[k]; parts.push(arrow((x0 + x1) / 2, (h0 + h1) / 2, 'v', `pg:run:${k + 1}`, 'Drag the top up or down here')); });
         parts.push(arrow(0, at(0) / 2, 'h', 'pg:l', 'Drag the left end out or in (the openings stay where they are)'), arrow(L, at(L) / 2, 'h', 'pg:r', 'Drag the right end out or in'));
-        parts.push(handle(0, 0, 'pg:bl', 'The left end: drag it out or in'), handle(L, 0, 'pg:br', 'The right end: drag it out or in'),
+        parts.push(handle(0, base(0), 'pg:bl', 'The left end: drag it out or in'), handle(L, base(L), 'pg:br', 'The right end: drag it out or in'),
             handle(0, at(0), 'pg:tl', s.kind === 'rect' ? 'The left end and the height' : 'The left end and its height'), handle(L, at(L), 'pg:tr', s.kind === 'rect' ? 'The right end and the height' : 'The right end and its height'));
         if (s.kind === 'gable') parts.push(handle(Math.min(L, Math.max(0, s.peakAtIn ?? L / 2)), Number(s.peakIn) || H, 'peak', 'The peak: drag up, down or sideways'));
         if (s.kind === 'custom') s.points.slice(1, -1).forEach((pt, k) => parts.push(handle(pt[0], pt[1], `pt:${k + 1}`, `Point ${k + 2}: drag it; double-click to remove`)));
@@ -936,10 +948,11 @@ function renderSketch() {
             const label = dx < 1e-6 ? `${fmtFtIn(dy)} high` : dy < 1e-6 ? fmtFtIn(dx) : `${fmtFtIn(Math.hypot(dx, dy))} along · ${fmtFtIn(dx)} run · ${fmtFtIn(dy)} rise · ${pitchText(dy / dx)}`;
             ctx.push(`<line x1="${x1}" y1="${Y(y1)}" x2="${x2}" y2="${Y(y2)}" class="sk-edge-on"/>`, t((x1 + x2) / 2 + (dx < 1e-6 ? (x1 < L / 2 ? -fs : fs) : 0), Y((y1 + y2) / 2) + (dx < 1e-6 ? 0 : y1 + y2 < 1e-6 ? fs * 2.6 : -fs * 0.8), label, { cls: 'sk-ctx-t', size: cs * 1.1, a: dx < 1e-6 ? (x1 < L / 2 ? 'end' : 'start') : 'middle' }));
         }
-        const mem = /^mem:(\d+)$/.exec(hover || ''), mm = mem && laid.lay?.members[Number(mem[1])];
+        const mem = /^mem:(\d+)$/.exec(hover || ''),selectedKey=selectedLayoutKey(),mm=laid.lay?.members.find(m=>m.key===selectedKey)||(mem&&laid.lay?.members[Number(mem[1])]);
         if (mm && valid) {
             const cx = mm.x + mm.w / 2, my = mm.y + mm.h / 2;
-            ctx.push(`<line x1="${cx}" y1="${Y(mm.y)}" x2="${cx}" y2="${Y(mm.y + mm.h)}" class="sk-mem-on"/>`, dimH(0, cx, my, fmtFtIn(cx), 'sk-ctx hov'), dimH(cx, L, my, fmtFtIn(L - cx), 'sk-ctx hov'));
+            const peers=laid.lay.members.filter(m=>m.orient==='v'&&m.key!==mm.key&&m.y<mm.y+mm.h&&m.y+m.h>mm.y).sort((a,b)=>a.x-b.x),left=peers.filter(m=>m.x+m.w/2<cx-1/16).at(-1),right=peers.find(m=>m.x+m.w/2>cx+1/16),a=left?left.x+left.w/2:0,b=right?right.x+right.w/2:L;
+            ctx.push(`<line x1="${cx}" y1="${Y(mm.y)}" x2="${cx}" y2="${Y(mm.y + mm.h)}" class="sk-mem-on"/>`, dimH(a, cx, my, fmtFtIn(cx-a), 'sk-ctx',false,cs,{kind:'gap',value:cx-a,left:left?.key||'left',right:mm.key,prefer:'right'}),dimH(cx,b,my+cs*1.9,fmtFtIn(b-cx),'sk-ctx',false,cs,{kind:'gap',value:b-cx,left:mm.key,right:right?.key||'right',prefer:'left'}));
         }
         const corner = /^(pt:\d+|peak|pg:tl|pg:tr|pg:bl|pg:br|pg:l|pg:r)$/;
         const point = (drag?.moved && corner.test(drag.what) ? drag.what : null) || (corner.test(hover || '') ? hover : null);
@@ -964,7 +977,7 @@ function renderSketch() {
         if (pts.length) parts.push(`<polyline points="${[...pts, ...(c ? [c] : [])].map(([x, y]) => `${x},${Y(y)}`).join(' ')}" class="sk-peri"/>`);
         pts.forEach(([x, y], i) => {
             parts.push(`<circle cx="${x}" cy="${Y(y)}" r="${u * (i ? 0.9 : 1.4)}" class="sk-vertex${i ? '' : ' first'}${i === 0 && c && peri.closing ? ' closing' : ''}"/>`);
-            if (i) { const [x0, y0] = pts[i - 1]; ctx.push(t((x + x0) / 2, Y((y + y0) / 2) - fs * 0.4, fmtFtIn(Math.hypot(x - x0, y - y0)), { cls: 'sk-ctx-t' })); }
+            if (i) { const [x0, y0] = pts[i - 1],length=Math.hypot(x-x0,y-y0),locked=peri.locks?.includes(i-1); ctx.push(t((x + x0) / 2, Y((y + y0) / 2) - fs * 0.4, fmtFtIn(length), { cls: 'sk-ctx-t',edit:{kind:'segment',index:i-1,value:length} }),t((x+x0)/2,Y((y+y0)/2)+fs*.9,locked?'🔒':'○',{cls:'sk-ctx-t',pin:`segment:${i-1}`})); }
         });
         if (c && pts.length) {
             const [x0, y0] = pts[pts.length - 1], len = Math.hypot(c[0] - x0, c[1] - y0);
@@ -974,6 +987,7 @@ function renderSketch() {
         if (peri.typed) ctx.push(t((c?.[0] ?? 0) + fs, Y(c?.[1] ?? 0) - fs * 1.2, `Length: ${peri.typed}${G.parseLength(peri.typed) != null ? ` = ${fmtFtIn(G.parseLength(peri.typed))}` : ''} (Enter)`, { cls: 'sk-typed', a: 'start', size: fs * 1.1 }));
     }
     svgEl.innerHTML = parts.join('') + ctx.join('');
+    sketchControls.resize();
 }
 
 // The framing laid out for the sketch (side A), at most every 120 ms while dragging; nothing while inputs need fixing.
@@ -1029,6 +1043,7 @@ function bindSketch(svg) {
     svg.addEventListener('keydown', e => { if (['Enter',' '].includes(e.key) && e.target.matches('[data-member-key]')) { e.preventDefault(); selectMember(e.target,true); } });
     svg.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // a right-click opens the sketch's menu instead
+        if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
         if (tool === 'select' && e.target.closest('[data-member-key]')) { e.preventDefault(); selectMember(e.target.closest('[data-member-key]')); return; }
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
         svg.setPointerCapture(e.pointerId);
@@ -1042,6 +1057,8 @@ function bindSketch(svg) {
         if (m && sel !== Number(m[1])) { sel = Number(m[1]); if (ask !== sel) ask = null; renderCatalogue(); renderChips(); renderSketch(); }
     });
     svg.addEventListener('pointermove', (e) => {
+        if(sketchControls.dialog.open)return;
+        if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
         const q = wallPoint(e);
         if (tool === 'perimeter') { peri.cursor = snapPerimeter(q); renderSketch(); return; }
         if (tool === 'clip' && !drag) { clipAim = { x: q[0], ...clipAimAt(cur(), q, e.altKey) }; renderSketch(); }
@@ -1087,6 +1104,7 @@ function bindSketch(svg) {
 function applyDrag(d, [x, y]) {
     const p = cur(), s = p.shape, L = G.shapeTop(s).lengthIn, minH = 12;
     const [what, n, g] = d.what.split(':'), i = Number(n);
+    if(what==='pg'&&((SK.pinned(p,'left')&&/^(l|tl|bl)$/.test(n))||(SK.pinned(p,'right')&&/^(r|tr|br)$/.test(n))||(SK.pinned(p,'top')&&/^(run|tl|tr)$/.test(n)))||SK.pinned(p,'top')&&/^(pt|peak)$/.test(what)){if(!d.warned){notice('Unlock that sketch line before dragging it.',true);d.warned=true;}return;}
     if ((/^(pg|peak|pt)$/.test(what) && !G.canEdit(p, 'shape')) || (/^o[pg]$/.test(what) && !G.canEdit(p, `openings.${i}.leftIn`))) { // the model's: held
         if (!d.warned) { d.warned = true; lockedNotice(); }
         return;
@@ -1121,6 +1139,7 @@ function applyDrag(d, [x, y]) {
     }
 }
 function addPointAt(p, [x, y]) {
+    if(SK.pinned(p,'top'))return false;
     const pts = p.shape.points, L = G.shapeTop(p.shape).lengthIn;
     if (!(x > 1 && x < L - 1 && y > 12) || pts.some(pt => Math.abs(pt[0] - x) < 3)) return false;
     pts.push([snap(x), snap(y)]);
@@ -1139,7 +1158,7 @@ function finishRect() {
 const round16 = (v) => Math.round(v * 16) / 16;
 // Nudge the selected opening with the arrow keys (1/2", Shift 6"); Esc stops a tool or lets go of the opening.
 document.addEventListener('keydown', (e) => {
-    if (document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open || setDialog()?.open || helpDialog()?.open) return; // a dialog has the keys
+    if (sketchControls.dialog.open||document.getElementById('fr-dialog')?.open || document.getElementById('eng-dialog')?.open || setDialog()?.open || helpDialog()?.open) return; // a dialog has the keys
     if (e.key === 'Escape' && closeQuickMore(true)) { e.preventDefault(); return; }
     if (e.key === 'Escape' && menuAt) { closeMenu(); return; }
     if (e.target.closest?.('input, textarea, select')) return;
@@ -1225,9 +1244,15 @@ function finishPerimeter() {
     if (!G.canEdit(cur(), 'shape')) { setTool('select'); lockedNotice('its perimeter'); return; }
     const res = G.perimeterToPanel(peri?.pts || []);
     if (res.errors.length) { notice(`${res.errors[0]} (Undo a corner, or Esc to start over.)`, true); return; }
-    const p = cur(), L = res.shape.lengthIn;
+    const p = cur(), L = res.shape.lengthIn,points=peri.pts,minX=Math.min(...points.map(q=>q[0])),minY=Math.min(...points.map(q=>q[1])),pins=[];
+    for(const i of peri.locks||[]){const a=points[i]?.map((v,j)=>v-(j?minY:minX)),b=points[i+1]?.map((v,j)=>v-(j?minY:minX));if(!a||!b)continue;const near=(a,b)=>Math.abs(a-b)<1/16;
+        if(near(a[0],0)&&near(b[0],0))pins.push('left');else if(near(a[0],L)&&near(b[0],L))pins.push('right');
+        else if(near(a[1],baseAt(G.shapeBottom(res.shape),a[0]))&&near(b[1],baseAt(G.shapeBottom(res.shape),b[0])))pins.push('bottom');
+        else if(G.shapePoints(res.shape).length===2)pins.push('top');
+    }
     const kept = p.openings.filter(o => (o.kind === 'window' || o.kind === 'mep') && o.leftIn + o.widthIn <= L);
     p.shape = res.shape;
+    p.sketchPins=[...new Set(pins)];
     p.openings = [...kept, ...res.openings].sort((a, b) => a.leftIn - b.leftIn);
     setTool('select', false);
     sel = null; ask = null;
@@ -2136,6 +2161,7 @@ function selectedLayoutKey() { return selection.kind === 'member' ? layoutKeyOf(
 function manualNudge(dx, dy) {
     const key = selectedLayoutKey();
     if (!key || !(dx || dy)) return;
+    if(SK.pinned(cur(),'member:'+key)){notice('Unlock this sketch member before moving it.',true);return;}
     historyHint = { label: 'the move', mergeKey: `man-move:${key}` };
     const was = MAN.isUnlocked(cur(), key);
     manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, key), lay, key, sideB() ? -dx : dx, dy));
@@ -2488,6 +2514,7 @@ function editBar(p, f) {
 function manualField(el) {
     const key = el.dataset.key, v = G.parseLength(el.value), lay = layoutA(), m = lay?.members.find(x => x.key === key);
     if (!m) return;
+    if(SK.pinned(cur(),'member:'+key)){notice('Unlock this sketch member before changing its position or length.',true);renderWorkspace();return;}
     if (v == null || (el.dataset.manF === 'len' && v <= 0)) { notice('Type a valid member dimension; length must be greater than zero.', true); renderWorkspace(); return; }
     if (m.pts && el.dataset.physical === 'true' && el.dataset.manF !== 'x') { notice('Sloped member end edits need a reviewed cut shape. Move sideways or reset this member.', true); renderWorkspace(); return; }
     const L = lay.lengthIn, physical = el.dataset.physical === 'true', axis = seatOf(m, lay.members);
@@ -2504,7 +2531,7 @@ function renderSketchMemberBar(p, f) {
     box.hidden = !m;
     if (!m) { box.innerHTML = ''; return; }
     const axis = seatOf(m, f.plan.layout.members), field = (label,k,v) => `<label>${label}<input type="text" data-man-f="${k}" data-key="${esc(key)}" data-physical="true" value="${esc(fine(v))}"></label>`;
-    box.innerHTML = `<b>${esc(m.mark)} · ${esc(m.role)}</b><button class="secondary" data-act="man-copy" data-key="${esc(key)}" title="Add another member like this">Copy</button>
+    box.innerHTML = `<b>${esc(m.mark)} · ${esc(m.role)}</b><button class="secondary" data-sketch-pin="member:${esc(key)}" aria-pressed="${SK.pinned(p,'member:'+key)}">${SK.pinned(p,'member:'+key)?'🔒 Unlock line':'Lock line'}</button><button class="secondary" data-act="man-copy" data-key="${esc(key)}" title="Add another member like this">Copy</button>
         <button class="secondary" data-act="man-mirror" data-key="${esc(key)}">Mirror</button><button class="secondary" data-act="${MAN.isAdded(key) ? 'man-lock' : 'man-remove'}" data-key="${esc(key)}">Delete</button>
         ${field('From left','x',m.x)}${field('From bottom','y',axis?.y0 ?? m.y)}${field(m.orient === 'v' ? 'Cut height' : 'Cut length','len',m.lengthIn)}
         <button class="link" data-ctx="clear">Done</button>`;
@@ -2516,6 +2543,7 @@ function manualPointerDown(e) {
     if (!editMode || !hit || e.button !== 0) return;
     const svg = hit.ownerSVGElement, i = Number(hit.dataset.i), g = current.plan?.graphics?.[i], key = current.plan?.layout?.members?.[i]?.key;
     if (!g || !key) return;
+    if(SK.pinned(cur(),'member:'+key)){notice('Unlock this sketch member before dragging it.',true);return;}
     const along = g.w >= g.h ? g.w : g.h, size = g.w >= g.h ? hit.width.baseVal.value : hit.height.baseVal.value;
     manDrag = { hit, svg, key, x0: e.clientX, y0: e.clientY, scale: (size - 0.06) / along, moved: false };
     hit.setPointerCapture?.(e.pointerId);

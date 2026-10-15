@@ -5,6 +5,7 @@
 // CAS convention: vertical members C0, C1, … and horizontal members T0, T1, …, one label per member type + length.
 
 import { formatDimension } from './dimensions.mjs';
+import { applyBottom, baseAt } from './bottom-profile.mjs';
 
 export const round16 = (inches) => Math.round(inches * 16) / 16;
 export const round8 = (inches) => Math.round(inches * 8) / 8;
@@ -48,11 +49,12 @@ export function flipLayout(layout) {
     const mirror = (pts) => pts.map(([x, y]) => [round16(L - x), y]).reverse(); // reversed: still counter-clockwise
     return {
         ...layout, flipped: !layout.flipped,
-        members: layout.members.map(m => ({ ...m, x: round16(L - m.x - m.w), ...(m.pts ? { pts: mirror(m.pts) } : {}) })),
+        members: layout.members.map(m => ({ ...m, x: round16(L - m.x - m.w), ...(m.pts ? { pts: mirror(m.pts) } : {}), ...(m.baseTrack?{slope:-m.slope}:{}), ...(m.atBottom?{bottomSlope:-m.bottomSlope}:{}) })),
         openings: layout.openings.map(o => ({ ...o, left: round16(L - o.right), right: round16(L - o.left),
             ...(o.requested ? { requested: { left: round16(L - o.requested.right), right: round16(L - o.requested.left) } } : {}) })).sort((a, b) => a.left - b.left),
         ticks: [...new Set(layout.members.filter(m => m.orient === 'v').map(m => round16(L - m.x - m.w)))].sort((a, b) => a - b),
         ...(layout.top ? { top: mirror(layout.top) } : {}),
+        ...(layout.bottom ? { bottom: mirror(layout.bottom) } : {}),
         ...(layout.clips ? { clips: layout.clips.map(c => ({ ...c, x: round16(L - c.x), side: c.side === 'R' ? 'L' : 'R' })) } : {}),
     };
 }
@@ -181,9 +183,9 @@ export const SEAT_ALLOWANCE_IN = 1 / 16;
 // top and bottom track; Infinity (default) = one-piece studs full height.
 // top: a sloped top (a rake or a gable; wallTop): points [x, height]; heightIn is then the highest of them. A sloped
 // wall is one lift; its top track is one piece per run of the slope, cut along it.
-export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn = Infinity, top = null, ...panel }) {
+export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn = Infinity, top = null, bottom = null, ...panel }) {
     const L = round16(lengthIn), T = wallTop(top, L), H = T ? Math.max(...T.map(p => p[1])) : round16(heightIn);
-    const lifts = !T && H > liftIn ? Math.ceil(H / liftIn - 1e-9) : 1;
+    const lifts = !T && !bottom && H > liftIn ? Math.ceil(H / liftIn - 1e-9) : 1;
     const liftH = H / lifts;
     const members = [];
     let first = null;
@@ -196,6 +198,7 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     }
     const leg = panel.trackLegIn ?? 1.25;
     const ops = clipOpenings(openings, L, H, leg, T);
+    if(bottom)applyBottom(members,bottom,{top:T,heightIn:H,leg,cutbackIn:panel.cutbackIn??SEAT_ALLOWANCE_IN});
     const { cutList } = labelMembers(members, rows);
     // Stud layout ticks (left face of each vertical) for the ordinate dimensions and track layout strips.
     const ticks = [...new Set(members.filter(m => m.orient === 'v').map(m => round16(m.x)))].sort((a, b) => a - b);
@@ -203,12 +206,13 @@ export function frameWall({ lengthIn, heightIn, openings = [], rows = 1, liftIn 
     if (rows > 1) notes.push(`${rows} stud rows: elevation shows one row; quantities are for all rows.`);
     if (lifts > 1) notes.push(`${lifts} lifts of ${fmtFtIn(liftH)}: each lift has its own top and bottom track.`);
     if (T) notes.push('Sloped top: stud lengths are at the long point; cut the stud tops to the slope.');
+    if(bottom)notes.push('Sloped bottom: studs stay plumb; bottom ends follow the base slope. Check threshold and bearing details.');
     const sp = panel.spacingIn ?? 16;
     const end = panel.layoutFromRight ? 'right' : 'left';
     if (panel.layoutStartIn > 0 && Math.abs(panel.layoutStartIn - sp) > 1e-6) notes.push(`Stud layout: first stud ${fmtFtIn(panel.layoutStartIn)} from the ${end} end (center), then ${sp}" o.c.${panel.layoutFromRight ? ' Plan ordinates from the right end.' : ''}`);
     else if (panel.layoutFromRight) notes.push(`Stud layout from the right end, ${sp}" o.c. Plan ordinates from the right end.`);
     const layout = { lengthIn: L, heightIn: H, lifts, openings: ops, members, cutList, ticks, notes, studIn: panel.studIn ?? 3.625,
-        studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn, ...(T ? { top: T, trackLegIn: leg } : {}),
+        studType: first.studType, trackType: first.trackType, spacingIn: first.spacingIn, ...(T ? { top: T, trackLegIn: leg } : {}), ...(bottom?{bottom,trackLegIn:leg}:{}),
         ...(panel.layoutStartIn > 0 ? { layoutStartIn: panel.layoutStartIn } : {}), ...(panel.layoutFromRight ? { layoutFromRight: true } : {}), ...(panel.flipStuds ? { flipStuds: true } : {}),
         ...(panel.cutbackIn != null && panel.cutbackIn !== SEAT_ALLOWANCE_IN ? { cutbackIn: panel.cutbackIn } : {}),
         ...(panel.seatPieces ? { seatPieces: true } : {}), ...(panel.headEnds === 'flush' ? { headEnds: 'flush', headCutbackIn: panel.headCutbackIn || 0 } : {}),
@@ -448,7 +452,7 @@ function framePanel({ lengthIn, heightIn, openings = [], studIn = 3.625, spacing
 // means under the slope.
 export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
     const { lengthIn: L, heightIn: H, members, openings } = layout;
-    const T = layout.top || null, LEG = layout.trackLegIn ?? 1.25;
+    const T = layout.top || null, B=layout.bottom||null, LEG = layout.trackLegIn ?? 1.25;
     const eps = 1 / 32, issues = [];
     const boxes = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x) > eps && Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y) > eps;
     const physical = m => m.manualAxis ? { ...m, y:m.manualAxis[0], h:m.manualAxis[1]-m.manualAxis[0] } : m;
@@ -458,15 +462,15 @@ export function checkLayout(layout, { flangeIn = 1.625 } = {}) {
         const shared = sharedArea(cornersOf(a), cornersOf(b));
         return shared == null ? true : shared > eps * eps;
     };
-    const outside = (m) => (m.manualAxis && (m.manualAxis[0] < -eps || m.manualAxis[1] > topMin(T, m.x, m.x + m.w, H) + eps)) || (m.pts ? m.pts.some(([x, y]) => x < -eps || x > L + eps || y < -eps || y > topAt(T, x, H) + eps)
-        : m.x < -eps || m.y < -eps || m.x + m.w > L + eps || m.y + m.h > topMin(T, m.x, m.x + m.w, H) + eps);
+    const outside = (m) => (m.manualAxis && (m.manualAxis[0] < baseAt(B,m.x+m.w/2)-eps || m.manualAxis[1] > topAt(T,m.x+m.w/2,H) + eps)) || (m.pts ? m.pts.some(([x, y]) => x < -eps || x > L + eps || y < baseAt(B,x)-eps || y > topAt(T, x, H) + eps)
+        : m.x < -eps || m.y < Math.max(baseAt(B,m.x),baseAt(B,m.x+m.w))-eps || m.x + m.w > L + eps || m.y + m.h > topMin(T, m.x, m.x + m.w, H) + eps);
     const name = (m) => `${m.mark || '?'} (${m.role})`;
     const what = (o) => `${isDoor(o) ? 'door' : 'opening'} at ${fmtFtIn(o.left)} to ${fmtFtIn(o.right)}`;
     const vs = members.filter(m => m.orient === 'v'), hs = members.filter(m => m.orient === 'h');
     if (layout.manual && (layout.manual.count || layout.manual.deleted)) {
         for (const side of ['left','right']) {
             const supports = vs.some(m => (side === 'left' ? Math.abs(m.x) <= eps : Math.abs(m.x + m.w - L) <= eps)
-                && (m.manualAxis?.[0] ?? m.y) <= LEG + eps
+                && (m.manualAxis?.[0] ?? m.y) <= Math.max(baseAt(B,m.x),baseAt(B,m.x+m.w)) + LEG*Math.hypot(1,m.bottomSlope||0) + eps
                 && (m.manualAxis?.[1] ?? m.y + m.h) >= topMin(T,m.x,m.x+m.w,H) - LEG - eps);
             if (!supports) issues.push({ code:'no-end', message:`No full-height end stud at the ${side} panel edge` });
         }

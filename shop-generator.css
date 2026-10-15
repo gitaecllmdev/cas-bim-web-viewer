@@ -149,6 +149,17 @@ button.link.danger { color: var(--warn); }
 .sk-edge-on { stroke: #ff8a3d; stroke-width: 4px; pointer-events: none; }
 .sk-ctx, .sk-dim, .sk-ctx-t, .sk-dim-t, .sk-label { pointer-events: none; } /* dimensions and highlights: the pointer goes through to what is under them */
 .sk-dim line { stroke: #1b6aa5; stroke-width: 1px; } .sk-dim-t { fill: #1b6aa5; font-weight: 600; }
+.sketch .sk-edit-dim,.sketch .sk-line-pin {pointer-events:all;cursor:pointer;fill:#1b6aa5;text-decoration:underline;}
+.sketch .sk-edit-dim:focus,.sketch .sk-line-pin:focus {outline:2px solid #1b6aa5;outline-offset:3px;}
+#wall-sketch-constraints {border-bottom:1px solid var(--line);margin-bottom:8px;padding-bottom:8px;min-width:0;}
+.wall-sketch-pinbar,.wall-slope-options,.wall-slope-fields {display:flex;flex-wrap:wrap;align-items:center;gap:6px 10px;}
+.wall-sketch-pinbar {margin-bottom:7px;}.wall-sketch-pinbar button {padding:3px 7px;}.wall-sketch-pinbar button.on {background:var(--accent);color:white;}
+.wall-slope-options {margin-bottom:6px;}.wall-slope-options label {display:flex;align-items:center;gap:5px;font-size:12px;}.wall-slope-options select {max-width:165px;padding:3px;}
+.wall-slope-row {display:flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:12px;min-width:0;}.wall-slope-row input {width:76px;padding:4px 6px;}.wall-slope-row small {color:var(--muted);white-space:nowrap;font-size:12px;}
+.wall-slope-row input,.wall-slope-options select,.sketch-dimension-dialog input,.sketch-dimension-dialog select {border:1px solid var(--line);border-radius:5px;background:white;color:var(--ink);font:inherit;}
+#view-sketch .sketch svg {height:clamp(280px,46vh,500px);}
+.sketch-dimension-dialog {width:min(360px,calc(100vw - 28px));max-height:calc(100dvh - 40px);overflow:auto;border:1px solid var(--line);border-radius:7px;padding:18px;color:var(--ink);background:white;box-shadow:0 12px 40px #0003;}
+.sketch-dimension-dialog::backdrop {background:#203c5655;}.sketch-dimension-dialog h2 {font-size:16px;margin:0 0 14px;}.sketch-dimension-dialog label {display:flex;align-items:center;gap:10px;margin:10px 0;}.sketch-dimension-dialog input,.sketch-dimension-dialog select {min-width:0;flex:1;padding:7px;}.sketch-dimension-dialog footer {display:flex;justify-content:flex-end;gap:8px;margin-top:14px;}#wall-dimension-error {color:#9c2525;font-size:13px;}
 .sk-ctx line { stroke: #d2691e; stroke-width: 1.4px; } .sk-ctx-t { fill: #b4530f; font-weight: 700; }
 .sk-ctx.live line { stroke: #e65100; stroke-width: 1.8px; } .sk-ctx.live .sk-ctx-t, .sk-ctx.live text { fill: #e65100; }
 .sk-ctx.hov line { stroke: #8d6e63; stroke-dasharray: 4 3; } .sk-ctx.hov text { fill: #6d4c41; }

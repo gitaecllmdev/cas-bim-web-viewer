@@ -111,6 +111,7 @@ const over = (t, m) => t.orient === 'h' && t.x < m.x + m.w - 1e-6 && t.x + t.w >
 export function seatOf(m, members) {
     if (m.orient !== 'v' || !(m.lengthIn > 0)) return null;
     if (m.manualAxis) return { y0: m.manualAxis[0], y1: m.manualAxis[1] };
+    if (m.baseAxis) return { y0: m.baseAxis[0], y1: m.baseAxis[1] };
     if (m.topAxis) return { y0: m.topAxis[0], y1: m.topAxis[1] };
     // A piece seated by the engine (m.seat: how far into the track under it and over it): down into the one, its cut
     // length up from there (the cutback short of the other's web).
@@ -656,7 +657,7 @@ export function sheetOps(layout, info) {
     const stripH = Math.max(0.1, Math.min(0.25, (layout.studIn || 6) * s));
     const topStrip = elevTop - 0.75, botStrip = elevBottom + 0.4;
     const trackLeg = members.find(m => m.role === 'top track')?.h ?? 1.25;
-    const studsAt = (atTop) => members.filter(m => m.orient === 'v' && (atTop ? (T ? m.atTop : m.y + m.h >= HT - trackLeg - 0.01) : m.y <= trackLeg + 0.01));
+    const studsAt = (atTop) => members.filter(m => m.orient === 'v' && (atTop ? (T ? m.atTop : m.y + m.h >= HT - trackLeg - 0.01) : m.atBottom || m.y <= trackLeg + 0.01));
     // A C stud in plan: web across the track, flanges along its two faces, lips turned in. The web goes on the side of
     // the opening or panel end the stud closes (jamb and end studs), else on its left face.
     const studSymbol = (m, y0) => {
@@ -671,7 +672,7 @@ export function sheetOps(layout, info) {
     // Plan ordinates from the end the stud layout starts at (Flip panel: the right end; on side B the drawing is mirrored).
     const ordinate = (x) => fmtFtIn(layout.layoutFromRight && !layout.flipped ? L - x : x);
     const plan = (y0, atTop) => {
-        const segs = atTop ? members.filter(m => m.role === 'top track' && (T || m.y + m.h >= HT - 0.01)) : members.filter(m => m.role === 'bottom track' && m.y <= 0.01);
+        const segs = atTop ? members.filter(m => m.role === 'top track' && (T || m.y + m.h >= HT - 0.01)) : members.filter(m => m.role === 'bottom track' && (m.baseTrack || m.y <= 0.01));
         for (const m of segs) out.push(rect(X(m.x), y0, m.w * s, stripH, { fill: COLORS.track, stroke: COLORS.trackStroke, width: 0.006 }));
         for (const m of studsAt(atTop)) {
             out.push(...studSymbol(m, y0));

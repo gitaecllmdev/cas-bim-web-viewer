@@ -18,7 +18,8 @@
 //   (its jambs moved out to the nearest layout studs, which then serve as its jambs), revit (kept as it came: the model's wall this panel is, its place by the grids;
 //   see docs/panel-exchange.md) }.
 // A set (the JSON file, see exportSet): { format, version, project, drawnBy, source, grids, levels, panels: [panel] }.
-import { frameWall, flipLayout, fmtFtIn, round16, underMin, wallTop, topAt, topMin, webOnRight, relabel, floor8 } from '../common/framing.mjs';
+import { frameWall, flipLayout, fmtFtIn, round16, underAt, underMin, wallTop, topAt, topMin, webOnRight, relabel, floor8 } from '../common/framing.mjs';
+import { baseAt } from '../common/bottom-profile.mjs';
 import { readExchange } from './exchange.mjs';
 import { cleanRevisions } from './revisions.mjs';
 import { inheritSourceFraming } from './source-framing.mjs';
@@ -121,15 +122,17 @@ export function shapeTop(shape = {}) {
     return { lengthIn: round16(L), heightIn: top ? Math.max(...top.map(p => p[1])) : round16(flatH), top };
 }
 
+export function shapeBottom(shape={}){const l=shape.bottomLeftIn||0,r=shape.bottomRightIn||0;return l||r?[[0,l],[shape.lengthIn,r]]:null;}
 // The shape changed to another kind, keeping its sizes: a rectangle's height becomes the eaves and the drawn points.
 export function changeShape(shape, kind) {
     const { lengthIn: L, heightIn: H, top } = shapeTop(shape);
     const at = (x) => topAt(top, x, H);
     const eaveL = top ? at(0) : H, eaveR = top ? at(L) : H;
-    if (kind === 'rect') return { kind, lengthIn: L, heightIn: H };
-    if (kind === 'rake') return { kind, lengthIn: L, leftIn: eaveL, rightIn: eaveR === eaveL ? round16(eaveL + L / 6) : eaveR };
-    if (kind === 'gable') return { kind, lengthIn: L, leftIn: eaveL, rightIn: eaveR, peakAtIn: round16(shape.peakAtIn ?? L / 2), peakIn: round16(Math.max(H, eaveL, eaveR) > eaveL ? H : eaveL + L / 4) };
-    return { kind: 'custom', lengthIn: L, points: top ? top.map(p => [...p]) : [[0, H], [L, H]] };
+    const base=shapeBottom(shape)?{bottomLeftIn:shape.bottomLeftIn||0,bottomRightIn:shape.bottomRightIn||0}:{};
+    if (kind === 'rect') return { kind, lengthIn: L, heightIn: H,...base };
+    if (kind === 'rake') return { kind, lengthIn: L, leftIn: eaveL, rightIn: eaveR === eaveL ? round16(eaveL + L / 6) : eaveR,...base };
+    if (kind === 'gable') return { kind, lengthIn: L, leftIn: eaveL, rightIn: eaveR, peakAtIn: round16(shape.peakAtIn ?? L / 2), peakIn: round16(Math.max(H, eaveL, eaveR) > eaveL ? H : eaveL + L / 4),...base };
+    return { kind: 'custom', lengthIn: L, points: top ? top.map(p => [...p]) : [[0, H], [L, H]],...base };
 }
 
 // --- Opening kinds ---------------------------------------------------------------------------------------------------
@@ -325,6 +328,13 @@ export function perimeterToPanel(points) {
     const x0 = Math.min(...P.map(p => p[0])), y0 = Math.min(...P.map(p => p[1]));
     P = P.map(([x, y]) => [round16(x - x0), round16(y - y0)]);
     const L = Math.max(...P.map(p => p[0]));
+    // A simple four-corner panel may have two sloped boundaries; keep the low base end at the local datum.
+    if(P.length===4){const left=P.filter(p=>eq(p[0],0)).sort((a,b)=>a[1]-b[1]),right=P.filter(p=>eq(p[0],L)).sort((a,b)=>a[1]-b[1]);if(left.length===2&&right.length===2&&!eq(left[0][1],right[0][1])){
+        const connects=(a,b)=>P.some((p,i)=>{const q=P[(i+1)%P.length];return p===a&&q===b||p===b&&q===a;});
+        if(!connects(left[0],right[0])||!connects(left[1],right[1]))return fail('The perimeter crosses itself. Draw the corners in boundary order.');
+        if(Math.min(left[1][1]-left[0][1],right[1][1]-right[0][1])<12)return fail('Keep at least 12 inches between the top and bottom.');
+        return {shape:{kind:'rake',lengthIn:L,leftIn:left[1][1],rightIn:right[1][1],bottomLeftIn:left[0][1],bottomRightIn:right[0][1]},openings:[],errors:[]};
+    }}
     if (P.reduce((sum, p, i) => { const q = P[(i + 1) % P.length]; return sum + p[0] * q[1] - q[0] * p[1]; }, 0) < 0) P.reverse(); // counter-clockwise
     const s0 = P.findIndex(p => eq(p[0], 0) && eq(p[1], 0)), sR = P.findIndex(p => eq(p[0], L) && eq(p[1], 0));
     if (s0 < 0 || sR < 0) return fail('The bottom of a panel is flat, from end to end, and its ends are plumb: start at a bottom corner and keep the bottom level.');
@@ -397,6 +407,9 @@ export function panelErrors(panel) {
     const add = (where, message, code = 'input.invalid') => errors.push({ where, message, code });
     if (!(L >= 12)) add('shape', 'Give the panel a length (at least 1\'-0").', 'input.shape');
     if (!(H >= 12)) add('shape', 'Give the panel a height (at least 1\'-0").', 'input.shape');
+    if(['bottomLeftIn','bottomRightIn'].some(k=>panel.shape[k]!=null&&(!Number.isFinite(panel.shape[k])||panel.shape[k]<0||panel.shape[k]>12000)))add('shape','Bottom end elevations must be finite, from 0 to 1,000 feet.','input.shape');
+    const base=shapeBottom(panel.shape),baseAt=x=>base?base[0][1]+(base[1][1]-base[0][1])*x/L:0;
+    if(base&&shapePoints(panel.shape).some(([x,y])=>y-baseAt(x)<12))add('shape','Keep at least 12 inches between the top and bottom at every control point.','input.shape');
     if (panel.shape?.kind === 'custom') {
         const xs = (panel.shape.points || []).map(p => p[0]);
         if (xs.some((x, i) => i && x <= xs[i - 1])) add('shape', 'Each point of the top must be further right than the one before it (a step is two panels).', 'input.shape');
@@ -463,7 +476,8 @@ export function panelErrors(panel) {
                 if (room < headH - 1 / 32) add(where, `${n}: no room for its header under the top track (${inch(Math.max(0, room))} above it, ${inch(headH)} needed${headH > leg ? ` for its ${inch(headH)} deep header` : ''}). Lower it, use a shallower header, or raise it to the top track.`, 'opening.header_room');
             }
         }
-        if (kind !== 'door' && b.bottom < leg + sillH) add(where, `${n}: its sill is too low for a sill${sillH > leg ? ` ${inch(sillH)} deep` : ' track'}${kind === 'steel' ? '' : '; make it a door, or raise the sill'}.`, 'opening.sill_low');
+        const baseHigh=base?Math.max(baseAt(Math.max(0,b.left-flange)),baseAt(Math.min(L,b.right+flange)))+leg*Math.hypot(1,(base[1][1]-base[0][1])/L):leg;
+        if (kind !== 'door' && b.bottom < baseHigh + sillH) add(where, `${n}: its sill is too low for a sill${sillH > leg ? ` ${inch(sillH)} deep` : ' track'}${base?' above the sloped bottom':''}${kind === 'steel' ? '' : '; make it a door, or raise the sill'}.`, 'opening.sill_low');
         boxes.forEach((c, j) => {
             if (j <= i || isSmallPenetration(panel, panel.openings[j])) return;
             if (Math.min(b.right, c.right) - Math.max(b.left, c.left) > 0 && Math.min(b.top, c.top) - Math.max(b.bottom, c.bottom) > 0) {
@@ -514,7 +528,8 @@ export function frameInputs(panel) {
         const offs = offsetsOf(o);
         return { ...fr.ro, key: keys[i], ...(Math.max(offs.left, offs.right, offs.top, offs.bottom) > 0 ? { clear: openingBox(o, heightIn) } : {}), ...(o.toLayout ? { toLayout: true } : {}), framing: { ...framing, source: 'entered' } };
     });
-    const inputs = { lengthIn, heightIn, top, openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
+    const bottom=shapeBottom(panel.shape);
+    const inputs = { lengthIn, heightIn, top,...(bottom?{bottom}:{}), openings, studIn: stud.depthIn, flangeIn: stud.flangeIn ?? 1.625, mils: stud.mils, studName: stud.name,
         trackName: track.name, trackLegIn: track.flangeIn ?? 1.25, topTrackName: topTrack?.name, spacingIn: Number(m.spacingIn) > 0 ? Number(m.spacingIn) : 16 }; // (no spacing: panelErrors stops framing first)
     if (panel.layoutFromRight) inputs.layoutFromRight = true;
     if (panel.flipStuds) inputs.flipStuds = true;
@@ -661,7 +676,7 @@ export function cleanManual(m) {
     for (const [k, v] of Object.entries(m.members || {})) {
         if (!k || k.length > 120) continue;
         if (v?.deleted === true) members[k] = { deleted: true };
-        else if (okBox(v)) members[k] = { ...box16(v), ...typeOf(v) };
+        else if (okBox(v)) members[k] = { ...box16(v), ...typeOf(v),...(v.followProfile===true?{followProfile:true}:{}) };
     }
     const added = (Array.isArray(m.added) ? m.added : []).filter(a => MANUAL_ID.test(String(a?.id || '')) && typeof a.from === 'string' && a.from && okBox(a))
         .map(a => ({ id: String(a.id), from: a.from, ...box16(a), ...(a.mirrored ? { mirrored: true } : {}), ...typeOf(a) }));
@@ -672,9 +687,16 @@ export function cleanManual(m) {
 }
 // A member at another place and size: its outline (a sloped piece's points) moved with it, its cut length changed by
 // what its length changed (the engine's own allowance kept).
-function placed(m, b) {
+function placed(m, b,layout) {
+    if(b.followProfile&&m.full&&m.orient==='v'){
+        const x=b.x,r=x+m.w,c=(x+r)/2,T=layout.top,B=layout.bottom,H=layout.heightIn,leg=layout.trackLegIn||1.25,k=B?(B[1][1]-B[0][1])/layout.lengthIn:0,t=leg*Math.hypot(1,k),bottom=px=>baseAt(B,px),upper=px=>m.topGapIn?H-m.topGapIn:topAt(T,px,H);
+        const cuts=[x,...(T||[]).map(p=>p[0]).filter(px=>px>x&&px<r),r];
+        const pts=[[x,bottom(x)+t],[r,bottom(r)+t],...cuts.slice().reverse().map(px=>[px,m.topGapIn?H-m.topGapIn:underAt(T,px,H,leg)])],ys=pts.map(p=>p[1]);
+        return {...m,x,y:Math.min(...ys),h:Math.max(...ys)-Math.min(...ys),pts,lengthIn:floor8(Math.max(...cuts.map(px=>upper(px)-bottom(px)))-(m.topGapIn?0:layout.cutbackIn??.125)),manualAxis:[bottom(c),upper(c)],...(B?{atBottom:true,bottomSlope:k}:{}),...(b.type?{type:b.type}:{})};
+    }
     const dx = b.x - m.x, dy = b.y - m.y, grow = m.orient === 'v' ? b.h - m.h : b.w - m.w;
     const out = { ...m, x: b.x, y: b.y, w: b.w, h: b.h, lengthIn: floor8(m.lengthIn + grow), ...(m.pts ? { pts: m.pts.map(([x, y]) => [x + dx, y + dy]) } : {}) };
+    if(m.baseAxis)out.baseAxis=m.baseAxis.map((v,i)=>v+dy+(i?grow:0));
     if (m.orient === 'v' && !m.pts) {
         const start = (m.full ? 0 : m.seat ? m.y - m.seat[0] : m.y) + dy;
         out.manualAxis = [start, start + out.lengthIn]; // exact inherited fabrication length, moved by the requested offset
@@ -695,13 +717,13 @@ export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
     for (const m of layout.members) {
         const e = edits.members[m.key];
         if (!e) members.push(m);
-        else if (!e.deleted) members.push({ ...placed(m, e), manual: e.type && e.x === round16(m.x) && e.y === round16(m.y) && e.w === round16(m.w) && e.h === round16(m.h) ? 'retyped' : 'moved' });
+        else if (!e.deleted) members.push({ ...placed(m, e,layout), manual: e.type && e.x === round16(m.x) && e.y === round16(m.y) && e.w === round16(m.w) && e.h === round16(m.h) ? 'retyped' : 'moved' });
     }
     for (const k of Object.keys(edits.members)) if (!byKey.has(k)) stale.push({ key: k, message: `${k} was edited by hand but is no longer in the framing (the panel changed): the edit is not applied.` });
     for (const a of edits.added || []) {
         const src = byKey.get(a.from);
         if (!src) { stale.push({ key: `manual:${a.id}`, message: `A copy of ${a.from} was added by hand, but ${a.from} is no longer in the framing: the copy is not applied.` }); continue; }
-        const copy = { ...placed(src, a), key: `manual:${a.id}`, manual: 'added', from: a.from };
+        const copy = { ...placed(src, a,layout), key: `manual:${a.id}`, manual: 'added', from: a.from };
         delete copy.full; // a piece of its own: never the full height by rule
         if (a.mirrored) copy.flipWeb = !src.flipWeb;
         members.push(copy);
@@ -989,7 +1011,7 @@ export function provenanceOf(raw) {
 }
 
 const len = (v) => { const n = parseLength(v); return n == null ? undefined : n; };
-const PANEL_KEYS = new Set(['framingOrigins', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
+const PANEL_KEYS = new Set(['sketchPins', 'framingOrigins', 'deflectionGapIn', 'seatPieces', 'headEnds', 'headCutbackIn', 'sillEnds', 'sillCutbackIn', 'revisions', 'id', 'mark', 'level', 'wallType', 'group', 'sideB', 'optimizeOpenings', 'layoutStartIn', 'layoutFromRight', 'flipStuds', 'studFlips', 'clips', 'revit', 'style', 'styleQuery', 'manual', 'context', 'cutbackIn',
     'shape', 'outline', 'members', 'openings', 'provenance', 'framing', 'extra', 'layout']);
 const OPENING_KEYS = new Set(['offsets', 'profile', 'insertId', 'id', 'kind', 'leftIn', 'widthIn', 'heightIn', 'sillIn', 'head', 'jamb', 'sill', 'locked', 'toLayout', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'style',
     'headBearing', 'crippleEnds', 'extra']);
@@ -1014,6 +1036,7 @@ export function cleanPanel(p = {}) {
     if (kind === 'rake' || kind === 'gable') { shape.leftIn = len(s.leftIn) ?? 96; shape.rightIn = len(s.rightIn) ?? shape.leftIn; }
     if (kind === 'gable') { shape.peakIn = len(s.peakIn) ?? shape.leftIn + 24; shape.peakAtIn = len(s.peakAtIn) ?? shape.lengthIn / 2; }
     if (kind === 'custom') shape.points = (s.points || []).map(pt => [len(pt?.[0]) ?? 0, len(pt?.[1]) ?? 0]);
+    for(const k of ['bottomLeftIn','bottomRightIn'])if(s[k]!=null)shape[k]=Number(s[k]);
     const str = (v, n = 80) => String(v ?? '').trim().slice(0, n);
     const model = !!(p.revit && typeof p.revit === 'object');
     const members = { ...DEFAULT_MEMBERS, ...Object.fromEntries(Object.entries(p.members || {}).map(([k, v]) => [k, k === 'spacingIn' ? Number(v) || 16 : str(v)])) };
@@ -1038,6 +1061,7 @@ export function cleanPanel(p = {}) {
         ...(p.deflectionGapIn != null && p.deflectionGapIn !== '' ? { deflectionGapIn: Number(p.deflectionGapIn) } : {}),
         ...(p.context && typeof p.context === 'object' ? { context: structuredClone(p.context) } : {}), // level and grid lines (context-lines.mjs: drawing only)
         ...(p.styleQuery && (str(p.styleQuery.finish) || str(p.styleQuery.depthCode)) ? { styleQuery: { finish: str(p.styleQuery.finish), depthCode: str(p.styleQuery.depthCode, 8) } } : {}),
+        ...(Array.isArray(p.sketchPins)?{sketchPins:[...new Set(p.sketchPins.filter(k=>typeof k==='string'&&k.length<240))].slice(0,2000)}:{}),
         shape, members: Object.fromEntries(Object.keys(DEFAULT_MEMBERS).map(k => [k, members[k]])),
         openings: (p.openings || []).map(o => {
             const kind = kindOf(o), size = OPENING_TYPES[kind].size, H = shapeTop(shape).heightIn;
@@ -1091,7 +1115,8 @@ export function encodePanel(panel) {
         trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : '',
             o.offsetIn ?? (o.locked ? offsetOf(o) : ''), o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : '', o.offsets || ''])), '', p.optimizeOpenings ? 1 : '',
         p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '',
-        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '', p.deflectionGapIn ?? '', manualForLink(p)]);
+        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '', p.deflectionGapIn ?? '', manualForLink(p),
+        shapeBottom(p.shape)||p.sketchPins?.length?{bottomLeftIn:p.shape.bottomLeftIn||0,bottomRightIn:p.shape.bottomRightIn||0,pins:p.sketchPins||[]}:undefined]);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -1101,13 +1126,14 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = '', deflectionGapIn = '', manual] = data;
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = '', deflectionGapIn = '', manual,sketch] = data;
     return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn, ...(cutbackIn === '' ? {} : { cutbackIn }),
         ...(seat === 0 ? { seatPieces: false } : {}), ...(headFlush === 1 ? { headEnds: 'flush', headCutbackIn: headCut } : {}), ...(sillFlush === 1 ? { sillEnds: 'flush', sillCutbackIn: sillCut } : {}),
         ...(deflectionGapIn === '' ? {} : { deflectionGapIn }),
         ...(manual ? { manual } : {}),
         clips: Array.isArray(clips) ? clips.map(([type, x, y]) => ({ type, x, y })) : [], studFlips: Array.isArray(studFlips) ? studFlips : [],
-        shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
+        ...(sketch?.pins?{sketchPins:sketch.pins}:{}),
+        shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])),...(sketch?{bottomLeftIn:sketch.bottomLeftIn||0,bottomRightIn:sketch.bottomRightIn||0}:{}) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
         openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill, toLayout, offsetIn, jambStyle, headStyle, sillStyle, jacks, crippleEnds, offsets]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill,
             toLayout: toLayout === 1, offsetIn, jambStyle, headStyle, sillStyle, headBearing: jacks === 1 ? 'jacks' : '', crippleEnds: crippleEnds === 1, ...(offsets ? { offsets } : {}) })) });
