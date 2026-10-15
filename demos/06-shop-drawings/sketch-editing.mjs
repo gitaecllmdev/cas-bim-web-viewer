@@ -2,11 +2,20 @@
 import * as G from './generator.mjs';
 import * as M from './manual.mjs';
 import { topAt } from '../common/framing.mjs';
+import { baseAt } from '../common/bottom-profile.mjs';
 export const pinned=(p,key)=>(p.sketchPins||[]).includes(key);
 export function togglePin(p,key){const next=structuredClone(p),pins=new Set(next.sketchPins||[]);pins.has(key)?pins.delete(key):pins.add(key);next.sketchPins=[...pins];return next;}
 const finite=(n)=>Number.isFinite(n)&&Math.abs(n)<=12000;
 const equal=(a,b)=>Math.abs(a-b)<1e-6;
 export function topPoints(shape){const s=G.shapeTop(shape);return s.top?.map(q=>[...q])||[[0,s.heightIn],[s.lengthIn,s.heightIn]];}
+// Click insertion follows the actual outline, including concave tops and sloped bases. Grip drags use their own rules.
+export function pointInPanel(panel,point){
+    if(!Array.isArray(point)||!point.every(Number.isFinite)||point.length!==2)return false;
+    const [x,y]=point,{lengthIn:L,heightIn:H,top}=G.shapeTop(panel.shape);
+    const tol=1e-4; // SVG screen transforms can round an exact boundary click by a few millionths of an inch.
+    if(!(L>0&&H>0)||x<-tol||x>L+tol)return false;
+    return y>=baseAt(G.shapeBottom(panel.shape),x)-tol&&y<=topAt(top,x,H)+tol;
+}
 export function pinError(before,after){
     if(pinned(before,'top')&&JSON.stringify(topPoints(before.shape))!==JSON.stringify(topPoints(after.shape)))return 'Unlock the top line before changing it.';
     if(pinned(before,'bottom')&&JSON.stringify(G.shapeBottom(before.shape))!==JSON.stringify(G.shapeBottom(after.shape)))return 'Unlock the bottom line before changing it.';

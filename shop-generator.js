@@ -794,6 +794,13 @@ function renderTools() {
 }
 function renderHint() {
     const el = $('#tool-hint');
+    const help = $('#sketch-help'), custom = cur()?.shape.kind === 'custom', free = G.canEdit(cur(), 'shape');
+    const hints = tool === 'perimeter' ? [['Click inside wall','add corner'],['Double-click / Enter','close outline'],['Backspace','undo corner'],['Esc','cancel']]
+        : tool === 'opening' ? [['Drag inside wall','draw opening'],['Esc','cancel']]
+        : tool === 'clip' ? [['Click stud','add clip'],['Click clip','remove'],['Esc','finish']]
+        : [['Click','select edge or member'],['Click dimension','type size'],...(free ? [['Drag corner','reshape freely'],...(custom ? [['Click inside wall','add top point'],['Double-click point','remove interior point']] : [])] : [])];
+    help.innerHTML = hints.map(([gesture,action])=>`<span><b>${gesture}</b> ${action}</span>`).join('');
+    el.hidden = tool === 'select' || tool === 'opening';
     if (tool === 'perimeter') {
         el.innerHTML = `<b>Drawing the perimeter:</b> click each corner (it snaps level and plumb, and to the corners already placed). Type a length and press Enter to place the next corner exactly
             that far toward the pointer. Click the first corner, or press Enter, to close it. A rectangle up from the bottom becomes a door; one down from the top a steel penetration.
@@ -811,7 +818,7 @@ function renderHint() {
     } else if (tool === 'opening') {
         el.innerHTML = '<b>Drawing an opening:</b> drag a rectangle on the panel. Touching the floor it is a door; up through the top a steel penetration; else a window (make it an MEP opening on the right). Esc to stop.';
     } else {
-        el.textContent = 'Click a dimension to edit · Select an angled edge for slope · Select a stud for spacing';
+        el.textContent = '';
     }
     el.title = el.textContent;
 }
@@ -848,6 +855,7 @@ function renderSketch() {
     if (!view) fit();
     svgEl.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svgEl.dataset.tool = tool;
+    svgEl.dataset.outside = String(tool === 'perimeter' && !!peri?.cursor && !SK.pointInPanel(p, peri.cursor));
     const scale = Math.min(Math.max(1, svgEl.clientWidth - 2) / view.w, Math.max(1, svgEl.clientHeight - 2) / view.h);
     const u = Math.min(Math.max(view.w, view.h) / 100, 7 / scale), fs = u * 2.2, at = (x) => topAt(top, x, H), Y = (y) => -y;
     const t = (x, y, s, { a = 'middle', cls = 'sk-label', size = fs, rot = 0,edit=null,pin=null } = {}) => `<text x="${x}" y="${y}" text-anchor="${a}" font-size="${size}" class="${cls}${edit?' sk-edit-dim':''}${pin?' sk-line-pin':''}"${edit?` data-sketch-dim="${esc(JSON.stringify(edit))}" role="button" tabindex="0" aria-label="Edit ${esc(s)}"`:''}${pin?` data-sketch-pin="${esc(pin)}" role="button" tabindex="0"`:''}${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${esc(s)}</text>`;
@@ -1081,7 +1089,11 @@ function bindSketch(svg) {
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
         svg.setPointerCapture(e.pointerId);
         e.preventDefault();
-        if (tool === 'perimeter') { drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return; }
+        if (tool === 'perimeter') {
+            peri.cursor = snapPerimeter(q);
+            if(!SK.pointInPanel(p,q)&&!e.target.closest('.sk-vertex.first')){renderSketch();return;}
+            drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return;
+        }
         if (tool === 'opening') { rectDraw = { a: [snap(q[0]), snap(q[1])], b: [snap(q[0]), snap(q[1])] }; drag = { what: 'rect', x: e.clientX, y: e.clientY, moved: false }; return; }
         if (tool === 'clip') { const c = e.target.closest('[data-clip]'); if (c) { removeClip(p, Number(c.dataset.clip)); return; } const a = clipAimAt(p, q, e.altKey); addClips(p, [{ type: clipType, x: round16(q[0]), y: a.y }]); if (a.aligned) notice(`Aligned at ${editDimension(a.y)}.`); return; }
         dragSeq++; // one drag: one undo step
@@ -1115,6 +1127,8 @@ function bindSketch(svg) {
         if (d.what === 'peri') { if (!d.moved) addPerimeterCorner(); return; }
         if (d.what === 'rect') { finishRect(); return; }
         const p = cur();
+        // Keep the original grip alive through click/double-click dispatch when it has not moved.
+        if(!d.moved&&/^(pt:|pg:|peak$)/.test(d.what))return;
         if (!d.moved && d.what === 'none') {
             if (p.shape.kind === 'custom' && addPointAt(p, wallPoint(e))) { renderShapeTable(); changed(); }
             else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); }
@@ -1128,8 +1142,10 @@ function bindSketch(svg) {
     svg.addEventListener('contextmenu', openMenu);
     svg.addEventListener('dblclick', (e) => {
         if (tool === 'perimeter') { finishPerimeter(); return; }
-        const h = e.target.closest('[data-drag^="pt:"]'), p = cur();
+        // The SVG redraws between clicks; the native double-click target can be their common SVG ancestor.
+        const h = e.target.closest('[data-drag^="pt:"]') || document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag^="pt:"]'), p = cur();
         if (!h || p.shape.kind !== 'custom') return;
+        if(!G.canEdit(p,'shape')||SK.pinned(p,'top'))return;
         const i = Number(h.dataset.drag.slice(3));
         if (i > 0 && i < p.shape.points.length - 1) { p.shape.points.splice(i, 1); renderShapeTable(); changed(); }
     });
@@ -1172,10 +1188,11 @@ function applyDrag(d, [x, y]) {
     }
 }
 function addPointAt(p, [x, y]) {
-    if(SK.pinned(p,'top'))return false;
+    if(!G.canEdit(p,'shape')||SK.pinned(p,'top')||!SK.pointInPanel(p,[x,y]))return false;
     const pts = p.shape.points, L = G.shapeTop(p.shape).lengthIn;
     if (!(x > 1 && x < L - 1 && y > 12) || pts.some(pt => Math.abs(pt[0] - x) < 3)) return false;
-    pts.push([snap(x), snap(y)]);
+    const point=[snap(x),snap(y)];if(!SK.pointInPanel(p,point))return false;
+    pts.push(point);
     pts.sort((a, b) => a[0] - b[0]);
     return true;
 }
@@ -1249,6 +1266,7 @@ function snapPerimeter([x, y]) {
 function addPerimeterCorner(at = peri.cursor) {
     if (!at) return;
     if (peri.closing && peri.pts.length >= 3) { finishPerimeter(); return; }
+    if(!SK.pointInPanel(cur(),at))return;
     const last = peri.pts[peri.pts.length - 1];
     if (last && Math.abs(last[0] - at[0]) < 1e-6 && Math.abs(last[1] - at[1]) < 1e-6) return;
     peri.pts.push([...at]);
