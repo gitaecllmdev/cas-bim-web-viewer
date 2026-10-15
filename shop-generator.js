@@ -8,7 +8,7 @@
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
 import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/shop-output.mjs';
 import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
-import { fmtFtIn, topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
+import { topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, seatOf } from './demos/06-shop-drawings/sheet.mjs';
 import { projectFromShop, STOCK as LABEL_STOCK, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
@@ -36,6 +36,7 @@ import { siteHits, mountHits } from './hits.js';
 import { WallSketchControls } from './wall-sketch-controls.js';
 import * as SK from './demos/06-shop-drawings/sketch-editing.mjs';
 import { baseAt } from './demos/common/bottom-profile.mjs';
+import { formatEditDimension, parseEditDimension, cleanDimensionFormat } from './demos/common/edit-dimensions.mjs';
 
 const LOGO_URL = 'demos/06-shop-drawings/cas-logo.png';
 const KEYS = { set: 'cas-shopgen:set', recent: 'cas-shopgen:recent', combos: 'cas-shopgen:combos', profiles: 'cas-shopgen:profiles', engineering: 'cas-shopgen:engineering', reviewer: 'cas-shopgen:reviewer',
@@ -46,9 +47,10 @@ const esc = (v) => String(v ?? '').replace(/[&<>"']/g, ch => ({ '&': '&amp;', '<
 const load = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
 const store = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* storage blocked: this visit only */ } };
 const today = () => new Date().toLocaleDateString('en-CA');
-const lenText = (v) => (Number.isFinite(v) ? fmtFtIn(v) : '');
-const fine = (v) => { const n = Math.round(Number(v) * 64), w = Math.floor(n / 64); let a = n % 64, b = 64; if (!a) return `${w}"`; while (a % 2 === 0) { a /= 2; b /= 2; } return `${w ? `${w} ` : ''}${a}/${b}"`; };
-const inch = (v) => fmtFtIn(v).replace(/^0'-/, '').replace(/^0 (?=\d+\/)/, ''); // 0'-6" -> 6", 0'-0 1/2" -> 1/2"
+let dimensionFormat=cleanDimensionFormat(load('cas-shopgen:dimension-format','feet-inches'));
+const editDimension=v=>formatEditDimension(v,dimensionFormat);
+const parseDimension=v=>parseEditDimension(v,dimensionFormat);
+const lenText=editDimension, fine=editDimension, inch=editDimension;
 
 // A first visit starts with one panel; a set emptied here stays empty (the empty project's page offers what to do).
 const storedSet = load(KEYS.set, null);
@@ -76,10 +78,22 @@ let hover = null; // what the pointer is over: 'op:2', 'edge:3', 'pt:1', 'peak',
 let drag = null, rectDraw = null, peri = null, svgEl = null, view = null;
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
-const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:fmtFtIn,parse:G.parseLength,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},
+const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,
     change:(next,label)=>{historyHint={label};replacePanel(next);changed();renderAll();},selectMember:key=>{const record=current.plan?.members.find(m=>m.memberKey===key||m.memberKey.startsWith(key+':'));if(record)selectTarget({kind:'member',key:record.memberKey});}});
 const studName = (m) => G.parseMember(m.stud)?.name || m.stud;
 const bottomTrack = (m) => G.parseMember(m.track)?.name || G.trackFor(m.stud) || m.track;
+
+function setDimensionFormat(value){
+    const next=cleanDimensionFormat(value);if(next===dimensionFormat)return;
+    const pending=sketchControls.dialog.open?sketchControls.readDimension():undefined;
+    if(pending===null){notice('Finish the dimension entry before switching formats.',true);for(const el of main.querySelectorAll('[data-dimension-format]'))el.value=dimensionFormat;return;}
+    const typedLength=peri?.typed?parseDimension(peri.typed):null;
+    dimensionFormat=next;store('cas-shopgen:dimension-format',next);
+    if(typedLength!=null)peri.typed=editDimension(typedLength);
+    renderAll(true);if(cur())renderWorkspace();
+    sketchControls.syncDimensionFormat(pending);
+}
+main.addEventListener('change',event=>{if(event.target.matches('[data-dimension-format]'))setDimensionFormat(event.target.value);});
 
 // --- Saving, notices --------------------------------------------------------------------------------------------------
 let saveTimer = 0;
@@ -114,7 +128,7 @@ main.addEventListener('input', (e) => {
     if (!onSet && !G.canEdit(p, path)) { lockedNotice(); return; }
     let v = el.type === 'checkbox' ? el.checked : el.value;
     if (el.dataset.t === 'len' || el.dataset.t === 'cut') {
-        const n = G.parseLength(v);
+        const n = parseDimension(v);
         hint(el, n);
         if (n == null) return;
         v = n;
@@ -191,10 +205,10 @@ main.addEventListener('change', (e) => {
     if (el.dataset.f === 'members.stud' && studBefore != null && studBefore !== el.value) { followStud(studBefore, el.value); studBefore = el.value; }
     markChosen(cur(), el.dataset.f);
     if (el.dataset.t === 'len') {
-        const n = G.parseLength(el.value);
+        const n = parseDimension(el.value);
         if (n != null) { el.value = lenText(n); hint(el, n, true); recent.len = G.remember(recent.len, lenText(n), 12); }
     }
-    if (el.dataset.t === 'cut') { const n = G.parseLength(el.value); if (n != null) { el.value = fine(n); hint(el, n, true); } }
+    if (el.dataset.t === 'cut') { const n = parseDimension(el.value); if (n != null) { el.value = fine(n); hint(el, n, true); } }
     if (el.dataset.r) recent[el.dataset.r] = G.remember(recent[el.dataset.r], el.value);
     store(KEYS.recent, recent);
     renderDatalists();
@@ -278,13 +292,13 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'add-op-at': () => addOpeningAt(p, b.dataset.kind, Number(b.dataset.x), Number(b.dataset.y)),
         'copy-op': () => copyOpening(p, i),
         framing: () => openFraming(i),
-        'mirror-op': () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = round16(G.shapeTop(p.shape).lengthIn - o.leftIn - o.widthIn); syncCatalogueFields(); changed(); notice(`${G.openingName(p.openings, i)} mirrored: ${fmtFtIn(o.leftIn)} from the left end now.`); },
+        'mirror-op': () => { if (!G.canEdit(p, `openings.${i}.leftIn`)) return lockedNotice('the model\'s openings'); const o = p.openings[i]; o.leftIn = round16(G.shapeTop(p.shape).lengthIn - o.leftIn - o.widthIn); syncCatalogueFields(); changed(); notice(`${G.openingName(p.openings, i)} mirrored: ${editDimension(o.leftIn)} from the left end now.`); },
         'stud-flip': () => { const x = Number(b.dataset.x), had = (p.studFlips || []).some(c => Math.abs(c - x) < 0.5); p.studFlips = had ? p.studFlips.filter(c => Math.abs(c - x) >= 0.5) : [...(p.studFlips || []), x]; changed(); notice(had ? 'That stud faces its usual way again.' : 'That stud faces the other way now (right-click it again to flip it back).'); },
         'clip-here': () => addClips(p, [{ type: clipType, x: Number(b.dataset.x), y: Number(b.dataset.y) }]),
         'clip-del': () => removeClip(p, i),
         'clip-top': () => laid.lay && addClips(p, G.clipsAtTop(laid.lay, clipType)),
         'clip-mid': () => laid.lay && addClips(p, G.clipsOnEveryStud(laid.lay, round16(G.shapeTop(p.shape).heightIn / 2), clipType)),
-        'clip-all': () => { const y = G.parseLength(document.getElementById('clip-at')?.value); if (y == null || !laid.lay) return notice('Type a height for the clips, like 4\'-0".', true); clipAt = y; addClips(p, G.clipsOnEveryStud(laid.lay, y, clipType)); },
+        'clip-all': () => { const y = parseDimension(document.getElementById('clip-at')?.value); if (y == null || !laid.lay) return notice('Type a height for the clips, like 4\'-0".', true); clipAt = y; addClips(p, G.clipsOnEveryStud(laid.lay, y, clipType)); },
         'clip-clear': () => { const n = (p.clips || []).length; p.clips = []; renderHint(); changed(); notice(`${n} clip${n === 1 ? '' : 's'} removed.`); },
         'peri-finish': () => finishPerimeter(),
         'peri-undo': () => { peri?.pts.pop(); renderSketch(); renderHint(); },
@@ -445,7 +459,7 @@ function undoSteps(n) {
 const newMenu = () => document.getElementById('new-menu');
 function tplSummary(t) {
     const p = G.cleanPanel({ ...t.panel, id: 'x', mark: 'x' }), L = G.shapeTop(p.shape);
-    return `${fmtFtIn(L.lengthIn)} x ${fmtFtIn(L.heightIn)} · ${G.openingsSummary(p.openings) || 'no openings'} · ${studName(p.members)} @ ${p.members.spacingIn}"`;
+    return `${editDimension(L.lengthIn)} x ${editDimension(L.heightIn)} · ${G.openingsSummary(p.openings) || 'no openings'} · ${studName(p.members)} @ ${p.members.spacingIn}"`;
 }
 function toggleNewMenu(open = newMenu().hidden) {
     const m = newMenu(), p = cur();
@@ -462,7 +476,7 @@ function toggleNewMenu(open = newMenu().hidden) {
 document.addEventListener('click', (e) => { if (!newMenu().hidden && !e.target.closest('.new-split')) toggleNewMenu(false); });
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !newMenu().hidden) { toggleNewMenu(false); document.querySelector('[data-act=new-menu]')?.focus(); } });
 function saveTemplate(p) {
-    const L = G.shapeTop(p.shape), name = prompt('Name this template (it is kept in this browser):', `${p.mark} ${fmtFtIn(L.lengthIn)} x ${fmtFtIn(L.heightIn)}`)?.trim();
+    const L = G.shapeTop(p.shape), name = prompt('Name this template (it is kept in this browser):', `${p.mark} ${editDimension(L.lengthIn)} x ${editDimension(L.heightIn)}`)?.trim();
     if (!name) return;
     templates = [{ name: name.slice(0, 80), panel: G.templateOf(p), savedAt: today() }, ...templates.filter(t => t.name !== name)].slice(0, 40);
     store(KEYS.templates, templates);
@@ -635,8 +649,8 @@ function coreChoice(key) {
 function renderCore() {
     const m = cur().members;
     const spacing = typing.has('members.spacingIn')
-        ? `<input type="text" class="mtype" data-f="members.spacingIn" data-t="num" value="${esc(m.spacingIn)}" aria-label="Stud spacing in inches">`
-        : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${Number(m.spacingIn) > 0 ? '' : '<option value="" selected disabled>Pick (the model gave none)</option>'}${[...new Set([...G.SPACINGS, ...(Number(m.spacingIn) > 0 ? [Number(m.spacingIn)] : [])])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${v}" o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
+        ? `<input type="text" class="mtype" data-f="members.spacingIn" data-t="len" value="${esc(editDimension(m.spacingIn))}" aria-label="Stud spacing">`
+        : `<select data-pick="members.spacingIn" aria-label="Stud spacing">${Number(m.spacingIn) > 0 ? '' : '<option value="" selected disabled>Pick (the model gave none)</option>'}${[...new Set([...G.SPACINGS, ...(Number(m.spacingIn) > 0 ? [Number(m.spacingIn)] : [])])].map(v => `<option value="${v}" ${v === Number(m.spacingIn) ? 'selected' : ''}>${editDimension(v)} o.c.</option>`).join('')}<option value="__type">Other…</option></select>`;
     $('#core-strip').innerHTML = `<div class="row core-head"><b>Core members</b><span class="muted small">top track · studs on center · bottom track</span><span class="spacer"></span>
             <select id="combo" aria-label="Member combo"><option value="">Member combo…</option>
                 <optgroup label="Saved in this browser">${combos.map((c, i) => `<option value="s${i}">${esc(c.name)}</option>`).join('') || '<option disabled>None yet: Save as a combo</option>'}</optgroup>
@@ -678,8 +692,8 @@ const openingCard = (i, k) => memberCard(openingChoice(i, k));
 function toLayoutNote(p, i) {
     const o = p.openings[i], { pieces, lengthIn } = G.toLayoutEffect(p, i), n = Math.abs(pieces);
     let framedText = '';
-    if (o.toLayout) { try { const b = G.frameInputs(p).openings[i]; if (b?.requested) framedText = `framed ${fmtFtIn(b.right - b.left)} between jambs · `; } catch { /* inputs to fix */ } }
-    const parts = [pieces ? `${n} ${pieces > 0 ? 'fewer' : 'more'} stud piece${n === 1 ? '' : 's'}` : '', Math.abs(lengthIn) >= 1 ? `${fmtFtIn(Math.abs(lengthIn))} ${lengthIn > 0 ? 'less' : 'more'} steel` : ''].filter(Boolean);
+    if (o.toLayout) { try { const b = G.frameInputs(p).openings[i]; if (b?.requested) framedText = `framed ${editDimension(b.right - b.left)} between jambs · `; } catch { /* inputs to fix */ } }
+    const parts = [pieces ? `${n} ${pieces > 0 ? 'fewer' : 'more'} stud piece${n === 1 ? '' : 's'}` : '', Math.abs(lengthIn) >= 1 ? `${editDimension(Math.abs(lengthIn))} ${lengthIn > 0 ? 'less' : 'more'} steel` : ''].filter(Boolean);
     return framedText + (parts.length ? `${o.toLayout ? '' : 'turned on: '}${parts.join(', ')}` : 'no saving here');
 }
 function renderCatalogue() {
@@ -846,8 +860,8 @@ function renderSketch() {
         parts.push(`<polygon points="${outline.map(([x, y]) => `${x},${Y(y)}`).join(' ')}" class="sk-wall${tool === 'perimeter' ? ' ghost' : ''}"/>`);
         if (tool === 'select') outline.forEach(([x, y], i) => { const [x2, y2] = outline[(i + 1) % outline.length]; parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit" data-hover="edge:${i}"/>`); });
         // Always: the length under it, the height at each end, each peak or break.
-        parts.push(dimH(0, L, -fs * 1.4, fmtFtIn(L), 'sk-dim', true,fs,free?{kind:'width',value:L}:null), dimV(-fs * 1.6, base(0), at(0), fmtFtIn(at(0)-base(0)), 'sk-dim',false,fs,free?{kind:'height-left',value:at(0)-base(0)}:null), dimV(L + fs * 1.6, base(L), at(L), fmtFtIn(at(L)-base(L)), 'sk-dim', true,fs,free?{kind:'height-right',value:at(L)-base(L)}:null));
-        for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, fmtFtIn(h), { cls: 'sk-dim-t' }));
+        parts.push(dimH(0, L, -fs * 1.4, editDimension(L), 'sk-dim', true,fs,free?{kind:'width',value:L}:null), dimV(-fs * 1.6, base(0), at(0), editDimension(at(0)-base(0)), 'sk-dim',false,fs,free?{kind:'height-left',value:at(0)-base(0)}:null), dimV(L + fs * 1.6, base(L), at(L), editDimension(at(L)-base(L)), 'sk-dim', true,fs,free?{kind:'height-right',value:at(L)-base(L)}:null));
+        for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, editDimension(h), { cls: 'sk-dim-t' }));
     }
     if (tool !== 'perimeter' && valid) parts.push(contextLayer(p, L, H, top, fs, t, Y));
     // Where the studs will be: their centerlines (side A), cripples as short ones.
@@ -857,25 +871,25 @@ function renderSketch() {
     if (tool !== 'perimeter') p.openings.forEach((o, i) => {
         const b = boxes[i], w = b.right - b.left, topY = b.through ? Math.max(at(b.left), at(b.right)) + fs * 0.6 : b.top, h = topY - b.bottom;
         if (!(w > 0 && h > 0)) return;
-        const name = G.openingName(p.openings, i), dims = b.through ? `${fmtFtIn(w)} wide` : `${fmtFtIn(w)} x ${fmtFtIn(h)}`;
+        const name = G.openingName(p.openings, i), dims = b.through ? `${editDimension(w)} wide` : `${editDimension(w)} x ${editDimension(h)}`;
         const size = Math.min(fs * 1.1, (w * 0.9) / (name.length * 0.62), h * 0.36), small = Math.min(fs * 0.8, (w * 0.92) / (dims.length * 0.56), h * 0.22);
         if (G.offsetOf(o) > 0) { const r = G.roughOpening(o, H), rt = b.through ? topY : r.top; parts.push(`<rect x="${r.left}" y="${Y(rt)}" width="${r.right - r.left}" height="${rt - r.bottom}" class="sk-ro"><title>${esc(`${name}'s rough opening: ${roText(p, i)}`)}</title></rect>`); }
         const fb = o.toLayout && laid.lay?.openings.find(x => x.requested && Math.abs(x.requested.left - G.roughOpening(o, H).left) < 1e-6 && Math.abs(x.bottom - G.roughOpening(o, H).bottom) < 1e-6);
-        if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${fmtFtIn(fb.right - fb.left)} between jambs`)}</title></rect>`);
+        if (fb) parts.push(`<rect x="${fb.left}" y="${Y(topY)}" width="${fb.right - fb.left}" height="${h}" class="sk-framed"><title>${esc(`${name} framed out to the stud layout: ${editDimension(fb.right - fb.left)} between jambs`)}</title></rect>`);
         const tiny = G.isSmallPenetration(p, o), oc = skCtx[i]; // tiny: a model's penetration under 6": not framed (the resolved plan reports it)
-        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}${tiny ? ' small' : ''}" data-drag="op:${i}"${oc ? ` style="--oc:${oc.color}"` : ''}><title>${esc(`${tiny ? `${name}: a ${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)} penetration, under 6": not framed here (decide its framing)` : `${name}: ${G.OPENING_TYPES[o.kind].name}${G.isLockedOpening(p, o) ? '' : ', drag to move it'}`}${oc ? `\n${oc.title}` : ''}`)}</title>
+        parts.push(`<g class="sk-op ${o.kind}${i === sel ? ' on' : ''}${G.isLockedOpening(p, o) ? ' locked' : ''}${tiny ? ' small' : ''}" data-drag="op:${i}"${oc ? ` style="--oc:${oc.color}"` : ''}><title>${esc(`${tiny ? `${name}: a ${editDimension(o.widthIn)} x ${editDimension(o.heightIn)} penetration, under 6": not framed here (decide its framing)` : `${name}: ${G.OPENING_TYPES[o.kind].name}${G.isLockedOpening(p, o) ? '' : ', drag to move it'}`}${oc ? `\n${oc.title}` : ''}`)}</title>
             <rect x="${b.left}" y="${Y(topY)}" width="${w}" height="${h}"/>${t(b.left + w / 2, Y(b.bottom + h / 2) - small * 0.25, name, { cls: 'sk-op-text', size })}${t(b.left + w / 2, Y(b.bottom + h / 2) + small * 1.2, dims, { cls: 'sk-op-sub', size: small })}</g>`);
     });
     // Placing clips: the align line (bold while the aim snaps to it) and where the next clip goes.
     if (tool === 'clip' && valid) {
         const ay = clipAlignY(p);
-        if (ay != null && clipAlign.on) parts.push(`<g class="sk-align${clipAim?.aligned ? ' on' : ''}"><line x1="${-fs * 2}" y1="${Y(ay)}" x2="${L + fs * 3.4}" y2="${Y(ay)}"/>${t(L + fs * 3.6, Y(ay) + fs * 0.35, `${clipAim?.aligned ? 'aligned ' : ''}${fmtFtIn(ay)}`, { a: 'start', cls: 'sk-align-t', size: fs * 0.8 })}</g>`);
+        if (ay != null && clipAlign.on) parts.push(`<g class="sk-align${clipAim?.aligned ? ' on' : ''}"><line x1="${-fs * 2}" y1="${Y(ay)}" x2="${L + fs * 3.4}" y2="${Y(ay)}"/>${t(L + fs * 3.6, Y(ay) + fs * 0.35, `${clipAim?.aligned ? 'aligned ' : ''}${editDimension(ay)}`, { a: 'start', cls: 'sk-align-t', size: fs * 0.8 })}</g>`);
         if (clipAim && clipAim.x >= 0 && clipAim.x <= L) parts.push(`<rect x="${clipAim.x - Math.max(0.6, u * 0.45)}" y="${Y(clipAim.y) - Math.max(1.5, u * 0.9)}" width="${Math.max(1.25, u * 0.9)}" height="${Math.max(3, u * 1.8)}" class="sk-clip ghost"/>`);
     }
     // Clips, on their studs' webs (at least a little block on screen, however small the panel is drawn).
     if (tool !== 'perimeter' && laid.lay) for (const c of G.placeClips(laid.lay, p.clips).clips) {
         const w = Math.max(1.25, u * 0.9), h = Math.max(3, u * 1.8);
-        parts.push(`<rect x="${c.side === 'R' ? c.x : c.x - w}" y="${Y(c.y + h / 2)}" width="${w}" height="${h}" class="sk-clip${hover === `clip:${c.i}` ? ' on' : ''}" data-clip="${c.i}" data-hover="clip:${c.i}"><title>${esc(`${c.mark} ${c.type} at ${fmtFtIn(c.y)}, on its stud's web · ${tool === 'clip' ? 'click to remove it' : 'right-click for options'}`)}</title></rect>`);
+        parts.push(`<rect x="${c.side === 'R' ? c.x : c.x - w}" y="${Y(c.y + h / 2)}" width="${w}" height="${h}" class="sk-clip${hover === `clip:${c.i}` ? ' on' : ''}" data-clip="${c.i}" data-hover="clip:${c.i}"><title>${esc(`${c.mark} ${c.type} at ${editDimension(c.y)}, on its stud's web · ${tool === 'clip' ? 'click to remove it' : 'right-click for options'}`)}</title></rect>`);
     }
     // Grips (shape handles, as in Revit): round at the panel's corners, arrows at the middle of its edges (an end moves
     // the end out or in, the openings staying where they are; a run of the top moves up or down); square at the
@@ -924,15 +938,15 @@ function renderSketch() {
         const highest = Math.min(b.top, at(cx)), mid = small ? (b.bottom + highest) / 2 : b.bottom + (highest - b.bottom) * 0.35, vx = small ? b.right + cs * 1.6 : b.left + (b.right - b.left) * 0.28;
         const across = others.filter(c => c.bottom < mid && c.top > mid);
         const lo = Math.max(0, ...across.filter(c => c.right <= b.left + 1e-6).map(c => c.right)), hi = Math.min(L, ...across.filter(c => c.left >= b.right - 1e-6).map(c => c.left));
-        ctx.push(dimH(lo, b.left, mid, fmtFtIn(b.left - lo), cls), dimH(b.right, hi, mid, fmtFtIn(hi - b.right), cls));
-        if (lo > 0) ctx.push(dimH(0, b.left, mid - cs * 1.9, `${fmtFtIn(b.left)} from left end`, `${cls} far`));
-        if (hi < L) ctx.push(dimH(b.right, L, mid - cs * 1.9, `${fmtFtIn(L - b.right)} to right end`, `${cls} far`));
+        ctx.push(dimH(lo, b.left, mid, editDimension(b.left - lo), cls), dimH(b.right, hi, mid, editDimension(hi - b.right), cls));
+        if (lo > 0) ctx.push(dimH(0, b.left, mid - cs * 1.9, `${editDimension(b.left)} from left end`, `${cls} far`));
+        if (hi < L) ctx.push(dimH(b.right, L, mid - cs * 1.9, `${editDimension(L - b.right)} to right end`, `${cls} far`));
         const column = others.filter(c => c.left < cx && c.right > cx);
         const floor = Math.max(0, ...column.filter(c => c.top <= b.bottom + 1e-6).map(c => c.top));
-        if (b.bottom > floor) ctx.push(dimV(vx, floor, b.bottom, `${fmtFtIn(b.bottom - floor)}${floor ? '' : ' sill'}`, cls, true));
+        if (b.bottom > floor) ctx.push(dimV(vx, floor, b.bottom, `${editDimension(b.bottom - floor)}${floor ? '' : ' sill'}`, cls, true));
         if (!b.through) {
             const ceiling = Math.min(at(cx), ...column.filter(c => c.bottom >= b.top - 1e-6).map(c => c.bottom));
-            if (ceiling > b.top) ctx.push(dimV(vx, b.top, ceiling, `${fmtFtIn(ceiling - b.top)} to ${ceiling < at(cx) ? 'next' : 'top'}`, cls, true));
+            if (ceiling > b.top) ctx.push(dimV(vx, b.top, ceiling, `${editDimension(ceiling - b.top)} to ${ceiling < at(cx) ? 'next' : 'top'}`, cls, true));
         }
         return o;
     };
@@ -945,21 +959,21 @@ function renderSketch() {
         const edge = /^edge:(\d+)$/.exec(hover || '');
         if (edge && valid) {
             const [x1, y1] = outline[Number(edge[1])], [x2, y2] = outline[(Number(edge[1]) + 1) % outline.length], dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
-            const label = dx < 1e-6 ? `${fmtFtIn(dy)} high` : dy < 1e-6 ? fmtFtIn(dx) : `${fmtFtIn(Math.hypot(dx, dy))} along · ${fmtFtIn(dx)} run · ${fmtFtIn(dy)} rise · ${pitchText(dy / dx)}`;
+            const label = dx < 1e-6 ? `${editDimension(dy)} high` : dy < 1e-6 ? editDimension(dx) : `${editDimension(Math.hypot(dx, dy))} along · ${editDimension(dx)} run · ${editDimension(dy)} rise · ${pitchText(dy / dx)}`;
             ctx.push(`<line x1="${x1}" y1="${Y(y1)}" x2="${x2}" y2="${Y(y2)}" class="sk-edge-on"/>`, t((x1 + x2) / 2 + (dx < 1e-6 ? (x1 < L / 2 ? -fs : fs) : 0), Y((y1 + y2) / 2) + (dx < 1e-6 ? 0 : y1 + y2 < 1e-6 ? fs * 2.6 : -fs * 0.8), label, { cls: 'sk-ctx-t', size: cs * 1.1, a: dx < 1e-6 ? (x1 < L / 2 ? 'end' : 'start') : 'middle' }));
         }
         const mem = /^mem:(\d+)$/.exec(hover || ''),selectedKey=selectedLayoutKey(),mm=laid.lay?.members.find(m=>m.key===selectedKey)||(mem&&laid.lay?.members[Number(mem[1])]);
         if (mm && valid) {
             const cx = mm.x + mm.w / 2, my = mm.y + mm.h / 2;
             const peers=laid.lay.members.filter(m=>m.orient==='v'&&m.key!==mm.key&&m.y<mm.y+mm.h&&m.y+m.h>mm.y).sort((a,b)=>a.x-b.x),left=peers.filter(m=>m.x+m.w/2<cx-1/16).at(-1),right=peers.find(m=>m.x+m.w/2>cx+1/16),a=left?left.x+left.w/2:0,b=right?right.x+right.w/2:L;
-            ctx.push(`<line x1="${cx}" y1="${Y(mm.y)}" x2="${cx}" y2="${Y(mm.y + mm.h)}" class="sk-mem-on"/>`, dimH(a, cx, my, fmtFtIn(cx-a), 'sk-ctx',false,cs,{kind:'gap',value:cx-a,left:left?.key||'left',right:mm.key,prefer:'right'}),dimH(cx,b,my+cs*1.9,fmtFtIn(b-cx),'sk-ctx',false,cs,{kind:'gap',value:b-cx,left:mm.key,right:right?.key||'right',prefer:'left'}));
+            ctx.push(`<line x1="${cx}" y1="${Y(mm.y)}" x2="${cx}" y2="${Y(mm.y + mm.h)}" class="sk-mem-on"/>`, dimH(a, cx, my, editDimension(cx-a), 'sk-ctx',false,cs,{kind:'gap',value:cx-a,left:left?.key||'left',right:mm.key,prefer:'right'}),dimH(cx,b,my+cs*1.9,editDimension(b-cx),'sk-ctx',false,cs,{kind:'gap',value:b-cx,left:mm.key,right:right?.key||'right',prefer:'left'}));
         }
         const corner = /^(pt:\d+|peak|pg:tl|pg:tr|pg:bl|pg:br|pg:l|pg:r)$/;
         const point = (drag?.moved && corner.test(drag.what) ? drag.what : null) || (corner.test(hover || '') ? hover : null);
         if (point && valid) {
             const [px, ph] = point.startsWith('pt:') ? s.points[Number(point.slice(3))] || [0, 0] : point === 'peak' ? [s.peakAtIn ?? L / 2, s.peakIn]
                 : /^pg:(tl|bl|l)$/.test(point) ? [0, at(0)] : [L, at(L)];
-            ctx.push(dimH(0, px, ph + fs * 1.2, fmtFtIn(px)), dimH(px, L, ph + fs * 1.2, fmtFtIn(L - px)), dimV(px, 0, ph, `${fmtFtIn(ph)} high`, 'sk-ctx', true));
+            ctx.push(dimH(0, px, ph + fs * 1.2, editDimension(px)), dimH(px, L, ph + fs * 1.2, editDimension(L - px)), dimV(px, 0, ph, `${editDimension(ph)} high`, 'sk-ctx', true));
         }
     }
     // Drawing an opening: its size and where it is.
@@ -967,9 +981,9 @@ function renderSketch() {
         const r = rectBox(rectDraw);
         ctx.push(`<rect x="${r.left}" y="${Y(r.top)}" width="${r.right - r.left}" height="${r.top - r.bottom}" class="sk-rect ${r.kind}"/>`,
             t((r.left + r.right) / 2, Y((r.bottom + r.top) / 2), G.OPENING_TYPES[r.kind].name, { cls: 'sk-op-text', size: fs }),
-            dimH(0, r.left, (r.bottom + r.top) / 2, fmtFtIn(r.left), 'sk-ctx live'), dimH(r.right, L, (r.bottom + r.top) / 2, fmtFtIn(L - r.right), 'sk-ctx live'),
-            dimH(r.left, r.right, r.top + fs * 1.3, `${fmtFtIn(r.right - r.left)} wide`, 'sk-ctx size'), dimV(r.right + fs * 1.2, r.bottom, r.top, `${fmtFtIn(r.top - r.bottom)} high`, 'sk-ctx size', true),
-            r.bottom > 0 ? dimV((r.left + r.right) / 2, 0, r.bottom, `${fmtFtIn(r.bottom)} sill`, 'sk-ctx live', true) : '');
+            dimH(0, r.left, (r.bottom + r.top) / 2, editDimension(r.left), 'sk-ctx live'), dimH(r.right, L, (r.bottom + r.top) / 2, editDimension(L - r.right), 'sk-ctx live'),
+            dimH(r.left, r.right, r.top + fs * 1.3, `${editDimension(r.right - r.left)} wide`, 'sk-ctx size'), dimV(r.right + fs * 1.2, r.bottom, r.top, `${editDimension(r.top - r.bottom)} high`, 'sk-ctx size', true),
+            r.bottom > 0 ? dimV((r.left + r.right) / 2, 0, r.bottom, `${editDimension(r.bottom)} sill`, 'sk-ctx live', true) : '');
     }
     // Drawing the perimeter: the corners so far, the next one under the pointer, and the lengths.
     if (peri) {
@@ -977,14 +991,14 @@ function renderSketch() {
         if (pts.length) parts.push(`<polyline points="${[...pts, ...(c ? [c] : [])].map(([x, y]) => `${x},${Y(y)}`).join(' ')}" class="sk-peri"/>`);
         pts.forEach(([x, y], i) => {
             parts.push(`<circle cx="${x}" cy="${Y(y)}" r="${u * (i ? 0.9 : 1.4)}" class="sk-vertex${i ? '' : ' first'}${i === 0 && c && peri.closing ? ' closing' : ''}"/>`);
-            if (i) { const [x0, y0] = pts[i - 1],length=Math.hypot(x-x0,y-y0),locked=peri.locks?.includes(i-1); ctx.push(t((x + x0) / 2, Y((y + y0) / 2) - fs * 0.4, fmtFtIn(length), { cls: 'sk-ctx-t',edit:{kind:'segment',index:i-1,value:length} }),t((x+x0)/2,Y((y+y0)/2)+fs*.9,locked?'🔒':'○',{cls:'sk-ctx-t',pin:`segment:${i-1}`})); }
+            if (i) { const [x0, y0] = pts[i - 1],length=Math.hypot(x-x0,y-y0),locked=peri.locks?.includes(i-1); ctx.push(t((x + x0) / 2, Y((y + y0) / 2) - fs * 0.4, editDimension(length), { cls: 'sk-ctx-t',edit:{kind:'segment',index:i-1,value:length} }),t((x+x0)/2,Y((y+y0)/2)+fs*.9,locked?'🔒':'○',{cls:'sk-ctx-t',pin:`segment:${i-1}`})); }
         });
         if (c && pts.length) {
             const [x0, y0] = pts[pts.length - 1], len = Math.hypot(c[0] - x0, c[1] - y0);
-            ctx.push(t((c[0] + x0) / 2, Y((c[1] + y0) / 2) - fs * 0.5, `${fmtFtIn(len)}${Math.abs(c[0] - x0) > 1e-6 && Math.abs(c[1] - y0) > 1e-6 ? ` (${fmtFtIn(Math.abs(c[0] - x0))} x ${fmtFtIn(Math.abs(c[1] - y0))})` : ''}`, { cls: 'sk-ctx-t', size: cs * 1.1 }));
+            ctx.push(t((c[0] + x0) / 2, Y((c[1] + y0) / 2) - fs * 0.5, `${editDimension(len)}${Math.abs(c[0] - x0) > 1e-6 && Math.abs(c[1] - y0) > 1e-6 ? ` (${editDimension(Math.abs(c[0] - x0))} x ${editDimension(Math.abs(c[1] - y0))})` : ''}`, { cls: 'sk-ctx-t', size: cs * 1.1 }));
         }
         if (c) parts.push(`<circle cx="${c[0]}" cy="${Y(c[1])}" r="${u * 0.8}" class="sk-cursor"/>`);
-        if (peri.typed) ctx.push(t((c?.[0] ?? 0) + fs, Y(c?.[1] ?? 0) - fs * 1.2, `Length: ${peri.typed}${G.parseLength(peri.typed) != null ? ` = ${fmtFtIn(G.parseLength(peri.typed))}` : ''} (Enter)`, { cls: 'sk-typed', a: 'start', size: fs * 1.1 }));
+        if (peri.typed) ctx.push(t((c?.[0] ?? 0) + fs, Y(c?.[1] ?? 0) - fs * 1.2, `Length: ${peri.typed}${parseDimension(peri.typed) != null ? ` = ${editDimension(parseDimension(peri.typed))}` : ''} (Enter)`, { cls: 'sk-typed', a: 'start', size: fs * 1.1 }));
     }
     svgEl.innerHTML = parts.join('') + ctx.join('');
     sketchControls.resize();
@@ -1007,7 +1021,7 @@ function centerlines(p, H, top) {
         if (m.orient !== 'v') return;
         const cx = m.x + m.w / 2, seated = seatOf(m, lay.members), y1 = seated?.y0 ?? m.y, y2 = seated?.y1 ?? (m.pts ? underAt(top, cx, H, leg) : m.y + m.h);
         lines.push(`<line x1="${cx}" y1="${-y1}" x2="${cx}" y2="${-y2}" class="${m.manual ? 'custom' : m.role === 'jamb stud' || m.role === 'end stud' ? 'j' : m.role === 'cripple' ? 'c' : ''}"/>`);
-        hits.push(`<line x1="${cx}" y1="${-y1}" x2="${cx}" y2="${-y2}" class="sk-mem-hit" data-hover="mem:${k}" data-member-key="${esc(m.key)}" role="button" tabindex="0" aria-label="Select ${esc(m.mark)} ${esc(m.role)}"><title>${esc(`${ROLE_NAMES[m.role] || m.role}: ${m.type}, ${fmtFtIn(m.lengthIn)} · click to edit`)}</title></line>`);
+        hits.push(`<line x1="${cx}" y1="${-y1}" x2="${cx}" y2="${-y2}" class="sk-mem-hit" data-hover="mem:${k}" data-member-key="${esc(m.key)}" role="button" tabindex="0" aria-label="Select ${esc(m.mark)} ${esc(m.role)}"><title>${esc(`${ROLE_NAMES[m.role] || m.role}: ${m.type}, ${editDimension(m.lengthIn)} · click to edit`)}</title></line>`);
         if (m.y <= leg + 0.5) { // on the bottom track: its C in plan under it, the web on the side it is (Flip studs turns the studs on center)
             const ya = u * 0.6, yb = ya + Math.max(u * 1.3, 2.5), lip = (yb - ya) * 0.3, [open, web] = webOnRight(m, lay) ? [m.x, m.x + m.w] : [m.x + m.w, m.x];
             cs.push(`<path d="M${open} ${ya + lip}V${ya}H${web}V${yb}H${open}V${yb - lip}" class="sk-c"/>`);
@@ -1050,7 +1064,7 @@ function bindSketch(svg) {
         e.preventDefault();
         if (tool === 'perimeter') { drag = { what: 'peri', x: e.clientX, y: e.clientY, moved: false }; return; }
         if (tool === 'opening') { rectDraw = { a: [snap(q[0]), snap(q[1])], b: [snap(q[0]), snap(q[1])] }; drag = { what: 'rect', x: e.clientX, y: e.clientY, moved: false }; return; }
-        if (tool === 'clip') { const c = e.target.closest('[data-clip]'); if (c) { removeClip(p, Number(c.dataset.clip)); return; } const a = clipAimAt(p, q, e.altKey); addClips(p, [{ type: clipType, x: round16(q[0]), y: a.y }]); if (a.aligned) notice(`Aligned at ${fmtFtIn(a.y)}.`); return; }
+        if (tool === 'clip') { const c = e.target.closest('[data-clip]'); if (c) { removeClip(p, Number(c.dataset.clip)); return; } const a = clipAimAt(p, q, e.altKey); addClips(p, [{ type: clipType, x: round16(q[0]), y: a.y }]); if (a.aligned) notice(`Aligned at ${editDimension(a.y)}.`); return; }
         dragSeq++; // one drag: one undo step
         drag = { what: h?.dataset.drag || 'none', start: q, moved: false, orig: structuredClone({ shape: p.shape, openings: p.openings }), x: e.clientX, y: e.clientY, view0: { ...view } };
         const m = /^op:(\d+)$/.exec(drag.what);
@@ -1226,8 +1240,8 @@ function perimeterKey(e) {
     if (e.key === 'Escape') { setTool('select'); return; }
     if (e.key === 'Enter') {
         e.preventDefault();
-        const n = G.parseLength(peri.typed), last = peri.pts[peri.pts.length - 1];
-        if (peri.typed && n != null && last) { // that far from the last corner, toward the pointer (level or plumb when nearly so)
+        const n = parseDimension(peri.typed), last = peri.pts[peri.pts.length - 1];
+        if (peri.typed && n != null && n > 0 && last) { // that far from the last corner, toward the pointer (level or plumb when nearly so)
             const c = peri.cursor || [last[0] + 1, last[1]], dx = c[0] - last[0], dy = c[1] - last[1], d = Math.hypot(dx, dy) || 1;
             const along = Math.abs(dy) < 1e-6 ? [Math.sign(dx) || 1, 0] : Math.abs(dx) < 1e-6 ? [0, Math.sign(dy)] : [dx / d, dy / d];
             peri.closing = false;
@@ -1258,7 +1272,7 @@ function finishPerimeter() {
     sel = null; ask = null;
     renderAll(); save();
     const { lengthIn, heightIn } = G.shapeTop(p.shape);
-    notice(`Perimeter in: ${fmtFtIn(lengthIn)} x ${fmtFtIn(heightIn)} ${G.SHAPES.find(k => k.kind === p.shape.kind).name.toLowerCase()}${res.openings.length ? `, with ${G.openingsSummary(res.openings)} from its notches` : ''}. Click an opening to pick its members.`);
+    notice(`Perimeter in: ${editDimension(lengthIn)} x ${editDimension(heightIn)} ${G.SHAPES.find(k => k.kind === p.shape.kind).name.toLowerCase()}${res.openings.length ? `, with ${G.openingsSummary(res.openings)} from its notches` : ''}. Click an opening to pick its members.`);
 }
 
 // --- Right-click on the sketch: what can be done with what is under the pointer --------------------------------------
@@ -1284,14 +1298,14 @@ function openMenu(e) {
     const pick = (c, label = c.label) => `<label class="mi-pick"><span>${esc(label)}</span><select data-pick="${esc(c.path)}" aria-label="${esc(label)}">${optionTags(c.path, c.value, c.options)}</select></label>`;
     const check = (label, path, on, note = '') => `<label class="mi-check"><input type="checkbox" data-f="${esc(path)}" ${on ? 'checked' : ''}><span>${esc(label)}</span>${note ? `<small>${esc(note)}</small>` : ''}</label>`;
     const choose = (i) => { if (sel !== i) { sel = i; ask = null; renderCatalogue(); renderChips(); renderSketch(); } };
-    const endMenu = (side) => out.push(head(`The ${side} end`, `${fmtFtIn(at(side === 'left' ? 0 : L))} high · end stud ${studName(p.members)}`),
+    const endMenu = (side) => out.push(head(`The ${side} end`, `${editDimension(at(side === 'left' ? 0 : L))} high · end stud ${studName(p.members)}`),
         btn(`Start the stud layout from the ${side} end`, 'layout-from', { side }, { off: !!p.layoutFromRight === (side === 'right'), title: side === 'right' ? 'The layout and its offsets from this end (stud facing unchanged)' : 'The layout from the left end, as usual' }));
     const out = [];
     const opening = /^op:(\d+)$/.exec(key), mem = /^mem:(\d+)$/.exec(key), edge = /^edge:(\d+)$/.exec(key), pt = /^pt:(\d+)$/.exec(key), end = /^pg:(l|r|tl|tr|bl|br)$/.exec(key), clip = /^clip:(\d+)$/.exec(key);
     if (opening && p.openings[Number(opening[1])]) {
         const i = Number(opening[1]), o = p.openings[i], locked = G.isLockedOpening(p, o), type = G.OPENING_TYPES[o.kind];
         choose(i);
-        out.push(head(`${G.openingName(p.openings, i)} · ${type.name}`, `${o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide, through the top` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}`} · ${fmtFtIn(o.leftIn)} from the left end${locked ? ' · 🔒 the model\'s' : ''}`));
+        out.push(head(`${G.openingName(p.openings, i)} · ${type.name}`, `${o.kind === 'steel' ? `${editDimension(o.widthIn)} wide, through the top` : `${editDimension(o.widthIn)} x ${editDimension(o.heightIn)}`} · ${editDimension(o.leftIn)} from the left end${locked ? ' · 🔒 the model\'s' : ''}`));
         out.push(btn('⚙ Framing details… (jambs, header, rough opening)', 'framing', { i }));
         out.push(...type.members.map(k => pick(openingChoice(i, k), G.MEMBER_LABELS[k])));
         out.push(`<label class="mi-pick"><span>Kind</span><select data-f="openings.${i}.kind" aria-label="Kind of opening"${locked ? ' disabled' : ''}>${Object.entries(G.OPENING_TYPES).map(([k, t]) => `<option value="${k}" ${k === o.kind ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select></label>`);
@@ -1300,35 +1314,35 @@ function openMenu(e) {
             btn('Copy it', 'copy-op', { i }), btn('Remove it', 'del-op', { i }, { off: locked, cls: 'danger' }));
     } else if (mem && laid.lay?.members[Number(mem[1])]) {
         const m = laid.lay.members[Number(mem[1])], cx = m.x + m.w / 2, j = jambOf(p, m);
-        out.push(head(`${ROLE_NAMES[m.role] || m.role}${j != null ? ` of ${G.openingName(p.openings, j)}` : ''}`, `${m.type} · ${fmtFtIn(m.lengthIn)} long · center ${fmtFtIn(cx)} from the left end, ${fmtFtIn(L - cx)} from the right`));
+        out.push(head(`${ROLE_NAMES[m.role] || m.role}${j != null ? ` of ${G.openingName(p.openings, j)}` : ''}`, `${m.type} · ${editDimension(m.lengthIn)} long · center ${editDimension(cx)} from the left end, ${editDimension(L - cx)} from the right`));
         if (j != null) choose(j);
         out.push(j != null ? pick(openingChoice(j, 'jamb'), 'Jambs') : pick(coreChoice('stud'), m.role === 'stud' ? 'Studs' : 'Stud type'));
         if (m.role !== 'end stud') out.push(btn('Start the stud layout here', 'layout-here', { x: cx }, { title: 'This stud\'s line becomes a layout line: the first stud is set by hand from it (the optimizer gives way)' }));
         const flipped = (p.studFlips || []).some(c => Math.abs(c - cx) < 0.5);
         out.push(btn(flipped ? '⟲ Flip this stud back' : '⟲ Flip this stud', 'stud-flip', { x: round16(cx) }, { title: 'Just this stud faces the other way' }),
-            btn(`◫ Add a clip on it here (${fmtFtIn(y)} up)`, 'clip-here', { x: round16(cx), y: round16(y) }));
+            btn(`◫ Add a clip on it here (${editDimension(y)} up)`, 'clip-here', { x: round16(cx), y: round16(y) }));
     } else if (edge) {
         const outline = [[0, 0], [L, 0], ...(top ? [...top].reverse() : [[L, H], [0, H]])], n = Number(edge[1]), [x1, y1] = outline[n], [x2, y2] = outline[(n + 1) % outline.length];
-        if (y1 === 0 && y2 === 0) out.push(head('Bottom track', `${fmtFtIn(L)} long`), pick(coreChoice('track'), 'Type'));
+        if (y1 === 0 && y2 === 0) out.push(head('Bottom track', `${editDimension(L)} long`), pick(coreChoice('track'), 'Type'));
         else if (Math.abs(x1 - x2) < 1e-6) endMenu(x1 < L / 2 ? 'left' : 'right');
         else {
             const cx = round16(snap(Math.min(L - 3, Math.max(3, x))));
-            out.push(head('Top track', `${fmtFtIn(Math.hypot(x2 - x1, y2 - y1))} along here`), pick(coreChoice('topTrack'), 'Type'),
-                btn(`Add a control point here (${fmtFtIn(cx)})`, 'add-ctrl', { x: cx }, { off: !shapeFree, title: shapeFree ? 'A point on the top here, to drag up or down (the top becomes a drawn one)' : 'Locked: the Revit model\'s perimeter' }));
+            out.push(head('Top track', `${editDimension(Math.hypot(x2 - x1, y2 - y1))} along here`), pick(coreChoice('topTrack'), 'Type'),
+                btn(`Add a control point here (${editDimension(cx)})`, 'add-ctrl', { x: cx }, { off: !shapeFree, title: shapeFree ? 'A point on the top here, to drag up or down (the top becomes a drawn one)' : 'Locked: the Revit model\'s perimeter' }));
         }
     } else if (end) endMenu(/^(l|tl|bl)$/.test(end[1]) ? 'left' : 'right');
     else if (pt && p.shape.points?.[Number(pt[1])]) {
         const k = Number(pt[1]), q = p.shape.points[k];
-        out.push(head(`Point ${k + 1} on the top`, `${fmtFtIn(q[0])} from the left end · ${fmtFtIn(q[1])} high`), btn('Remove this point', 'del-point', { i: k }, { off: !shapeFree }));
+        out.push(head(`Point ${k + 1} on the top`, `${editDimension(q[0])} from the left end · ${editDimension(q[1])} high`), btn('Remove this point', 'del-point', { i: k }, { off: !shapeFree }));
     } else if (clip && p.clips?.[Number(clip[1])]) {
         const i = Number(clip[1]), c = p.clips[i], at2 = laid.lay ? G.placeClips(laid.lay, p.clips).clips.find(k => k.i === i) : null;
-        out.push(head(`${at2?.mark || 'Clip'} · ${c.type}`, `${fmtFtIn(c.y)} up${at2?.stud ? `, on ${at2.stud}` : ''} (on the stud's web)`),
+        out.push(head(`${at2?.mark || 'Clip'} · ${c.type}`, `${editDimension(c.y)} up${at2?.stud ? `, on ${at2.stud}` : ''} (on the stud's web)`),
             `<label class="mi-pick"><span>Type</span><select data-f="clips.${i}.type" aria-label="Clip type">${[...new Set([c.type, ...G.CLIP_TYPES, ...(recent.clip || [])])].map(v => `<option ${v === c.type ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`,
             btn('Remove this clip', 'clip-del', { i }, { cls: 'danger' }));
     } else if (key === 'peak') {
-        out.push(head('The peak', `${fmtFtIn(p.shape.peakIn)} high, ${fmtFtIn(p.shape.peakAtIn ?? L / 2)} from the left end`), btn('Make the top a drawn one (points to drag)', 'shape', { kind: 'custom' }, { off: !shapeFree }));
+        out.push(head('The peak', `${editDimension(p.shape.peakIn)} high, ${editDimension(p.shape.peakAtIn ?? L / 2)} from the left end`), btn('Make the top a drawn one (points to drag)', 'shape', { kind: 'custom' }, { off: !shapeFree }));
     } else if (x > 0 && x < L && y >= 0 && y < at(x)) {
-        out.push(head('Add an opening here', `${fmtFtIn(x)} from the left end${y > 1 ? ` · ${fmtFtIn(y)} up` : ''}`),
+        out.push(head('Add an opening here', `${editDimension(x)} from the left end${y > 1 ? ` · ${editDimension(y)} up` : ''}`),
             `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`,
             btn(`◫ Add a ${clipType.toLowerCase()} on the nearest stud`, 'clip-here', { x: round16(x), y: round16(y) }));
     }
@@ -1373,7 +1387,7 @@ function addControlPoint(p, x) {
     pts.push([x, round16(topAt(top, x, H))]);
     pts.sort((a, b) => a[0] - b[0]);
     renderElevHead(); renderShapeTable(); renderHint(); changed();
-    notice(`Point added on the top at ${fmtFtIn(x)}: drag it up or down (double-click or right-click it to remove it).`);
+    notice(`Point added on the top at ${editDimension(x)}: drag it up or down (double-click or right-click it to remove it).`);
 }
 // "+ Door" (and the rest) from the menu: the new opening centered where the menu was opened (a window or MEP opening
 // at that height too).
@@ -1413,7 +1427,7 @@ function clipAimAt(p, q, free = false) {
 }
 main.addEventListener('change', (e) => {
     if (e.target.id === 'clip-align-on') { clipAlign.on = e.target.checked; renderSketch(); }
-    if (e.target.id === 'clip-align-at') { const v = G.parseLength(e.target.value); clipAlign.y = e.target.value.trim() === '' ? null : v; renderHint(); renderSketch(); }
+    if (e.target.id === 'clip-align-at') { const v = parseDimension(e.target.value); clipAlign.y = e.target.value.trim() === '' ? null : v; renderHint(); renderSketch(); }
 });
 main.addEventListener('change', (e) => { if (e.target.id === 'clip-type') { clipType = e.target.value.trim() || G.CLIP_TYPES[0]; recent.clip = G.remember(recent.clip, clipType); store(KEYS.recent, recent); renderDatalists(); } });
 // New clips: only those that land on a stud and not on one already there.
@@ -1429,11 +1443,11 @@ function removeClip(p, i) {
     if (!p.clips?.[i]) return;
     const [c] = p.clips.splice(i, 1);
     hover = null; renderHint(); changed();
-    notice(`${c.type} at ${fmtFtIn(c.y)} removed.`);
+    notice(`${c.type} at ${editDimension(c.y)} removed.`);
 }
 
 // --- Framing details: an opening's jambs, header, sill and rough opening, with a live preview -------------------------
-const roText = (p, i) => { const o = p.openings[i], r = G.roughOpening(o, G.shapeTop(p.shape).heightIn); return o.kind === 'steel' ? `${fmtFtIn(r.right - r.left)} wide` : `${fmtFtIn(r.right - r.left)} x ${fmtFtIn(r.top - r.bottom)}`; };
+const roText = (p, i) => { const o = p.openings[i], r = G.roughOpening(o, G.shapeTop(p.shape).heightIn); return o.kind === 'steel' ? `${editDimension(r.right - r.left)} wide` : `${editDimension(r.right - r.left)} x ${editDimension(r.top - r.bottom)}`; };
 function framingSummary(p, i) {
     const fr = G.openingFraming(p, p.openings[i]);
     return [fr.plies > 1 ? `${fr.plies} jamb studs each side, ${G.JAMB_STYLES[fr.jambStyle].toLowerCase()}` : '1 jamb stud each side',
@@ -1539,13 +1553,13 @@ function renderFraming() {
     const pv = framingPreview(panel), views = detailViews(kind);
     if (!views.includes(fd.view)) fd.view = views.includes('head') ? 'head' : 'opening';
     frDialog().innerHTML = `<form method="dialog" class="fd fd-simple">
-        <div class="fd-head"><b class="op-name ${kind}">${name}</b><span>${esc(type.name)} · ${esc(kind === 'steel' ? `${fmtFtIn(d.widthIn)} wide` : `${fmtFtIn(d.widthIn)} x ${fmtFtIn(d.heightIn)}`)}${G.isLockedOpening(p, d) ? ' · 🔒 the model\'s (its framing can change)' : ''}</span>
+        <div class="fd-head"><b class="op-name ${kind}">${name}</b><span>${esc(type.name)} · ${esc(kind === 'steel' ? `${editDimension(d.widthIn)} wide` : `${editDimension(d.widthIn)} x ${editDimension(d.heightIn)}`)}${G.isLockedOpening(p, d) ? ' · 🔒 the model\'s (its framing can change)' : ''}</span>
             <span class="spacer"></span><button type="button" class="link" data-fd="cancel" aria-label="Close">✕</button></div>
         <div class="fd-body"><div class="fd-controls">
             ${profileRow('jamb')}
             ${type.members.includes('head') ? profileRow('head') : ''}
             ${type.members.includes('sill') ? profileRow('sill') : ''}
-            <div class="fd-ro-line">Rough opening <b>${esc(kind === 'steel' ? `${fmtFtIn(fr.ro.right - fr.ro.left)} wide` : `${fmtFtIn(fr.ro.right - fr.ro.left)} x ${fmtFtIn(fr.ro.top - fr.ro.bottom)}`)}</b>
+            <div class="fd-ro-line">Rough opening <b>${esc(kind === 'steel' ? `${editDimension(fr.ro.right - fr.ro.left)} wide` : `${editDimension(fr.ro.right - fr.ro.left)} x ${editDimension(fr.ro.top - fr.ro.bottom)}`)}</b>
                 <label>offset <input type="text" class="mini" data-fd="offset" value="${esc(inch(off))}" aria-label="Framing offset"></label>
                 ${d.offsetIn != null && d.offsetIn !== '' ? `<button type="button" class="link small" data-fd="offsetReset">${esc(inch(G.FRAMING_OFFSETS[kind]))} default</button>` : ''}
                 <label class="fd-check fd-vary" title="Equal on every side unless unlocked"><input type="checkbox" data-fd="offsetsVary" ${d.offsets ? 'checked' : ''}> ${d.offsets ? '🔓' : '🔒'} Vary by side</label>
@@ -1635,7 +1649,7 @@ function detailPane(panel, view) {
 // The rule card: what the lookup reads (the wall, the opening), the schedule it sits in (wall height by width, the cell
 // that covers it marked), what that rule gives, and Use. Then one row per member: what is in force and where it came
 // from, the rule's alternatives to pick from, the arrangement a built-up member needs, Back to the rule.
-const ftIn = (feet) => (feet > 0 ? fmtFtIn(Math.round(feet * 12 * 16) / 16) : '0');
+const ftIn = (feet) => (feet > 0 ? editDimension(Math.round(feet * 12 * 16) / 16) : '0');
 // A member as a schedule writes it: '362S162-54', '(2) 362S162-33 + (2) 362T125-33'.
 const memberText = (v) => { const d = G.parseMember(v); return d && d.qty === 1 && G.specParts(v).studQty + G.specParts(v).trackQty <= 1 ? d.name : String(v || '').replace(/\s+WITH\s+/gi, ' + ').replace(/\s+/g, ' ').trim(); };
 const giveText = (g) => (!g ? '' : g.text ? memberText(g.text) : g.choices ? g.choices.map(memberText).join(' or ') : g.notApplicable ? 'none' : 'to pick');
@@ -1648,7 +1662,7 @@ function ruleCard(p, i) {
             ${r.why === 'no-catalog' ? '<button class="secondary small" data-act="eng-open">Open the engineering catalog…</button>' : ''}</div>`;
     }
     const q = r.query, word = G.kindWord(o.kind), using = r.bound, covers = (s) => !R.missedBy(s, q).length;
-    const reads = [`${q.depthCode || '?'} wall${q.finish ? ` · ${q.finish}` : ''}`, `${fmtFtIn(q.wallHeightIn)} high`, `${word} ${fmtFtIn(q.openingWidthIn)} wide`, `${fmtFtIn(q.heightAboveOpeningIn)} of wall above`];
+    const reads = [`${q.depthCode || '?'} wall${q.finish ? ` · ${q.finish}` : ''}`, `${editDimension(q.wallHeightIn)} high`, `${word} ${editDimension(q.openingWidthIn)} wide`, `${editDimension(q.heightAboveOpeningIn)} of wall above`];
     const sch = r.schedule, outKey = (s) => SC.openingStyleOutputs(s, o.kind);
     const cell = (s) => { const out = outKey(s), h = out.members.head || out.choices.head?.join(' / ') || '', j = out.members.jamb || out.choices.jamb?.join(' / ') || '';
         const miss = R.missedBy(s, q), cls = [covers(s) ? 'covers' : 'misses', using?.KEY_ID === s.KEY_ID ? 'on' : '', r.match?.KEY_ID === s.KEY_ID ? 'match' : ''].join(' ');
@@ -1764,21 +1778,21 @@ function framingInput(e) {
     if (k === 'apply') { applyFraming(); return; }
     if (k === 'save-name') { fd.saveAs[kind] = String(v); return; }
     if (k === 'offsetSide' && e.type === 'input') { // the preview follows as a side is typed
-        const n = G.parseLength(String(v)), box = frDialog().querySelector('.fd-svg');
+        const n = parseDimension(String(v)), box = frDialog().querySelector('.fd-svg');
         if (n != null && n >= 0) { d.offsets = { ...(d.offsets || {}), [kind]: round16(n) }; if (box) box.innerHTML = framingPreview(draftPanel()).svg; }
         return;
     }
     if (k === 'offset' && e.type === 'input') {
-        const n = G.parseLength(String(v));
+        const n = parseDimension(String(v));
         const box = frDialog().querySelector('.fd-svg');
         if (n != null) { d.offsetIn = round16(n); if (box) box.innerHTML = framingPreview(draftPanel()).svg; }
         return;
     }
     if (k === 'reset') { const r = { ...d, head: '', jamb: '', sill: '' }; for (const f of ['offsets', 'offsetIn', 'jambStyle', 'headStyle', 'sillStyle', 'headBearing', 'crippleEnds', 'toLayout']) delete r[f]; openFraming(fd.i, r); return; }
-    if (k === 'offset') { const n = G.parseLength(String(v)); if (n == null) return; d.offsetIn = round16(n); }
+    if (k === 'offset') { const n = parseDimension(String(v)); if (n == null) return; d.offsetIn = round16(n); }
     else if (k === 'offsetReset') delete d.offsetIn;
     else if (k === 'offsetsVary') { if (v) d.offsets = Object.fromEntries(offsetSides(d).map(([s]) => [s, G.offsetsOf(d)[s]])); else delete d.offsets; }
-    else if (k === 'offsetSide') { const n = G.parseLength(String(v)); if (n == null || n < 0) return; d.offsets = { ...(d.offsets || {}), [kind]: round16(n) }; }
+    else if (k === 'offsetSide') { const n = parseDimension(String(v)); if (n == null || n < 0) return; d.offsets = { ...(d.offsets || {}), [kind]: round16(n) }; }
     else if (k === 'toLayout') { if (v) d.toLayout = true; else delete d.toLayout; }
     else if (k === 'crippleEnds') { if (v) d.crippleEnds = true; else delete d.crippleEnds; }
     else if (k === 'spread') fd.spread = !!v;
@@ -1852,7 +1866,7 @@ function renderChips() {
     $('#op-chips').innerHTML = p.openings.length ? p.openings.map((o, i) => {
         const b = G.openingBox(o), bad = errors.some(e => e.where === `opening-${i}`);
         return `<button class="op-chip ${o.kind} ${i === sel ? 'on' : ''} ${bad ? 'bad' : ''}" data-act="select-op" data-i="${i}" title="${esc(G.OPENING_TYPES[o.kind].name)}">
-            <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : G.isFromModel(p) ? ' <span class="own study" title="Added here: a study opening, report-only">study</span>' : ''} ${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${fmtFtIn(b.top - b.bottom)}`} @ ${fmtFtIn(b.left)}</button>`;
+            <b>${G.openingName(p.openings, i)}</b>${G.isLockedOpening(p, o) ? ' 🔒' : G.isFromModel(p) ? ' <span class="own study" title="Added here: a study opening, report-only">study</span>' : ''} ${editDimension(b.right - b.left)}${o.kind === 'steel' ? ' through the top' : ` x ${editDimension(b.top - b.bottom)}`} @ ${editDimension(b.left)}</button>`;
     }).join('') : '<span class="muted small">No openings yet: add one, or draw it.</span>';
 }
 
@@ -1913,7 +1927,7 @@ function renderWorkspace() {
 const renderPreview = renderWorkspace; // the name older code calls
 // A small length in sixteenths ('1/16"'), and which way a member's section opens, in words (the plan's axes: x along the
 // panel from its left end on side A, y up, z through the wall from side A).
-const sixteenths = (v) => { const t = Math.round(v * 16), w = Math.floor(t / 16); let n = t % 16, d = 16; if (!n) return `${w}"`; while (n % 2 === 0) { n /= 2; d /= 2; } return `${w ? `${w} ` : ''}${n}/${d}"`; };
+const sixteenths=editDimension;
 function facingText(v) {
     const [x, y, z] = v.map(c => Math.round(c * 1000) / 1000), words = [];
     if (Math.abs(x) > 0.2) words.push(x < 0 ? 'toward the left end' : 'toward the right end');
@@ -1966,6 +1980,8 @@ function setView(id) {
     renderActiveView(cur(), current);
 }
 function renderViewBar() {
+    $('#wall-dimension-format').value=dimensionFormat;
+    const note=main.querySelector('.units-note');if(note)note.textContent=`Lengths: 10′-6″, 126.5″ or 126 1/2″. Bare numbers are ${dimensionFormat==='decimal-feet'?'feet':'inches'}.`;
     $('#view-tabs').innerHTML = W.VIEWS.map(v => `<button role="tab" id="tab-${v.id}" aria-selected="${v.id === prefs.view}" aria-controls="view-${v.id}" tabindex="${v.id === prefs.view ? 0 : -1}"
         data-view-tab="${v.id}" ${v.available === false ? 'disabled' : ''} title="${esc(v.available === false ? `${v.hint}: ${v.reason}` : v.hint)}">${esc(v.label)}</button>`).join('');
 }
@@ -1979,7 +1995,7 @@ function renderActiveView(p, f) {
     if (id === 'sketch') { renderSketch(); renderSketchMemberBar(p, f); return; }
     const layout = f.layout, open = openChoices(f.plan), pre = open.length ? `<div class="preliminary">PRELIMINARY: ${open.length} choice${open.length === 1 ? '' : 's'} open</div>` : '';
     if (id === 'drawing') {
-        document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : ''}`;
+        document.getElementById('pv-title').textContent = `${p.mark || 'Panel'}${layout ? ` · ${editDimension(layout.lengthIn)} x ${editDimension(layout.heightIn)}` : ''}`;
         const sheet = document.getElementById('pv-sheet'), list = document.getElementById('pv-errors');
         if (!layout) { list.innerHTML = notFramed(f); sheet.innerHTML = ''; sheet.classList.add('stale'); return; }
         sheet.classList.remove('stale');
@@ -2017,7 +2033,7 @@ function compareView(p, f) {
     return `<div class="cmp"><div class="cmp-head"><label class="small">Compare with <select id="cmp-rev" aria-label="Compare with">${revs.slice().reverse().map(x => `<option value="${x.n}" ${x === r ? 'selected' : ''}>Revision ${x.n} · ${esc(x.date)}${x.note ? ` · ${esc(x.note)}` : ''}</option>`).join('')}
             <option disabled>MWF framing in the model (needs its read-only export: later)</option></select></label><span class="spacer"></span>${issue}</div>
         <p class="cmp-sum">${changes.length ? `<b>${changes.length} change${changes.length === 1 ? '' : 's'}</b> since revision ${r.n} (${esc(r.date)}), clouded below:` : `<b>No change</b> since revision ${r.n} (${esc(r.date)}).`}</p>
-        ${changes.length ? `<ul class="cmp-list">${changes.map(c => `<li class="${c.kind}">${esc(RV.describe(c, fmtFtIn, (k) => openingNameByKey(p, k)))}</li>`).join('')}</ul>` : ''}
+        ${changes.length ? `<ul class="cmp-list">${changes.map(c => `<li class="${c.kind}">${esc(RV.describe(c, editDimension, (k) => openingNameByKey(p, k)))}</li>`).join('')}</ul>` : ''}
         <div class="view-svg">${svgFit(renderSheetRegion(f.layout, info, 'elevation'))}</div></div>`;
 }
 function issueRevision(p) {
@@ -2061,7 +2077,7 @@ function renderBottom(f) {
     if (tab === 'cut') {
         const focused = body.contains(document.activeElement) ? document.activeElement.dataset.cutlistType : null;
         body.innerHTML = rows.length ? `<table class="cut-table" aria-label="Cut list"><thead><tr><th>Label</th><th>Qty</th><th>Function</th><th>Member</th><th>Cut length</th></tr></thead><tbody>
-            ${rows.map(r => `<tr tabindex="0" data-mark="${esc(r.mark)}" class="${links.marks.has(r.mark) ? 'selected' : ''}" aria-selected="${links.marks.has(r.mark)}"><td><b>${esc(r.mark)}</b></td><td>${r.qty}</td><td>${esc(r.func || '')}</td><td><select class="cut-type" data-cutlist-type="${esc(r.mark)}" aria-label="Member type for ${esc(r.mark)}" title="Change the pieces in this row; panel defaults stay unchanged. Same family, depth and flange; alternate thicknesses. Change section sizes under Members.">${CUT.suggestions(cur(), r.designator, Object.values(recent).flat()).map(name => `<option value="${esc(name)}"${name === r.designator ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></td><td>${esc(fmtFtIn(r.cutLengthIn))}</td></tr>`).join('')}</tbody></table><p class="cut-hint muted small">Change types by row; panel defaults stay unchanged. Undo restores the previous choice.</p>`
+            ${rows.map(r => `<tr tabindex="0" data-mark="${esc(r.mark)}" class="${links.marks.has(r.mark) ? 'selected' : ''}" aria-selected="${links.marks.has(r.mark)}"><td><b>${esc(r.mark)}</b></td><td>${r.qty}</td><td>${esc(r.func || '')}</td><td><select class="cut-type" data-cutlist-type="${esc(r.mark)}" aria-label="Member type for ${esc(r.mark)}" title="Change the pieces in this row; panel defaults stay unchanged. Same family, depth and flange; alternate thicknesses. Change section sizes under Members.">${CUT.suggestions(cur(), r.designator, Object.values(recent).flat()).map(name => `<option value="${esc(name)}"${name === r.designator ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></td><td>${esc(editDimension(r.cutLengthIn))}</td></tr>`).join('')}</tbody></table><p class="cut-hint muted small">Change types by row; panel defaults stay unchanged. Undo restores the previous choice.</p>`
             : `<p class="muted">${f.layout ? 'No members.' : 'Not framed yet: no cut list (see Issues).'}</p>`;
         if (focused) [...body.querySelectorAll('[data-cutlist-type]')].find(el => el.dataset.cutlistType === focused)?.focus({ preventScroll: true });
         return;
@@ -2103,7 +2119,7 @@ function renderInspectorContext(p, f) {
         const xc = Math.round(m.start[0] * 16) / 16, flipped = (p.studFlips || []).some(c => Math.abs(c - xc) < 0.5);
         box.innerHTML = `<div class="ctx-card"><h3>${esc(s.kind === 'mark' ? `${m.mark}: ${row?.qty ?? members.length} × ${m.designator}` : `${m.mark} · ${m.role}`)}</h3>
             <dl><dt>Member</dt><dd>${esc(m.designator)}${m.catalogKey ? '' : ' <span class="set-state unresolved">not in the catalog</span>'}</dd>
-                <dt>Cut length</dt><dd>${esc(fmtFtIn(m.cut.lengthIn))} <span class="muted">(${esc(m.cut.rule)}${m.cut.allowanceIn ? `, ${sixteenths(m.cut.allowanceIn)} seat` : ''})</span></dd>
+                <dt>Cut length</dt><dd>${esc(editDimension(m.cut.lengthIn))} <span class="muted">(${esc(m.cut.rule)}${m.cut.allowanceIn ? `, ${sixteenths(m.cut.allowanceIn)} seat` : ''})</span></dd>
                 ${slope ? `<dt>Cut end</dt><dd>${ends.topSlope ? 'top' : 'ends'} at ${slope.angleDeg.toFixed(1)}° (long side ${esc(slope.longSide)})</dd>` : ''}
                 <dt>Faces</dt><dd>${m.orientation.kind === 'unresolved' ? `<span class="set-state unresolved">unresolved: ${esc(m.orientation.reason)}</span>` : esc(facingText(m.orientation.openSide))}</dd>
                 ${s.kind === 'member' ? `<dt>Key</dt><dd><code>${esc(m.memberKey)}</code></dd>` : `<dt>Members</dt><dd>${members.map(x => `<code>${esc(x.memberKey)}</code>`).join(' ')}</dd>`}
@@ -2122,10 +2138,10 @@ function renderInspectorContext(p, f) {
     }
     // The panel (nothing selected, or an opening: its editor is in Openings below).
     const L = f.layout, fx = focusOf(box), octx = new Map(OC.openingContexts(p, legendColors()).map(c => [c.key, c])), loose = OC.unframedInserts(p, legendColors());
-    box.innerHTML = `<div class="ctx-card"><h3 class="ctx-title"><input class="ctx-mark" type="text" data-f="mark" value="${esc(p.mark)}" placeholder="Panel mark" aria-label="Panel mark (rename this panel)" title="Rename this panel" autocomplete="off" spellcheck="false">${L ? ` <span class="muted small">${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}</span>` : ''}</h3>
+    box.innerHTML = `<div class="ctx-card"><h3 class="ctx-title"><input class="ctx-mark" type="text" data-f="mark" value="${esc(p.mark)}" placeholder="Panel mark" aria-label="Panel mark (rename this panel)" title="Rename this panel" autocomplete="off" spellcheck="false">${L ? ` <span class="muted small">${esc(editDimension(L.lengthIn))} x ${esc(editDimension(L.heightIn))}</span>` : ''}</h3>
         <dl><dt>Geometry</dt><dd>${own.geometry === 'model' ? `<span class="own model" title="${esc(`Revit wall ${p.revit?.uniqueId || ''}`)}">🔒 the Revit wall's: outline and openings locked</span>` : '<span class="own typed">typed or drawn here: editable</span>'}</dd>
             ${own.openings.length ? `<dt>Openings</dt><dd>${own.openings.map((o, i) => `<button class="link${selection.kind === 'opening' && selection.key === o.key ? ' on' : ''}" data-ctx="select-opening" data-v="${esc(o.key)}" aria-pressed="${selection.kind === 'opening' && selection.key === o.key}">${esc(G.openingName(p.openings, i))}</button> ${ownBadge(o.owner)}${ocTag(octx.get(o.key))}${o.status && o.status !== 'framed' ? ` <span class="muted small">${esc(o.status)}</span>` : ''}`).join('<br>')}</dd>` : ''}</dl>
-        ${revLine(p)}${typLine(p)}${loose.length ? `<div class="oc-loose small" role="note"><b>In the model, with no opening here</b> (not framed; add an opening if it needs one):<ul>${loose.map(x => `<li title="${esc(`${x.category}${x.uniqueId ? ` (UniqueId ${x.uniqueId})` : ''}`)}"><i class="oc-dot" style="background:${x.color}"></i>${esc(x.tradeLabel)}${x.name ? ` · ${esc(x.name)}` : ''} <span class="muted">at ${esc(fmtFtIn(x.at[0]))} along, ${esc(fmtFtIn(x.at[1]))} up (side A)</span>
+        ${revLine(p)}${typLine(p)}${loose.length ? `<div class="oc-loose small" role="note"><b>In the model, with no opening here</b> (not framed; add an opening if it needs one):<ul>${loose.map(x => `<li title="${esc(`${x.category}${x.uniqueId ? ` (UniqueId ${x.uniqueId})` : ''}`)}"><i class="oc-dot" style="background:${x.color}"></i>${esc(x.tradeLabel)}${x.name ? ` · ${esc(x.name)}` : ''} <span class="muted">at ${esc(editDimension(x.at[0]))} along, ${esc(editDimension(x.at[1]))} up (side A)</span>
                 ${x.uniqueId ? `<button class="secondary small" data-act="oc-add" data-uid="${esc(x.uniqueId)}" title="An opening at its place, sized from its type name when it says (check the size)">Add an opening here</button>` : ''}</li>`).join('')}</ul></div>` : ''}
         ${manualSummary(p, f)}<div class="acts"><button class="secondary" data-act="copy" title="${esc(own.duplicate.explain)}">${esc(own.duplicate.label)}</button><button class="secondary" data-act="tpl-save" title="Keep its shape, openings, members and layout to start new panels from (+ New panel ▾)">Save as template</button></div></div>`;
     restoreFocus(box, fx);
@@ -2155,7 +2171,7 @@ function manualStep() { return manStep > 0 ? manStep : 1 / 16; }
 // A member in words: its label, role and place (side as drawn).
 function memberWords(key) {
     const lay = layoutA(), m = lay?.members.find(x => x.key === key);
-    return m ? `${m.mark || '?'} (${m.role}${MAN.isAdded(key) ? ', a copy' : ''}) at ${fmtFtIn(sideB() ? lay.lengthIn - m.x - m.w : m.x)}` : key;
+    return m ? `${m.mark || '?'} (${m.role}${MAN.isAdded(key) ? ', a copy' : ''}) at ${editDimension(sideB() ? lay.lengthIn - m.x - m.w : m.x)}` : key;
 }
 function selectedLayoutKey() { return selection.kind === 'member' ? layoutKeyOf(selection.key) : null; }
 function manualNudge(dx, dy) {
@@ -2165,7 +2181,7 @@ function manualNudge(dx, dy) {
     historyHint = { label: 'the move', mergeKey: `man-move:${key}` };
     const was = MAN.isUnlocked(cur(), key);
     manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, key), lay, key, sideB() ? -dx : dx, dy));
-    const what = [dx ? `${DT.inches(Math.abs(dx))} ${dx > 0 ? 'right' : 'left'}` : '', dy ? `${DT.inches(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(', ');
+    const what = [dx ? `${editDimension(Math.abs(dx))} ${dx > 0 ? 'right' : 'left'}` : '', dy ? `${editDimension(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''].filter(Boolean).join(', ');
     manLast = `Moved ${memberWords(key)}${was ? '' : ' (unlocked: placed by hand now)'}: ${what}.`;
     notice(manLast); renderWorkspace();
 }
@@ -2251,7 +2267,7 @@ function fillBay(a, b) {
     const r = MAN.fillBay(p, lay, a, b, sp);
     if (!r.key) { notice('No stud to copy beside that bay.', true); return; }
     replacePanel(r.panel); changed();
-    manLast = `Added a stud (a copy of ${memberWords(a)}) at ${fmtFtIn(sideB() ? lay.lengthIn - r.x - 1.625 : r.x)} from the left end, in the bay that was over ${sp}" o.c.`;
+    manLast = `Added a stud (a copy of ${memberWords(a)}) at ${editDimension(sideB() ? lay.lengthIn - r.x - 1.625 : r.x)} from the left end, in the bay that was over ${sp}" o.c.`;
     selectAdded(r.key); notice(manLast);
 }
 // Arrows beside the selected member in the elevation: each moves it one step that way.
@@ -2269,7 +2285,7 @@ function drawHandles(host, f) {
         c.setAttribute('cx', px); c.setAttribute('cy', py); c.setAttribute('r', r);
         const k = r * 0.55, pts = dx ? [[px + dx * k, py], [px - dx * k * 0.6, py - k], [px - dx * k * 0.6, py + k]] : [[px, py - dy * k], [px - k, py + dy * k * 0.6], [px + k, py + dy * k * 0.6]];
         t.setAttribute('d', `M${pts.map(q => q.join(' ')).join(' L')} Z`);
-        ti.textContent = `${label} ${DT.inches(manualStep())}`;
+        ti.textContent = `${label} ${editDimension(manualStep())}`;
         a.append(c, t, ti); g.append(a);
     };
     arrow(x - r * 1.8, cy, -1, 0, 'Move left'); arrow(x + w + r * 1.8, cy, 1, 0, 'Move right');
@@ -2281,7 +2297,7 @@ function bayWords(keys, sp) {
     const lay = layoutA(), [a, b] = keys.map(k => lay?.members.find(x => x.key === k));
     const gap = a && b ? Math.abs((b.x + b.w / 2) - (a.x + a.w / 2)) : null;
     const [l, r] = sideB() ? [keys[1], keys[0]] : keys;
-    return `Over ${sp}" o.c.: ${memberWords(l)} to ${memberWords(r)}${gap != null ? ` are ${DT.inches(gap)} apart, center to center` : ''}.`;
+    return `Over ${sp}" o.c.: ${memberWords(l)} to ${memberWords(r)}${gap != null ? ` are ${editDimension(gap)} apart, center to center` : ''}.`;
 }
 // The bar of actions at the selected member or opening (any mode): what it is and the edits it takes, one click each.
 // A member: Copy, Mirror, Delete, its type, Reset (back to the rules); the arrows around it move it a step. An opening:
@@ -2372,7 +2388,7 @@ function opProfiles() { return OP.cleanProfiles(set.openingProfiles) || []; }
 function legendColors() { return OC.cleanColors(set.legendColors); }
 // The sheet's opening legend: the trades of its openings, by the legend's names, in the set's colors.
 function openingLegend(p) { const colors = legendColors(); return OC.tradesOf(OC.openingContexts(p, colors), colors).map(t => ({ legend: t.legend, color: t.color })); }
-function sizeText(o) { return o.kind === 'steel' ? `${fmtFtIn(o.widthIn)} wide` : `${fmtFtIn(o.widthIn)} x ${fmtFtIn(o.heightIn)}`; }
+function sizeText(o) { return o.kind === 'steel' ? `${editDimension(o.widthIn)} wide` : `${editDimension(o.widthIn)} x ${editDimension(o.heightIn)}`; }
 // The opening's profile: pick one (its framing; the size stays), save this one as one, or, once its framing is not the
 // profile's, update the profile (every opening that uses it) or go back to it.
 function profileControl(p, o, i) {
@@ -2469,8 +2485,8 @@ function typeFramingButton(p, c, i) {
     const all = OC.sameTypeOpenings(set.panels, key), others = all.length - 1, panels = new Set(all.map(x => x.panelId)).size;
     return `<button class="secondary small" data-act="type-framing" data-i="${i}" title="${esc(`Every ${OC.typeNameOf(key)} in the set (${all.length} in ${panels} panel${panels === 1 ? '' : 's'}) takes this opening's framing, and so do those in panels imported later`)}">Same framing for every ${esc(OC.typeNameOf(key))}${others ? ` (+${others})` : ''}</button>`;
 }
-const framingWords = (f) => [f.jamb ? `jambs ${f.jamb}` : 'jambs: the panel\'s', f.head ? `header ${f.head}` : '', f.sill ? `sill ${f.sill}` : '', f.offsetIn != null ? `framing offset ${DT.inches(f.offsetIn)}` : '',
-    f.offsets ? `offsets ${Object.entries(f.offsets).map(([k, v]) => `${k[0].toUpperCase()} ${DT.inches(v)}`).join(', ')}` : '',
+const framingWords = (f) => [f.jamb ? `jambs ${f.jamb}` : 'jambs: the panel\'s', f.head ? `header ${f.head}` : '', f.sill ? `sill ${f.sill}` : '', f.offsetIn != null ? `framing offset ${editDimension(f.offsetIn)}` : '',
+    f.offsets ? `offsets ${Object.entries(f.offsets).map(([k, v]) => `${k[0].toUpperCase()} ${editDimension(v)}`).join(', ')}` : '',
     f.jambStyle ? `jambs ${f.jambStyle}` : '', f.headStyle ? `header ${f.headStyle}` : '', f.headBearing ? 'header on jack studs' : '', f.style ? 'its engineering style' : ''].filter(Boolean).join(', ');
 function typeFraming(p, i) {
     const c = OC.openingContexts(p)[i], key = OC.typeKeyOf(c), src = p.openings[i], framing = OC.framingOf(src);
@@ -2505,14 +2521,14 @@ const bayRows = (bays, sp) => `<div class="man-bays" role="alert">${bays.map(b =
 function editBar(p, f) {
     const n = MAN.unlockedCount(p), sp = Number(p.members.spacingIn) || 16;
     const bays = wideBays(f);
-    const stepRow = `<span class="man-steps" role="group" aria-label="Move step"><span class="small">Step</span>${STEPS.map(v => `<button class="${Math.abs(manStep - v) < 1e-9 ? 'on' : ''}" data-act="man-step" data-v="${v}" aria-pressed="${Math.abs(manStep - v) < 1e-9}">${esc(DT.inches(v))}</button>`).join('')}</span>`;
+    const stepRow = `<span class="man-steps" role="group" aria-label="Move step"><span class="small">Step</span>${STEPS.map(v => `<button class="${Math.abs(manStep - v) < 1e-9 ? 'on' : ''}" data-act="man-step" data-v="${v}" aria-pressed="${Math.abs(manStep - v) < 1e-9}">${esc(editDimension(v))}</button>`).join('')}</span>`;
     return `<div class="edit-bar" role="toolbar" aria-label="Edit members"><b>✎ Edit members</b><span class="muted small">Drag a member to move it · click one for its actions · the arrows around it (or the arrow keys, Shift: 1") move it a step</span>
         <span class="spacer"></span>${stepRow}<span class="small">${n} by hand</span><button class="secondary small" data-act="man-unlock-all">Unlock all</button>${n ? '<button class="link small" data-act="man-lock-all">Lock all</button>' : ''}<button class="small" data-act="man-mode">Done</button>
         ${manLast ? `<div class="man-last small">${esc(manLast)}</div>` : ''}${bays.length ? bayRows(bays, sp) : ''}</div>`;
 }
 // Typed place and length (side A once typed).
 function manualField(el) {
-    const key = el.dataset.key, v = G.parseLength(el.value), lay = layoutA(), m = lay?.members.find(x => x.key === key);
+    const key = el.dataset.key, v = parseDimension(el.value), lay = layoutA(), m = lay?.members.find(x => x.key === key);
     if (!m) return;
     if(SK.pinned(cur(),'member:'+key)){notice('Unlock this sketch member before changing its position or length.',true);renderWorkspace();return;}
     if (v == null || (el.dataset.manF === 'len' && v <= 0)) { notice('Type a valid member dimension; length must be greater than zero.', true); renderWorkspace(); return; }
@@ -2563,7 +2579,7 @@ function manualPointerUp(e) {
     d.hit.removeAttribute('transform');
     if (!(dx || dy)) return;
     historyHint = { label: 'the move' };
-    manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, d.key), lay, d.key, sideB() ? -dx : dx, dy), `Moved ${fmtFtIn(Math.abs(dx))} ${dx >= 0 ? 'right' : 'left'}${dy ? `, ${fmtFtIn(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''} (placed by hand).`);
+    manualEdit((q, lay) => MAN.move(MAN.unlock(q, lay, d.key), lay, d.key, sideB() ? -dx : dx, dy), `Moved ${editDimension(Math.abs(dx))} ${dx >= 0 ? 'right' : 'left'}${dy ? `, ${editDimension(Math.abs(dy))} ${dy > 0 ? 'up' : 'down'}` : ''} (placed by hand).`);
     selectAdded(d.key); // the moved member, selected: its card to fine-tune it
 }
 main.addEventListener('pointerdown', manualPointerDown);
@@ -2605,8 +2621,8 @@ function renderContextSec() {
 function contextField(el) {
     const path = el.dataset.ctxF.split('.'), v = el.value;
     contextEdit(c => {
-        if (path[0] === 'levels') { const l = c.levels[path[1]] || { name: '', place: 'at', offsetIn: 0 }; if (path[2] === 'name') l.name = v; else { const n = G.parseLength(v); if (n != null) l.offsetIn = Math.abs(n); } c.levels[path[1]] = l; }
-        else { const g = c.grids[Number(path[1])]; if (!g) return; if (path[2] === 'name') g.name = v; else { const n = G.parseLength(v); if (n != null) g.xIn = n; } }
+        if (path[0] === 'levels') { const l = c.levels[path[1]] || { name: '', place: 'at', offsetIn: 0 }; if (path[2] === 'name') l.name = v; else { const n = parseDimension(v); if (n != null) l.offsetIn = Math.abs(n); } c.levels[path[1]] = l; }
+        else { const g = c.grids[Number(path[1])]; if (!g) return; if (path[2] === 'name') g.name = v; else { const n = parseDimension(v); if (n != null) g.xIn = n; } }
     });
 }
 main.addEventListener('change', (e) => {
@@ -2626,7 +2642,7 @@ function contextLayer(p, L, H, top, fs, t, Y) {
     }
     for (const g of ctx.grids) {
         const r = fs * 0.95, yb = Y(hi) - fs * 1.6 - r;
-        out.push(`<g class="sk-gridline"><line x1="${g.xIn}" y1="${Y(0) + fs}" x2="${g.xIn}" y2="${yb + r}"/><circle cx="${g.xIn}" cy="${yb}" r="${r}"/>${t(g.xIn, yb + r * 0.38, g.name, { cls: 'sk-grid-t', size: fs * 0.95 })}<title>${esc(`Grid ${g.name}: ${fmtFtIn(g.xIn)} from the left end`)}</title></g>`);
+        out.push(`<g class="sk-gridline"><line x1="${g.xIn}" y1="${Y(0) + fs}" x2="${g.xIn}" y2="${yb + r}"/><circle cx="${g.xIn}" cy="${yb}" r="${r}"/>${t(g.xIn, yb + r * 0.38, g.name, { cls: 'sk-grid-t', size: fs * 0.95 })}<title>${esc(`Grid ${g.name}: ${editDimension(g.xIn)} from the left end`)}</title></g>`);
     }
     return out.join('');
 }
@@ -2654,7 +2670,7 @@ function openingSchedule(p) {
         const b = G.openingBox(o, G.shapeTop(p.shape).heightIn);
         return `<tr class="${sel === i ? 'selected' : ''}"><td><input type="checkbox" data-sch-check="${i}" ${schChecked.has(i) ? 'checked' : ''} aria-label="Check ${esc(G.openingName(p.openings, i))}"></td>
             <td><button class="link" data-ctx="select-opening" data-v="${esc(G.openingKeys(p)[i])}"><b class="op-name ${o.kind}">${esc(G.openingName(p.openings, i))}</b></button></td>
-            <td class="small">${esc(G.OPENING_TYPES[o.kind].name)}<br>${esc(`${fmtFtIn(b.right - b.left)}${o.kind === 'steel' ? '' : ` x ${fmtFtIn(b.top - b.bottom)}`}`)}${ocTag(ctx[i], true)}</td><td>${rule}</td>
+            <td class="small">${esc(G.OPENING_TYPES[o.kind].name)}<br>${esc(`${editDimension(b.right - b.left)}${o.kind === 'steel' ? '' : ` x ${editDimension(b.top - b.bottom)}`}`)}${ocTag(ctx[i], true)}</td><td>${rule}</td>
             ${cell(i, 'jamb', states.jamb)}${cell(i, 'head', states.head)}${cell(i, 'sill', states.sill)}</tr>`;
     }).join('');
     const n = schChecked.size;
@@ -2689,7 +2705,7 @@ function addOpeningFromInsert(p, uid) {
     p.openings.push({ id: `e${Date.now().toString(36)}`, ...opening });
     const i = p.openings.length - 1, name = G.openingName(p.openings, i), o = p.openings[i];
     changed(); selectTarget({ kind: 'opening', key: G.openingKeys(p)[i] });
-    notice(`${name} added for ${ins.tradeLabel} · ${ins.name || ins.category}: ${fmtFtIn(o.widthIn)}${o.kind === 'steel' ? ' wide' : ` x ${fmtFtIn(o.heightIn)}`} at ${fmtFtIn(o.leftIn)} along${o.kind === 'door' ? '' : `, ${fmtFtIn(o.sillIn)} up`} (side A), ${sizeFrom === 'type' ? 'sized from its type name' : `the usual ${G.OPENING_TYPES[o.kind].name.toLowerCase()} size (its type name gives none)`}: check the size it needs.`);
+    notice(`${name} added for ${ins.tradeLabel} · ${ins.name || ins.category}: ${editDimension(o.widthIn)}${o.kind === 'steel' ? ' wide' : ` x ${editDimension(o.heightIn)}`} at ${editDimension(o.leftIn)} along${o.kind === 'door' ? '' : `, ${editDimension(o.sillIn)} up`} (side A), ${sizeFrom === 'type' ? 'sized from its type name' : `the usual ${G.OPENING_TYPES[o.kind].name.toLowerCase()} size (its type name gives none)`}: check the size it needs.`);
 }
 function ocLegend(ctx) {
     const list = OC.tradesOf(ctx, legendColors());
@@ -3125,7 +3141,7 @@ function renderSet() {
         return `<li class="nav-item ${on ? 'on' : ''}"><label class="set-check"><input type="checkbox" data-check="${esc(p.id)}" ${checked.has(p.id) ? 'checked' : ''} aria-label="Check ${esc(p.mark)}"></label>
             <button class="nav-open" data-act="open" data-id="${esc(p.id)}" title="${esc(`Open ${p.mark}${p.wallType ? ` · ${p.wallType}` : ''}`)}" ${on ? 'aria-current="true"' : ''}>
                 <span class="thumb">${layout ? thumbnailSvg(layout) : ''}</span><b>${esc(p.mark)}${G.isFromModel(p) ? ' 🔒' : ''}</b>
-                <span class="muted">${layout ? `${fmtFtIn(layout.lengthIn)} x ${fmtFtIn(layout.heightIn)}` : esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')} · ${esc(G.openingsSummary(p.openings))}</span>
+                <span class="muted">${layout ? `${editDimension(layout.lengthIn)} x ${editDimension(layout.heightIn)}` : esc(G.SHAPES.find(k => k.kind === p.shape.kind)?.name || '')} · ${esc(G.openingsSummary(p.openings))}</span>
                 <span class="nav-state">${state}${typBadge(p, typ)}</span></button></li>`;
     };
     const fx = focusOf(box);
@@ -3249,7 +3265,7 @@ function overviewTab() {
             return `<tr class="${p.id === cur()?.id ? 'on' : ''}"><td><input type="checkbox" data-check="${esc(p.id)}" ${checked.has(p.id) ? 'checked' : ''} aria-label="Check ${esc(p.mark)}"></td>
                 <td><button class="link" data-act="sd-open" data-id="${esc(p.id)}"><b>${esc(p.mark)}</b></button>${G.isFromModel(p) ? ' 🔒' : ''}</td>
                 <td class="small">${esc([p.group, p.level].filter(Boolean).join(' · ') || '—')}</td>
-                <td class="small">${L ? `${esc(fmtFtIn(L.lengthIn))} x ${esc(fmtFtIn(L.heightIn))}` : '—'}</td>
+                <td class="small">${L ? `${esc(editDimension(L.lengthIn))} x ${esc(editDimension(L.heightIn))}` : '—'}</td>
                 <td class="small">${esc(G.openingsSummary(p.openings))}</td>
                 <td><span class="${cls}">${word}${s.state === 'preliminary' ? ` (${s.open})` : ''}</span>${s.errors.length ? `<br><span class="small muted">${esc(s.errors[0].message || s.errors[0])}</span>` : ''}</td>
                 <td class="small">${s.decide || s.errorsN ? `${s.decide} / ${s.errorsN}` : '—'}${s.warnings ? ` <span class="muted">(${s.warnings} note${s.warnings === 1 ? '' : 's'})</span>` : ''}</td>
@@ -3409,9 +3425,9 @@ function stockTab(list) {
     if (!items.length) return '<p class="muted">No framed panel to take the cut list from.</p>';
     let plan;
     try { plan = ST.nestStock(items, stockPrefs); } catch (err) { return `<p class="check-failed">${esc(err.message)}</p>`; }
-    const rows = ST.setCutList(items), t = plan.totals, buyText = (x) => x.buy.map(b => `${b.count} × ${fmtFtIn(b.stockIn)}`).join(', ') || '—';
-    return `<div class="sd-row"><label class="field"><span>Stock lengths</span><input type="text" data-stock="stockIn" value="${esc(plan.stockIn.map(fmtFtIn).join(', '))}" aria-label="Stock lengths (comma separated)"></label>
-            <label class="field"><span>Saw kerf</span><input type="text" class="mini" data-stock="kerfIn" value="${esc(DT.inches(plan.kerfIn))}" aria-label="Saw kerf"></label>
+    const rows = ST.setCutList(items), t = plan.totals, buyText = (x) => x.buy.map(b => `${b.count} × ${editDimension(b.stockIn)}`).join(', ') || '—';
+    return `<div class="sd-row"><label class="field"><span>Stock lengths</span><input type="text" data-stock="stockIn" value="${esc(plan.stockIn.map(editDimension).join(', '))}" aria-label="Stock lengths (comma separated)"></label>
+            <label class="field"><span>Saw kerf</span><input type="text" class="mini" data-stock="kerfIn" value="${esc(editDimension(plan.kerfIn))}" aria-label="Saw kerf"></label>
             <p class="muted small">Each type is fitted into bars of the longest stock, longest piece first, then each bar is bought at the shortest stock length that holds it. A purchasing aid: check it against your supplier's lengths and your saw.</p></div>
         <div class="sd-stats"><span><b>${t.pieces}</b> pieces</span><span><b>${lf(t.cutIn)}</b> cut</span><span><b>${t.bars}</b> bars, <b>${lf(t.orderedIn)}</b> to buy</span><span><b>${t.wastePct.toFixed(1)}%</b> offcut</span></div>
         ${skipped.length ? `<p class="warning small">Left out (inputs to fix): ${esc(skipped.join(', '))}.</p>` : ''}
@@ -3420,10 +3436,10 @@ function stockTab(list) {
         </tbody></table>
         <div class="acts"><button class="secondary small" data-act="sd-csv" data-v="buy">Purchase list CSV</button><button class="secondary small" data-act="sd-csv" data-v="cuts">Stock cut plan CSV</button><button class="secondary small" data-act="sd-csv" data-v="list">Panel cut list CSV</button></div>
         ${plan.types.map(x => `<details class="sd-bars"><summary>${esc(x.type)}: how each bar is cut (${x.bars.length} bar${x.bars.length === 1 ? '' : 's'})</summary><ol>
-            ${x.bars.map(b => `<li><b>${esc(fmtFtIn(b.stockIn))}</b>: ${b.cuts.map(c => `${esc(fmtFtIn(c.lengthIn))} <span class="muted">(${esc(c.panel)} ${esc(c.mark)})</span>`).join(' + ')} <span class="muted">· offcut ${esc(fmtFtIn(b.wasteIn))}</span></li>`).join('')}
-            ${x.long.map(c => `<li class="warning">${esc(fmtFtIn(c.lengthIn))} (${esc(c.panel)} ${esc(c.mark)}): longer than the stock, order cut to length</li>`).join('')}</ol></details>`).join('')}
+            ${x.bars.map(b => `<li><b>${esc(editDimension(b.stockIn))}</b>: ${b.cuts.map(c => `${esc(editDimension(c.lengthIn))} <span class="muted">(${esc(c.panel)} ${esc(c.mark)})</span>`).join(' + ')} <span class="muted">· offcut ${esc(editDimension(b.wasteIn))}</span></li>`).join('')}
+            ${x.long.map(c => `<li class="warning">${esc(editDimension(c.lengthIn))} (${esc(c.panel)} ${esc(c.mark)}): longer than the stock, order cut to length</li>`).join('')}</ol></details>`).join('')}
         <details class="sd-bars"><summary>The set's cut list (${rows.length} lines)</summary><table class="sd-table"><thead><tr><th>Member type</th><th>Length</th><th>Qty</th><th>Where</th></tr></thead><tbody>
-            ${rows.map(r => `<tr><td>${esc(r.type)}</td><td>${esc(fmtFtIn(r.lengthIn))}</td><td>${r.qty}</td><td class="small">${esc(r.uses.map(u => `${u.panel} ${u.mark} ×${u.qty}`).join(', '))}</td></tr>`).join('')}</tbody></table></details>`;
+            ${rows.map(r => `<tr><td>${esc(r.type)}</td><td>${esc(editDimension(r.lengthIn))}</td><td>${r.qty}</td><td class="small">${esc(r.uses.map(u => `${u.panel} ${u.mark} ×${u.qty}`).join(', '))}</td></tr>`).join('')}</tbody></table></details>`;
 }
 function setCsv(kind) {
     const { items } = setItems(chosen());
@@ -3450,7 +3466,7 @@ setDialog().addEventListener('change', (e) => {
         const k = fsEl.dataset.fs;
         if (k === 'seatPieces') fsDraft = { ...fsDraft, seatPieces: fsEl.checked };
         else if (k === 'headEnds' || k === 'sillEnds') fsDraft = { ...fsDraft, [k]: fsEl.value };
-        else { const v = G.parseLength(fsEl.value), max = k === 'deflectionGapIn' ? 12 : 1; if (v == null || v < 0 || v > max) { notice(k === 'deflectionGapIn' ? 'A top deflection gap between 0" and 12".' : 'A cutback between 0" and 1".', true); renderSetDialog(); return; } fsDraft = { ...fsDraft, [k]: Math.round(v * 64) / 64 }; }
+        else { const v = parseDimension(fsEl.value), max = k === 'deflectionGapIn' ? 12 : 1; if (v == null || v < 0 || v > max) { notice(k === 'deflectionGapIn' ? 'A top deflection gap between 0" and 12".' : 'A cutback between 0" and 1".', true); renderSetDialog(); return; } fsDraft = { ...fsDraft, [k]: Math.round(v * 64) / 64 }; }
         renderSetDialog(); return;
     }
     if (e.target.matches('[data-check]')) { e.target.checked ? checked.add(e.target.dataset.check) : checked.delete(e.target.dataset.check); renderSet(); renderSetDialog(); return; }
@@ -3462,11 +3478,11 @@ setDialog().addEventListener('change', (e) => {
     const el = e.target.closest('[data-stock]');
     if (!el) return;
     if (el.dataset.stock === 'stockIn') {
-        const v = ST.parseStockList(el.value, G.parseLength);
+        const v = ST.parseStockList(el.value, parseDimension);
         if (!v.length) { notice('Type stock lengths like 10\', 12\', 20\'.', true); return; }
         stockPrefs = { ...stockPrefs, stockIn: v };
     } else {
-        const v = G.parseLength(el.value);
+        const v = parseDimension(el.value);
         if (v == null || v < 0 || v > 1) { notice('A saw kerf between 0" and 1".', true); return; }
         stockPrefs = { ...stockPrefs, kerfIn: v };
     }

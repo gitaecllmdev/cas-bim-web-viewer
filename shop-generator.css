@@ -4,6 +4,7 @@
 .bar a { color: white; } .bar .standalone { margin-left: auto; opacity: .8; font-size: .9em; }
 [hidden] { display: none !important; }
 .spacer { flex: 1; }
+.dimension-format {display:inline-flex;align-items:center;flex-wrap:wrap;gap:5px;font-size:12px;min-width:0;}.dimension-format select {max-width:170px;min-width:0;border:1px solid var(--line);border-radius:5px;padding:4px;background:white;color:var(--ink);font:inherit;}
 .small { font-size: 13px; }
 /* The title bar: the tool and its actions (no intro card: the elevation comes first). Notices float as a toast. */
 .gen-bar { align-items: center; gap: 12px; }

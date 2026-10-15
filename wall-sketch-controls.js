@@ -1,8 +1,9 @@
 import * as E from './demos/06-shop-drawings/sketch-editing.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
+import { DIMENSION_FORMATS } from './demos/common/edit-dimensions.mjs';
 export class WallSketchControls{
-    constructor({root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember}){
-        Object.assign(this,{root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember});
+    constructor({root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat=()=> 'feet-inches'}){
+        Object.assign(this,{root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat});
         try{this.unit=localStorage.getItem('cas-shopgen:slope-unit')==='degrees'?'degrees':'rise';}catch{this.unit='rise';}
         this.hold='left';
         this.dialog=document.createElement('dialog');this.dialog.id='wall-sketch-dimension';this.dialog.className='sketch-dimension-dialog';root.append(this.dialog);
@@ -44,11 +45,12 @@ export class WallSketchControls{
         this.active={...meta,panelId:this.current()?.id};
         const esc=v=>this.esc(v),s=meta.kind==='segment',member=meta.kind==='gap',holds=s?[['start','Start'],['end','End']]:meta.kind==='width'?[['left','Left'],['right','Right']]:[['bottom','Bottom'],['top','Top']];
         const p=this.current();let hold=meta.hold||holds[0][0];if(!s&&!member){if(meta.kind==='width')hold=E.pinned(p,'right')?'right':E.pinned(p,'left')?'left':hold;else hold=E.pinned(p,'top')?'top':E.pinned(p,'bottom')?'bottom':hold;}
-        this.dialog.innerHTML=`<form><h2>${s?'Sketch line length':member?'Member spacing':meta.kind==='width'?'Panel width':'Panel end height'}</h2><label>Dimension<input id="wall-dimension-value" value="${esc(this.format(meta.value))}" autocomplete="off"></label>${member?'<p class="muted small">Center to center. A locked reference stays fixed; the other member moves.</p>':`<label>Hold <select id="wall-dimension-hold">${holds.map(([k,label])=>`<option value="${k}" ${hold===k?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted small">Locked lines take priority. Unlock one side if both are held.</p>`}<p id="wall-dimension-error" role="alert"></p><footer><button value="cancel" type="submit" class="secondary">Cancel</button><button value="apply" type="submit">Apply</button></footer></form>`;
+        this.dialog.innerHTML=`<form><h2>${s?'Sketch line length':member?'Member spacing':meta.kind==='width'?'Panel width':'Panel end height'}</h2><label class="dimension-format">Format<select data-dimension-format aria-label="Dimension format">${DIMENSION_FORMATS.map(([key,label])=>`<option value="${key}" ${this.dimensionFormat()===key?'selected':''}>${label}</option>`).join('')}</select></label><label>Dimension<input id="wall-dimension-value" value="${esc(this.format(meta.value))}" autocomplete="off"></label>${member?'<p class="muted small">Center to center. A locked reference stays fixed; the other member moves.</p>':`<label>Hold <select id="wall-dimension-hold">${holds.map(([k,label])=>`<option value="${k}" ${hold===k?'selected':''}>${label}</option>`).join('')}</select></label><p class="muted small">Locked lines take priority. Unlock one side if both are held.</p>`}<p class="muted small" data-dimension-help></p><p id="wall-dimension-error" role="alert"></p><footer><button value="cancel" type="submit" class="secondary">Cancel</button><button value="apply" type="submit">Apply</button></footer></form>`;
+        this.dimensionValue=meta.value;this.dimensionText=this.format(meta.value);this.syncDimensionHelp();
         this.dialog.showModal();const input=this.dialog.querySelector('input');input.focus();input.select();
     }
     apply(){
-        const m=this.active,p=this.current(),value=this.parse(this.dialog.querySelector('input').value),hold=this.dialog.querySelector('select')?.value;
+        const m=this.active,p=this.current(),value=this.readDimension(),hold=this.dialog.querySelector('#wall-dimension-hold')?.value;
         try{
             if(p?.id!==m.panelId)throw Error('The open panel changed. Select the dimension again.');
             if(m.kind==='segment'){const s=this.perimeter();if(!s)throw Error('This sketch is no longer active.');s.pts=E.segmentLength(s.pts,m.index,value,s.locks||[],hold);s.cursor=null;this.redraw();}
@@ -56,6 +58,12 @@ export class WallSketchControls{
             else this.change(E.panelDimension(p,m.kind,value,hold),'the sketch dimension');
             this.close();
         }catch(e){this.dialog.querySelector('#wall-dimension-error').textContent=e.message;}
+    }
+    readDimension(){const text=this.dialog.querySelector('#wall-dimension-value')?.value;return text===this.dimensionText?this.dimensionValue:this.parse(text);}
+    syncDimensionHelp(){const help=this.dialog.querySelector('[data-dimension-help]');if(help)help.textContent=this.dimensionFormat()==='decimal-feet'?'Bare numbers are feet. Add ″ to enter inches.':'Bare numbers are inches. Add ′ to enter feet.';}
+    syncDimensionFormat(value){
+        for(const el of this.root.querySelectorAll('[data-dimension-format]'))el.value=this.dimensionFormat();
+        if(this.dialog.open&&Number.isFinite(value)){this.dimensionValue=value;this.dimensionText=this.format(value);this.dialog.querySelector('#wall-dimension-value').value=this.dimensionText;this.syncDimensionHelp();}
     }
     close(){this.dialog.close();this.active=null;}
 }
