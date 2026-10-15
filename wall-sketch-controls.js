@@ -2,8 +2,8 @@ import * as E from './demos/06-shop-drawings/sketch-editing.mjs';
 import * as G from './demos/06-shop-drawings/generator.mjs';
 import { DIMENSION_FORMATS } from './demos/common/edit-dimensions.mjs';
 export class WallSketchControls{
-    constructor({root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat=()=> 'feet-inches'}){
-        Object.assign(this,{root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat});
+    constructor({root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat=()=> 'feet-inches',selectedEdge=()=>null}){
+        Object.assign(this,{root,current,layout,change,notice,format,parse,perimeter,redraw,selectMember,dimensionFormat,selectedEdge});
         try{this.unit=localStorage.getItem('cas-shopgen:slope-unit')==='degrees'?'degrees':'rise';}catch{this.unit='rise';}
         this.hold='left';
         this.dialog=document.createElement('dialog');this.dialog.id='wall-sketch-dimension';this.dialog.className='sketch-dimension-dialog';root.append(this.dialog);
@@ -21,20 +21,16 @@ export class WallSketchControls{
         });
         this.dialog.addEventListener('submit',e=>{e.preventDefault();if(e.submitter?.value==='cancel'){this.close();return;}this.apply();});
         this.dialog.addEventListener('close',()=>{this.active=null;});
-        this.observer=new ResizeObserver(()=>this.resize());this.observer.observe(root.querySelector('.views'));this.observer.observe(root.querySelector('#wall-sketch-constraints'));
     }
     esc(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
     run(fn){try{fn();return true;}catch(e){this.notice(e.message,true);return false;}}
-    resize(){const svg=this.root.querySelector('#sketch svg'),views=this.root.querySelector('.views'),wrap=this.root.querySelector('.sketch-wrap');if(!svg||!views||!wrap)return;
-        if(getComputedStyle(views).overflowY==='visible'){svg.style.height='';return;}
-        const top=wrap.getBoundingClientRect().top-views.getBoundingClientRect().top+views.scrollTop;
-        svg.style.height=Math.max(240,Math.min(500,views.clientHeight-top-42))+'px';
-    }
     render(){
         const host=this.root.querySelector('#wall-sketch-constraints'),p=this.current();if(!host)return;if(!p){host.innerHTML='';return;}
         const locked=!G.canEdit(p,'shape')||!!this.perimeter(),disabled=locked?'disabled':'',pts=E.topPoints(p.shape),bottom=G.shapeBottom(p.shape)||[[0,0],[p.shape.lengthIn,0]];
-        const row=(edge,i,a,b)=>`<label class="wall-slope-row"><b>${edge==='top'?'Top'+(pts.length>2?' '+(i+1):''):'Bottom'}</b><input data-wall-slope="${edge}:${i}" type="number" step="any" value="${Number(E.slopeValue(p.shape,edge,i,this.unit).toFixed(5))}" aria-label="${edge} slope ${i+1}" ${disabled}><span>${this.unit==='degrees'?'°':'in / 12 in'}</span><small>${this.format(a[1])} → ${this.format(b[1])}</small></label>`;
-        host.innerHTML=`<div class="wall-sketch-pinbar"><b>Lock line</b>${['left','right','top','bottom'].map(k=>`<button type="button" class="secondary small ${E.pinned(p,k)?'on':''}" data-sketch-pin="${k}" aria-pressed="${E.pinned(p,k)}" ${disabled}>${E.pinned(p,k)?'🔒':'○'} ${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}<span class="muted small">Click a dimension to move the unlocked side.</span></div><div class="wall-slope-options"><label>Slope units <select id="wall-slope-unit"><option value="rise" ${this.unit==='rise'?'selected':''}>Rise / 12-inch run</option><option value="degrees" ${this.unit==='degrees'?'selected':''}>Degrees</option></select></label><label>Hold end <select id="wall-slope-hold"><option value="left" ${this.hold==='left'?'selected':''}>Left</option><option value="right" ${this.hold==='right'?'selected':''}>Right</option></select></label><span class="muted small">+ rises to the right · end elevations: left → right</span></div><div class="wall-slope-fields">${pts.slice(1).map((b,i)=>row('top',i,pts[i],b)).join('')}${row('bottom',0,...bottom)}</div>`;
+        const match=/^(top|bottom):(\d+)$/.exec(this.selectedEdge?.()||''),edge=match?.[1],i=Number(match?.[2]),points=edge==='bottom'?bottom:pts,a=points[i],b=points[i+1];
+        const angled=a&&b&&Math.abs(b[0]-a[0])>1e-6&&Math.abs(b[1]-a[1])>1e-6;
+        const slope=angled?`<div class="wall-slope-fields" role="group" aria-label="Selected edge slope"><label class="wall-slope-row"><b>${edge==='top'?'Top'+(pts.length>2?' '+(i+1):''):'Bottom'} slope</b><input data-wall-slope="${edge}:${i}" type="number" step="any" value="${Number(E.slopeValue(p.shape,edge,i,this.unit).toFixed(5))}" aria-label="${edge} slope ${i+1}" ${disabled}></label></div><div class="wall-slope-options"><label><select id="wall-slope-unit" aria-label="Slope units"><option value="rise" ${this.unit==='rise'?'selected':''}>Rise / 12″</option><option value="degrees" ${this.unit==='degrees'?'selected':''}>Degrees</option></select></label><label>Hold <select id="wall-slope-hold" aria-label="Slope hold end"><option value="left" ${this.hold==='left'?'selected':''}>Left</option><option value="right" ${this.hold==='right'?'selected':''}>Right</option></select></label><span class="slope-end-heights muted" title="End heights, left to right; a positive slope rises to the right">${this.esc(this.format(a[1]))} → ${this.esc(this.format(b[1]))}</span></div>`:'';
+        host.innerHTML=`<div class="wall-sketch-pinbar" role="group" aria-label="Lock reference line" title="Lock a reference line, then click a dimension to move the other side"><b>Lock</b>${['left','right','top','bottom'].map(k=>`<button type="button" class="secondary small ${E.pinned(p,k)?'on':''}" data-sketch-pin="${k}" aria-pressed="${E.pinned(p,k)}" ${disabled}>${E.pinned(p,k)?'🔒':'○'} ${k[0].toUpperCase()+k.slice(1)}</button>`).join('')}</div>${slope}`;
     }
     toggle(key){
         if(key.startsWith('segment:')){const s=this.perimeter(),i=Number(key.slice(8));if(!s)return;const pins=new Set(s.locks||[]);pins.has(i)?pins.delete(i):pins.add(i);s.locks=[...pins];this.redraw();return;}

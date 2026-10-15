@@ -8,7 +8,7 @@
 // selected, hovered or being moved; the selected opening's members beside it (a catalogue: a preview and a list each).
 import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/shop-output.mjs';
 import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
-import { topAt, topMin, underMin, underAt, pitchText, frameWall, webOnRight } from './demos/common/framing.mjs';
+import { topAt, topMin, underMin, underAt, frameWall, webOnRight } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, seatOf } from './demos/06-shop-drawings/sheet.mjs';
 import { projectFromShop, STOCK as LABEL_STOCK, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
@@ -67,6 +67,7 @@ let engView = { tab: 'Wall', search: '', approver: null, reference: '' };
 let stylePending = null; // a style applied with alternatives still to choose: { scope: 'wall' | opening index, panelId, keyId, open, problems, picked }
 // The workspace (workspace.mjs): remembered presentation, and what is selected across the views, the cut list and issues.
 let prefs = W.cleanPrefs(load(KEYS.prefs, {}));
+let focusView = false; // temporary: restore the remembered layout when leaving focus
 let selection = W.NONE;
 const checked = new Set(); // panels checked in the set
 let logoHref = null;
@@ -75,10 +76,11 @@ let tool = 'select'; // 'select' (and move), 'perimeter' (draw it), 'opening' (d
 let sel = null; // the selected opening (its members in the catalogue)
 let ask = null; // the opening just added: the catalogue asks for its members
 let hover = null; // what the pointer is over: 'op:2', 'edge:3', 'pt:1', 'peak', …
+let sketchEdge = null; // transient outline selection: { panelId, key }, never part of the project or Undo
 let drag = null, rectDraw = null, peri = null, svgEl = null, view = null;
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
-const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,
+const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,selectedEdge:()=>sketchEdge?.panelId===cur()?.id?sketchEdge.key:null,
     change:(next,label)=>{historyHint={label};replacePanel(next);changed();renderAll();},selectMember:key=>{const record=current.plan?.members.find(m=>m.memberKey===key||m.memberKey.startsWith(key+':'));if(record)selectTarget({kind:'member',key:record.memberKey});}});
 const studName = (m) => G.parseMember(m.stud)?.name || m.stud;
 const bottomTrack = (m) => G.parseMember(m.track)?.name || G.trackFor(m.stud) || m.track;
@@ -169,6 +171,7 @@ let markBefore = null;
 main.addEventListener('focusin', (e) => { if (e.target.matches?.('[data-f="members.stud"]')) studBefore = cur().members.stud; });
 // The panel's mark: the box at the top of its card (or the mark on the elevation, clicked) selected to type over.
 function renameFocus() {
+    revealInspector();
     const el = $('#insp-context .ctx-mark');
     if (!el) return;
     el.focus(); el.select();
@@ -260,13 +263,17 @@ const field = (label, path, value, { t = 'text', list = '', r = '', ph = '', cls
 document.addEventListener('click', (e) => { // the title bar's buttons too
     const b = e.target.closest('[data-act]');
     if (!b) return;
+    const more = b.closest('.header-more'); if (more) more.open = false;
     const act = b.dataset.act, i = Number(b.dataset.i), p = cur();
     if (!p && !NO_PANEL_ACTS.has(act)) return;
     if (!historyHint && !NOT_EDITS.has(act)) historyHint = { label: ACT_LABELS[act] || act.replace(/-/g, ' ') };
     const acts = {
         undo: () => doUndo(),
         redo: () => doRedo(),
-        'nav-toggle': () => { if (matchMedia('(max-width: 820px)').matches) { main.classList.toggle('nav-open'); main.querySelector('.nav-toggle').setAttribute('aria-expanded', String(main.classList.contains('nav-open'))); return; } prefs.navCollapsed = !prefs.navCollapsed; storePrefs(); applyPrefs(); },
+        'nav-toggle': toggleNavigator,
+        'layout-nav': toggleNavigator,
+        'inspector-toggle': () => { if (focusView) { focusView = false; prefs.inspectorCollapsed = false; } else prefs.inspectorCollapsed = !prefs.inspectorCollapsed; storePrefs(); applyPrefs(); if (!prefs.inspectorCollapsed && matchMedia('(max-width: 1180px)').matches) $('#inspector').scrollIntoView({ block: 'start', behavior: 'smooth' }); },
+        'focus-view': () => { focusView = !focusView; applyPrefs(); },
         'bottom-toggle': () => { prefs.bottomOpen = prefs.bottomOpen === false; storePrefs(); renderBottom(current); },
         side: () => { p.sideB = b.dataset.side === 'B'; changed(); renderSidePick(p); notice(`Viewing side ${p.sideB ? 'B: the drawing is mirrored' : 'A'} (the members are the same).`); },
         'flips-clear': () => { const n = (p.studFlips || []).length; p.studFlips = []; renderLayoutSec(); changed(); notice(`${n} stud flip${n === 1 ? '' : 's'} cleared: those studs face their usual way.`); },
@@ -775,10 +782,10 @@ function renderDatalists() {
 function renderTools() {
     sketchControls.render();
     const t = (key, label, title) => `<button class="${tool === key ? 'on' : 'secondary'}" data-act="tool" data-tool="${key}" title="${esc(title)}">${label}</button>`;
-    $('#tools').innerHTML = `<div class="seg" role="group" aria-label="Tool">${t('select', '↖ Select &amp; move', 'Pick an opening to see its dimensions and members; drag it or the round handles')}
-            ${G.canEdit(cur(), 'shape') ? t('perimeter', '✎ Draw perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')
+    $('#tools').innerHTML = `<div class="seg" role="group" aria-label="Tool">${t('select', '↖ Select', 'Pick an opening to see its dimensions and members; drag it or the round handles')}
+            ${G.canEdit(cur(), 'shape') ? t('perimeter', '✎ Perimeter', 'Click the panel\'s corners; a notch up from the bottom becomes a door, one down from the top a steel penetration')
                 : '<button class="secondary" disabled title="Locked: the Revit model\'s perimeter">🔒 Perimeter</button>'}
-            ${t('opening', '▭ Draw an opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}
+            ${t('opening', '▭ Opening', 'Drag a rectangle on the panel: at the floor it is a door, through the top a steel penetration, else a window')}
             ${t('clip', '◫ Clips', 'Click near a stud to put a clip on it (on its web); click a clip to remove it; or clip every stud at a height')}</div>
         <span class="add-label">Add</span>${Object.entries(G.OPENING_TYPES).map(([k, ty]) => `<button class="add-op ${k}" data-act="add-op" data-kind="${k}">+ ${esc(ty.name)}</button>`).join('')}
         ${opProfiles().length ? `<select class="add-prof" data-add-profile aria-label="Add an opening from a profile" title="A new opening of a profile: its framing and its first size"><option value="">+ From a profile…</option>
@@ -804,11 +811,13 @@ function renderHint() {
     } else if (tool === 'opening') {
         el.innerHTML = '<b>Drawing an opening:</b> drag a rectangle on the panel. Touching the floor it is a door; up through the top a steel penetration; else a window (make it an MEP opening on the right). Esc to stop.';
     } else {
-        el.textContent = `${cur().shape.kind === 'custom' ? 'Click above the top line to add a point there; double-click a point to remove it. ' : ''}Click a blue dimension to edit it. Lock a reference line to hold it; the other side moves. Select a stud for its spacing. Right-click for options.`;
+        el.textContent = 'Click a dimension to edit · Select an angled edge for slope · Select a stud for spacing';
     }
+    el.title = el.textContent;
 }
 function setTool(next, render = true) {
     tool = next;
+    sketchEdge = null;
     drag = null; rectDraw = null;
     peri = next === 'perimeter' ? { pts: [], cursor: null, typed: '' } : null;
     if (next === 'perimeter') { sel = null; ask = null; }
@@ -826,7 +835,7 @@ function fit() {
         const W = Math.max(L || 0, 240) * 1.25 + 60, Hh = Math.max(H || 0, 144) * 1.25 + 40;
         view = { x: -48, y: -(Hh - 30), w: W, h: Hh + 30 };
     } else {
-        const pad = Math.max(L, H, 48) * 0.17, ctx = CL.contextLines(cur(), set), ys = ctx.show ? ctx.levels.map(l => l.yIn) : [];
+        const pad = Math.max(L, H, 48) * 0.08, ctx = CL.contextLines(cur(), set), ys = ctx.show ? ctx.levels.map(l => l.yIn) : [];
         const hi = Math.max(H, 12, ...ys) + (ctx.show && ctx.grids.length ? pad * 0.6 : 0), lo = Math.min(0, ...ys);
         view = { x: -pad * 1.7 - (ys.length ? pad * 0.6 : 0), y: -(hi + pad * 1.5), w: Math.max(L, 12) + pad * 3.4 + (ys.length ? pad * 0.6 : 0), h: hi - lo + pad * 3.1 };
     }
@@ -839,7 +848,8 @@ function renderSketch() {
     if (!view) fit();
     svgEl.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svgEl.dataset.tool = tool;
-    const u = Math.max(view.w, view.h) / 100, fs = u * 2.5, at = (x) => topAt(top, x, H), Y = (y) => -y;
+    const scale = Math.min(Math.max(1, svgEl.clientWidth - 2) / view.w, Math.max(1, svgEl.clientHeight - 2) / view.h);
+    const u = Math.min(Math.max(view.w, view.h) / 100, 7 / scale), fs = u * 2.2, at = (x) => topAt(top, x, H), Y = (y) => -y;
     const t = (x, y, s, { a = 'middle', cls = 'sk-label', size = fs, rot = 0,edit=null,pin=null } = {}) => `<text x="${x}" y="${y}" text-anchor="${a}" font-size="${size}" class="${cls}${edit?' sk-edit-dim':''}${pin?' sk-line-pin':''}"${edit?` data-sketch-dim="${esc(JSON.stringify(edit))}" role="button" tabindex="0" aria-label="Edit ${esc(s)}"`:''}${pin?` data-sketch-pin="${esc(pin)}" role="button" tabindex="0"`:''}${rot ? ` transform="rotate(${rot} ${x} ${y})"` : ''}>${esc(s)}</text>`;
     // Dimension strings: horizontal at height y, vertical at x; ticks at both ends, the value above / left of the line.
     const cs = fs * 0.88; // context dimensions: a little smaller than the panel's own
@@ -858,7 +868,6 @@ function renderSketch() {
     const outline = valid ? [[0, base(0)], [L, base(L)], ...(top ? [...top].reverse() : [[L, H], [0, H]])] : [];
     if (valid) {
         parts.push(`<polygon points="${outline.map(([x, y]) => `${x},${Y(y)}`).join(' ')}" class="sk-wall${tool === 'perimeter' ? ' ghost' : ''}"/>`);
-        if (tool === 'select') outline.forEach(([x, y], i) => { const [x2, y2] = outline[(i + 1) % outline.length]; parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit" data-hover="edge:${i}"/>`); });
         // Always: the length under it, the height at each end, each peak or break.
         parts.push(dimH(0, L, -fs * 1.4, editDimension(L), 'sk-dim', true,fs,free?{kind:'width',value:L}:null), dimV(-fs * 1.6, base(0), at(0), editDimension(at(0)-base(0)), 'sk-dim',false,fs,free?{kind:'height-left',value:at(0)-base(0)}:null), dimV(L + fs * 1.6, base(L), at(L), editDimension(at(L)-base(L)), 'sk-dim', true,fs,free?{kind:'height-right',value:at(L)-base(L)}:null));
         for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, editDimension(h), { cls: 'sk-dim-t' }));
@@ -894,6 +903,10 @@ function renderSketch() {
     // Grips (shape handles, as in Revit): round at the panel's corners, arrows at the middle of its edges (an end moves
     // the end out or in, the openings staying where they are; a run of the top moves up or down); square at the
     // selected opening's corners, diamonds at the middle of its edges (resize it).
+    if (tool === 'select') outline.forEach(([x,y],i)=>{
+        const [x2,y2]=outline[(i+1)%outline.length],key=i===0?'bottom:0':i===1?'right':i===outline.length-1?'left':`top:${outline.length-2-i}`,selected=sketchEdge?.panelId===p.id&&sketchEdge.key===key;
+        parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit${selected?' sk-edge-selected':''}" data-hover="edge:${i}" data-sketch-edge="${key}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="Select ${key.replace(':',' edge ')}"><title>Select edge${Math.abs(x2-x)>1e-6&&Math.abs(y2-y)>1e-6?' to edit its slope':''}</title></line>`);
+    });
     const handle = (x, y, what, title) => `<circle cx="${x}" cy="${Y(y)}" r="${u * 1.5}" class="sk-handle" data-drag="${what}"><title>${esc(title)}</title></circle>`;
     const arrow = (x, y, dir, what, title) => { // a double arrow across the edge
         const a = u * 2.1, w = u * 1.1, [dx, dy] = dir === 'h' ? [1, 0] : [0, 1], px = -dy, py = dx;
@@ -959,7 +972,7 @@ function renderSketch() {
         const edge = /^edge:(\d+)$/.exec(hover || '');
         if (edge && valid) {
             const [x1, y1] = outline[Number(edge[1])], [x2, y2] = outline[(Number(edge[1]) + 1) % outline.length], dx = Math.abs(x2 - x1), dy = Math.abs(y2 - y1);
-            const label = dx < 1e-6 ? `${editDimension(dy)} high` : dy < 1e-6 ? editDimension(dx) : `${editDimension(Math.hypot(dx, dy))} along · ${editDimension(dx)} run · ${editDimension(dy)} rise · ${pitchText(dy / dx)}`;
+            const label = dx < 1e-6 ? `${editDimension(dy)} high` : dy < 1e-6 ? editDimension(dx) : `${editDimension(Math.hypot(dx, dy))} along`;
             ctx.push(`<line x1="${x1}" y1="${Y(y1)}" x2="${x2}" y2="${Y(y2)}" class="sk-edge-on"/>`, t((x1 + x2) / 2 + (dx < 1e-6 ? (x1 < L / 2 ? -fs : fs) : 0), Y((y1 + y2) / 2) + (dx < 1e-6 ? 0 : y1 + y2 < 1e-6 ? fs * 2.6 : -fs * 0.8), label, { cls: 'sk-ctx-t', size: cs * 1.1, a: dx < 1e-6 ? (x1 < L / 2 ? 'end' : 'start') : 'middle' }));
         }
         const mem = /^mem:(\d+)$/.exec(hover || ''),selectedKey=selectedLayoutKey(),mm=laid.lay?.members.find(m=>m.key===selectedKey)||(mem&&laid.lay?.members[Number(mem[1])]);
@@ -1001,7 +1014,6 @@ function renderSketch() {
         if (peri.typed) ctx.push(t((c?.[0] ?? 0) + fs, Y(c?.[1] ?? 0) - fs * 1.2, `Length: ${peri.typed}${parseDimension(peri.typed) != null ? ` = ${editDimension(parseDimension(peri.typed))}` : ''} (Enter)`, { cls: 'sk-typed', a: 'start', size: fs * 1.1 }));
     }
     svgEl.innerHTML = parts.join('') + ctx.join('');
-    sketchControls.resize();
 }
 
 // The framing laid out for the sketch (side A), at most every 120 ms while dragging; nothing while inputs need fixing.
@@ -1050,15 +1062,22 @@ function rectBox({ a, b }) {
     return { left: snap(left), right: snap(right), bottom: snap(bottom), top: snap(Math.min(upper, Math.max(H, upper))), kind };
 }
 function bindSketch(svg) {
+    const selectEdge = (hit, keyboard = false) => {
+        const key=hit.dataset.sketchEdge;
+        selectTarget(W.NONE);sketchEdge={panelId:cur().id,key};sketchControls.render();renderSketch();
+        if(keyboard)svg.querySelector(`[data-sketch-edge="${key}"]`)?.focus({preventScroll:true});
+    };
     const selectMember = (hit, keyboard = false) => {
         const key = hit?.dataset.memberKey, rec = current.plan?.members?.find(m => m.memberKey === key || m.memberKey.startsWith(`${key}:`));
         if (rec) { selectTarget({ kind: 'member', key: rec.memberKey }); if (keyboard) document.querySelector('#sketch-member-tools button')?.focus(); }
     };
-    svg.addEventListener('keydown', e => { if (['Enter',' '].includes(e.key) && e.target.matches('[data-member-key]')) { e.preventDefault(); selectMember(e.target,true); } });
+    svg.addEventListener('keydown', e => { if (!['Enter',' '].includes(e.key))return;if(e.target.matches('[data-sketch-edge]')){e.preventDefault();selectEdge(e.target,true);}else if(e.target.matches('[data-member-key]')){e.preventDefault();selectMember(e.target,true);} });
     svg.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // a right-click opens the sketch's menu instead
         if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
+        if(tool==='select'&&e.target.closest('[data-sketch-edge]')){e.preventDefault();selectEdge(e.target.closest('[data-sketch-edge]'));return;}
         if (tool === 'select' && e.target.closest('[data-member-key]')) { e.preventDefault(); selectMember(e.target.closest('[data-member-key]')); return; }
+        if(sketchEdge&&!e.target.closest('[data-drag]')){sketchEdge=null;sketchControls.render();}
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
         svg.setPointerCapture(e.pointerId);
         e.preventDefault();
@@ -1986,7 +2005,7 @@ function renderViewBar() {
         data-view-tab="${v.id}" ${v.available === false ? 'disabled' : ''} title="${esc(v.available === false ? `${v.hint}: ${v.reason}` : v.hint)}">${esc(v.label)}</button>`).join('');
 }
 function renderSidePick(p) {
-    $('#side-pick').innerHTML = `<button class="edit-toggle${editMode ? ' on' : ''}" data-act="man-mode" aria-pressed="${editMode}" title="Unlock members and place them by hand: move, copy, mirror, remove (Elevation view)">✎ Edit members</button><span class="muted">Viewing side</span><button role="radio" aria-checked="${!p.sideB}" data-act="side" data-side="A" title="As seen from side A">A</button><button role="radio" aria-checked="${!!p.sideB}" data-act="side" data-side="B" title="As seen from side B: the drawing is mirrored; the members never change">B</button><span class="muted small">drawing only</span>`;
+    $('#side-pick').innerHTML = `<button class="edit-toggle${editMode ? ' on' : ''}" data-act="man-mode" aria-pressed="${editMode}" title="Unlock members and place them by hand: move, copy, mirror, remove (Elevation view)">✎ Edit members</button><span class="muted">Side</span><button role="radio" aria-checked="${!p.sideB}" data-act="side" data-side="A" title="As seen from side A">A</button><button role="radio" aria-checked="${!!p.sideB}" data-act="side" data-side="B" title="As seen from side B: the drawing is mirrored; the members never change">B</button>`;
 }
 function renderActiveView(p, f) {
     if (!p) return;
@@ -2064,11 +2083,12 @@ function decorateHits(host, f) {
 function renderBottom(f) {
     const plan = f.plan, issues = plan?.issues || [], errors = issues.filter(i => i.severity === 'error').length, open = issues.filter(i => i.severity === 'needs-resolution').length;
     const tab = ['issues', 'openings'].includes(prefs.bottom) ? prefs.bottom : 'cut', shown = prefs.bottomOpen !== false, nOps = cur()?.openings?.length || 0;
+    $('#bottom').classList.toggle('bottom-open', shown);
     const rows = f.layout ? plan.cutList : [];
     $('#bottom-tabs').innerHTML = `<button role="tab" id="btab-cut" aria-selected="${tab === 'cut'}" data-bottom-tab="cut" tabindex="${tab === 'cut' ? 0 : -1}">Cut list<span class="count">${rows.length}</span></button>
         <button role="tab" id="btab-issues" aria-selected="${tab === 'issues'}" data-bottom-tab="issues" tabindex="${tab === 'issues' ? 0 : -1}">Issues<span class="count ${errors ? 'bad' : open ? 'open' : ''}">${issues.length}</span></button>
         <button role="tab" id="btab-openings" aria-selected="${tab === 'openings'}" data-bottom-tab="openings" tabindex="${tab === 'openings' ? 0 : -1}" title="Every opening's jambs, header and sill, assigned like a schedule">Openings<span class="count">${nOps}</span></button>
-        <button class="link collapse" data-act="bottom-toggle" aria-expanded="${shown}">${shown ? 'Hide' : 'Show'}</button>`;
+        <button class="link collapse" data-act="bottom-toggle" aria-expanded="${shown}" aria-controls="bottom-body" title="${shown ? 'Collapse the schedule for more view space' : 'Expand the schedule'}">${shown ? '⌄ Hide' : '⌃ Show'}</button>`;
     const body = $('#bottom-body');
     body.hidden = !shown;
     if (!shown) return;
@@ -2794,6 +2814,7 @@ function renderCommands() {
 
 // Selecting: from a view, the cut list, an issue, an opening chip or the properties. Locate: show it where it is.
 function selectTarget(t, { locate = false } = {}) {
+    sketchEdge = null;sketchControls.render();
     selection = t || W.NONE;
     if (t?.kind === 'opening') {
         const i = G.openingKeys(cur()).indexOf(t.key);
@@ -2822,6 +2843,7 @@ function syncOpeningSelection() {
 function openSection(name) { const d = main.querySelector(`.insp-sec[data-sec="${name}"]`); if (d && !d.open) d.open = true; }
 // Locate a setting: open its section, show it and put the cursor on it.
 function focusSetting(key) {
+    revealInspector();
     const targets = { members: ['members', '[data-pick="members.stud"], [data-f="members.stud"]'], 'members.stud': ['members', '[data-pick="members.stud"], [data-f="members.stud"]'],
         'members.track': ['members', '[data-pick="members.track"]'], 'members.topTrack': ['members', '[data-pick="members.topTrack"]'],
         'members.spacingIn': ['members', '[data-pick="members.spacingIn"], [data-f="members.spacingIn"]'], 'style.wall': ['members', '[data-style="wall"]'],
@@ -2900,12 +2922,36 @@ const markExported = () => { store(KEYS.saved, hashOf(lastSnapshot ?? snapshotOf
 
 // --- Remembered presentation (never data) ------------------------------------------------------------------------------
 function storePrefs() { store(KEYS.prefs, prefs); }
+function toggleNavigator() {
+    if (focusView) { focusView = false; prefs.navCollapsed = false; main.classList.add('nav-open'); }
+    else if (matchMedia('(max-width: 820px)').matches) main.classList.toggle('nav-open');
+    else prefs.navCollapsed = !prefs.navCollapsed;
+    storePrefs(); applyPrefs();
+}
+function revealInspector() {
+    if (!focusView && !prefs.inspectorCollapsed) return;
+    focusView = false; prefs.inspectorCollapsed = false; storePrefs(); applyPrefs();
+}
 function applyPrefs() {
+    main.classList.toggle('focus-view', focusView);
     main.classList.toggle('nav-collapsed', !!prefs.navCollapsed);
-    main.querySelector('.nav-toggle')?.setAttribute('aria-expanded', String(!prefs.navCollapsed));
+    main.classList.toggle('inspector-collapsed', prefs.inspectorCollapsed);
+    const navShown = !focusView && (matchMedia('(max-width: 820px)').matches ? main.classList.contains('nav-open') : !prefs.navCollapsed);
+    for (const button of main.querySelectorAll('[data-act="nav-toggle"], [data-act="layout-nav"]')) button.setAttribute('aria-expanded', String(navShown));
+    for (const button of main.querySelectorAll('[data-act="inspector-toggle"]')) button.setAttribute('aria-expanded', String(!focusView && !prefs.inspectorCollapsed));
+    const focusButton = main.querySelector('[data-act="focus-view"]');
+    focusButton?.setAttribute('aria-pressed', String(focusView));
+    if (focusButton) focusButton.textContent = focusView ? '⛶ Restore layout' : '⛶ Focus view';
     for (const d of main.querySelectorAll('.insp-sec')) if (prefs.sections[d.dataset.sec] != null) d.open = prefs.sections[d.dataset.sec];
     for (const v of main.querySelectorAll('.view')) v.hidden = v.dataset.view !== prefs.view;
 }
+matchMedia('(max-width: 820px)').addEventListener('change', applyPrefs);
+document.addEventListener('click', event => { const more = document.querySelector('.header-more[open]'); if (more && !more.contains(event.target)) more.open = false; });
+document.addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector('dialog[open]') || event.target.matches('input, select, textarea')) return;
+    const more = document.querySelector('.header-more[open]'); if (more) more.open = false;
+    if (focusView && tool === 'select') { focusView = false; applyPrefs(); }
+});
 
 // --- Empty project ---------------------------------------------------------------------------------------------------
 function renderEmpty() {
@@ -3145,16 +3191,16 @@ function renderSet() {
                 <span class="nav-state">${state}${typBadge(p, typ)}</span></button></li>`;
     };
     const fx = focusOf(box);
-    box.innerHTML = `<div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
-            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}
-            ${cur() ? field('Panel (open)', 'mark', cur().mark, { ph: 'P-101', cls: 'f-mark' }) : ''}</div>
-        ${set.panels.length ? `<input type="search" class="nav-search" data-nav-search placeholder="Find a panel (mark, group, wall type)" value="${esc(navQuery)}" aria-label="Find a panel">
+    const projectOpen = !!box.querySelector('[data-nav-project][open]');
+    box.innerHTML = `${set.panels.length ? `<input type="search" class="nav-search" data-nav-search placeholder="Find a panel…" value="${esc(navQuery)}" aria-label="Find a panel">
         <div class="nav-actions"><button class="link" data-act="set-check-all">Check all</button><button class="link" data-act="set-check-none">Check none</button>
             ${groups.some(Boolean) ? `<select id="check-group" aria-label="Check a group"><option value="__">Check a group…</option>${groups.map(g => `<option value="${esc(g)}">${esc(g || '(no group)')}</option>`).join('')}</select>` : ''}</div>
         <div>${[...byGroup].map(([g, list]) => `${groups.length > 1 ? `<div class="nav-group">${esc(g || 'No group')}</div>` : ''}<ul class="nav-list">${list.map(item).join('')}</ul>`).join('') || '<p class="muted small">No panel matches.</p>'}</div>
         <div id="set-actions" class="nav-actions"></div>
-        <div class="nav-actions"><button class="secondary" data-act="set-open" title="Every panel at a glance, the set's cut list and stock, labels and the set PDF">Set overview, stock, labels</button></div>
-        <section id="nav-export" class="nav-export" aria-labelledby="nav-export-title"></section>` : '<p class="nav-empty muted">No panels yet.</p>'}`;
+        <div class="nav-actions"><button class="secondary" data-act="set-open" title="Every panel at a glance, the set's cut list and stock, labels and the set PDF">Set overview, stock, labels</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}
+        <details class="nav-project" data-nav-project ${projectOpen ? 'open' : ''}><summary>Project details</summary><div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
+            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div></details>
+        ${set.panels.length ? '<section id="nav-export" class="nav-export" aria-labelledby="nav-export-title"></section>' : ''}`;
     renderSetActions();
     restoreFocus(box, fx);
 }
@@ -3747,6 +3793,7 @@ fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(r
 const NO_PANEL_ACTS = new Set(['prof-del', 'prof-link', 'legend-reset', 'fs-apply', 'fs-reset', 'sd-labels', 'sd-label-maker', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'new-blank', 'new-tpl', 'tpl-del', 'sd-filter', 'sd-open', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'new', 'set-import', 'set-export', 'set-export-plan', 'eng-open', 'undo', 'redo', 'nav-toggle', 'set-clear', 'bottom-toggle', 'set-check-all', 'set-check-none']);
 const NOT_EDITS = new Set(['fs-reset', 'sd-labels', 'sd-label-maker', 'view-compare', 'hist-menu', 'undo-to', 'help', 'help-close', 'new-menu', 'tpl-save', 'tpl-del', 'sd-filter', 'sd-open', 'set-pdf-typ', 'set-open', 'sd-close', 'sd-tab', 'sd-csv', 'qb-type', 'qb-opening', 'qb-members', 'open', 'undo', 'redo', 'nav-toggle', 'bottom-toggle', 'framing', 'pdf', 'link', 'set-pdf', 'set-export', 'set-export-plan', 'set-import', 'eng-open', 'man-mode', 'man-step', 'man-type-preview', 'man-type-cancel', 'sch-pick', 'sch-check-all',
     'select-op', 'done', 'preview', 'set-check-all', 'set-check-none', 'tool', 'peri-undo', 'peri-cancel']);
+for (const action of ['layout-nav', 'inspector-toggle', 'focus-view']) { NO_PANEL_ACTS.add(action); NOT_EDITS.add(action); }
 const ACT_LABELS = { 'prof-update': 'updating the opening profile', 'prof-reset': 'back to the opening profile', 'prof-del': 'deleting the opening profile', 'prof-link': 'the opening profile by Revit name', 'legend-reset': 'the legend colors',
     'fs-apply': 'the framing settings on every panel', 'rev-issue': 'issuing the revision', 'new-blank': 'the new panel', 'new-tpl': 'the new panel from a template', 'type-framing': 'the framing for every opening of the type', 'oc-add': 'the opening for the model\'s element', 'sch-apply': 'the openings\' members', 'sch-rules': 'the rules for every opening', 'sch-arrange': 'the arrangement', 'cutback-all': 'the cutback on every panel', 'ctx-place': 'the level', 'ctx-grid-add': 'the new grid', 'ctx-grid-del': 'removing the grid', 'ctx-model': 'the model\'s levels and grids', 'ctx-toggle': 'showing the levels and grids', new: 'the new panel', copy: 'the duplicate', 'add-op': 'the new opening', 'add-op-at': 'the new opening', 'del-op': 'removing the opening', shape: 'the shape',
     'stud-flip': 'the stud flip', 'flips-clear': 'clearing the stud flips', side: 'the viewing side', 'layout-from': 'the layout start', 'layout-reset': 'the layout start', 'layout-here': 'the layout start',
@@ -3786,3 +3833,4 @@ main.addEventListener('keydown', (e) => {
 main.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('.insp-sec')) { prefs.sections[d.dataset.sec] = d.open; storePrefs(); } }, true);
 applyPrefs();
 renderAll();
+new ResizeObserver(() => { if (cur() && prefs.view === 'sketch' && !drag) renderSketch(); }).observe(main.querySelector('.sketch-wrap'));

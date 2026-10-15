@@ -164,9 +164,9 @@ export function redo(h, current) {
 }
 
 // --- Remembered presentation preferences (never data: no panel, no member) --------------------------------------------
-export const DEFAULT_PREFS = Object.freeze({ navCollapsed: false, view: 'sketch', bottom: 'cut', bottomOpen: true, sections: {} });
+export const DEFAULT_PREFS = Object.freeze({ navCollapsed: false, inspectorCollapsed: false, view: 'sketch', bottom: 'cut', bottomOpen: false, sections: {} });
 export function cleanPrefs(raw) {
     const p = raw && typeof raw === 'object' ? raw : {};
-    return { navCollapsed: !!p.navCollapsed, view: viewIds.includes(p.view) ? p.view : DEFAULT_PREFS.view, bottom: ['issues', 'openings'].includes(p.bottom) ? p.bottom : 'cut', bottomOpen: p.bottomOpen !== false,
+    return { navCollapsed: !!p.navCollapsed, inspectorCollapsed: !!p.inspectorCollapsed, view: viewIds.includes(p.view) ? p.view : DEFAULT_PREFS.view, bottom: ['issues', 'openings'].includes(p.bottom) ? p.bottom : 'cut', bottomOpen: p.bottomOpen === true,
         sections: Object.fromEntries(Object.entries(p.sections && typeof p.sections === 'object' ? p.sections : {}).filter(([k, v]) => /^[a-z-]{1,24}$/.test(k) && typeof v === 'boolean')) };
 }
