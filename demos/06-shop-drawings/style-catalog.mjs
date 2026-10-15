@@ -493,6 +493,10 @@ export function checkStyleBindings(panel, styles, engineering = null) {
     if (!read) { note('style.catalog_not_loaded', 'styles', 'Engineering styles are bound, but no catalog is loaded: the bindings are not checked.'); return { result, issues }; }
     if (!selection) note('style.no_project_selection', 'styles', 'No project selection: the styles are not reviewed or approved for this project.');
     let holds = true;
+    if (Object.keys(G.cleanManual(panel.manual)?.types || {}).length) {
+        holds = false;
+        note('style.cutlist_type_override', 'styles', 'Cut-list member types override the panel or opening defaults: the catalog review does not cover these choices.');
+    }
     const verify = (b, subjectKey, type, label) => {
         const r = { keyId: b.keyId, displayCode: b.displayCode, rowRevision: b.rowRevision, status: 'current', review: null, members: {} };
         const row = b.catalogId === read.catalog.catalogId ? rowById(read, b.keyId) : null;

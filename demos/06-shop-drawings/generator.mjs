@@ -414,7 +414,8 @@ export function panelErrors(panel) {
     const gap = Number(panel.deflectionGapIn ?? 0);
     if (!(gap >= 0 && gap <= 12)) add('members', 'Top deflection gap must be between 0 and 12 inches.', 'input.deflection_gap_invalid');
     if (gap > 0 && shapeTop(panel.shape).top) add('members', 'Top deflection gap on a sloped top needs a reviewed gap datum; use a flat top for this setting.', 'input.deflection_gap_sloped');
-    if (gap > 0 && panel.manual) add('members', 'Reset manual member overrides before applying a top deflection gap.', 'input.deflection_gap_manual');
+    const placedMembers = cleanManual(panel.manual);
+    if (gap > 0 && (Object.keys(placedMembers?.members || {}).length || placedMembers?.added?.length)) add('members', 'Reset manual member overrides before applying a top deflection gap.', 'input.deflection_gap_manual');
     const topLeg = parseMember(m.topTrack || m.track || trackFor(m.stud))?.flangeIn;
     if (gap > 0 && topLeg != null && gap >= topLeg) add('members', 'Top deflection gap must be smaller than the top-track leg so the stud remains inside the track.', 'input.deflection_gap_unseated');
     const sp = Number(m.spacingIn);
@@ -643,10 +644,17 @@ export function memberKeysOf(members) {
 // its type, role and size follow the panel as usual. A copy is a member like the one it was copied from (from), placed
 // here; mirrored, it faces the other way. Everything else is framed as usual. An edit whose member is not in the layout
 // any more (the panel changed under it) is not applied: reported (layout.manual.stale), never guessed onto another.
+// manual.types = { [memberKey]: { [originalDesignator]: replacementDesignator } } changes a cut-list row's types
+// without unlocking positions. Compatible section sizes only; applied before labels/checks, including built-up parts.
 const MANUAL_ID = /^[a-z0-9-]{1,24}$/i;
 const box16 = (b) => Object.fromEntries(['x', 'y', 'w', 'h'].map(k => [k, round16(Number(b[k]))]));
 const okBox = (b) => !!b && ['x', 'y', 'w', 'h'].every(k => Number.isFinite(Number(b[k]))) && Number(b.w) > 0 && Number(b.h) > 0;
 const typeOf = (v) => { const d = parseMember(v?.type); return d && d.qty === 1 ? { type: d.name } : {}; };
+// Cut-list type choices keep following the framing rules. Unlike a placed member, they do not freeze its box.
+export function compatibleMemberType(from, to) {
+    const a = parseMember(from), b = parseMember(to);
+    return !!(a && b && a.qty === 1 && b.qty === 1 && a.profile === b.profile && Math.abs(a.depthIn - b.depthIn) < 1e-6 && a.flangeIn === b.flangeIn);
+}
 export function cleanManual(m) {
     if (!m || typeof m !== 'object') return null;
     const members = {};
@@ -657,7 +665,10 @@ export function cleanManual(m) {
     }
     const added = (Array.isArray(m.added) ? m.added : []).filter(a => MANUAL_ID.test(String(a?.id || '')) && typeof a.from === 'string' && a.from && okBox(a))
         .map(a => ({ id: String(a.id), from: a.from, ...box16(a), ...(a.mirrored ? { mirrored: true } : {}), ...typeOf(a) }));
-    return Object.keys(members).length || added.length ? { members, ...(added.length ? { added } : {}) } : null;
+    const types = Object.fromEntries(Object.entries(m.types || {}).filter(([k, v]) => k && k.length <= 120 && v && typeof v === 'object' && !Array.isArray(v))
+        .map(([k, v]) => [k, Object.fromEntries(Object.entries(v).filter(([a, b]) => compatibleMemberType(a, b) && parseMember(a).name !== parseMember(b).name)
+            .map(([a, b]) => [parseMember(a).name, parseMember(b).name]))]).filter(([, v]) => Object.keys(v).length));
+    return Object.keys(members).length || added.length || Object.keys(types).length ? { members, ...(added.length ? { added } : {}), ...(Object.keys(types).length ? { types } : {}) } : null;
 }
 // A member at another place and size: its outline (a sloped piece's points) moved with it, its cut length changed by
 // what its length changed (the engine's own allowance kept).
@@ -696,10 +707,26 @@ export function applyManual(layout, manual, { flangeIn = 1.625 } = {}) {
         members.push(copy);
     }
     layout.members = members;
+    const typedByKey = new Map(members.map(m => [m.key, m]));
+    let typeCount = 0;
+    for (const [key, changes] of Object.entries(edits.types || {})) {
+        const member = typedByKey.get(key);
+        if (!member) { stale.push({ key, message: `${key} has a cut-list type choice but is no longer in the framing: the choice is not applied.` }); continue; }
+        const parts = member.parts?.length ? member.parts : [{ qty: 1, name: member.type }], sources = parts.map(p => p.name);
+        for (const from of Object.keys(changes)) if (!sources.includes(from)) stale.push({ key, message: `${key}: the cut-list choice for ${from} no longer matches its source type: ignored.` });
+        const retyped = parts.map(p => Object.hasOwn(changes, p.name) ? { ...p, name: changes[p.name] } : p);
+        if (!retyped.some((p, i) => p.name !== sources[i])) continue;
+        member.typeSources = sources;
+        member.type = retyped[0].name;
+        member.retyped = true;
+        if (member.parts?.length) member.parts = retyped;
+        typeCount += retyped.reduce((n, p, i) => n + (p.name !== sources[i] ? p.qty : 0), 0);
+    }
     const n = members.filter(m => m.manual).length, gone = Object.values(edits.members).filter(e => e.deleted).length;
-    layout.manual = { count: n, deleted: gone, stale };
+    layout.manual = { count: n, deleted: gone, stale, ...(typeCount ? { typeCount } : {}) };
     relabel(layout, { flangeIn });
     if (n || gone) layout.notes.push(`Placed by hand: ${n} member${n === 1 ? '' : 's'}${gone ? `, ${gone} removed` : ''} (they do not follow the framing rules).`);
+    if (typeCount) layout.notes.push(`Cut-list type choices: ${[...new Set(members.filter(m => m.typeSources).map(m => `${m.marks?.join('/') || m.mark}: ${(m.parts || [{ name: m.type }]).map(p => p.name).join(' + ')}`))].join('; ')}. Panel and opening defaults are unchanged.`);
     return layout;
 }
 
@@ -711,9 +738,9 @@ export function panelLayout(panel) {
         const type = OPENING_TYPES[kindOf(o)];
         const parts = type.members.map(k => [MEMBER_LABELS[k].toLowerCase(), memberFor(panel, o, k).spec])
             .filter(([, spec]) => (specOf(spec)?.parts || []).reduce((n, p) => n + p.qty, 0) > 1).map(([k, spec]) => `${k} ${spec}`);
-        if (parts.length) builtUp.add(`${type.name} framing: ${parts.join('; ')}.`);
+        if (parts.length) builtUp.add(`${type.name} framing${layout.manual?.typeCount ? ' defaults' : ''}: ${parts.join('; ')}.`);
     });
-    if (inputs.topTrackName) builtUp.add(`Top track ${inputs.topTrackName}.`);
+    if (inputs.topTrackName) builtUp.add(`Top track${layout.manual?.typeCount ? ' default' : ''} ${inputs.topTrackName}.`);
     inputs.openings.forEach((o, i) => { // framed out to the layout: between the jambs, against the opening asked for
         if (o.requested) builtUp.add(`${openingName(panel.openings, i)} framed to the stud layout: ${fmtFtIn(o.right - o.left)} between jambs (rough opening ${fmtFtIn(o.requested.right - o.requested.left)}).`);
     });
@@ -904,8 +931,8 @@ export const FRAMING_DEPRECATED = 'Legacy read-only summary for review; place fr
 export function framingOf(panel) {
     if (panelErrors(panel).length) return null;
     const inputs = frameInputs(panel), lay = panelLayout({ ...panel, sideB: false });
-    const byHand = lay.manual && (lay.manual.count || lay.manual.deleted);
-    return { deprecated: FRAMING_DEPRECATED, ...(byHand ? { requiredFeatures: ['manual-members'] } : {}),
+    const requiredFeatures = [...(lay.manual && (lay.manual.count || lay.manual.deleted) ? ['manual-members'] : []), ...(lay.manual?.typeCount ? ['member-type-overrides'] : [])];
+    return { deprecated: FRAMING_DEPRECATED, ...(requiredFeatures.length ? { requiredFeatures } : {}),
         layoutStartIn: inputs.layoutStartIn || inputs.spacingIn, spacingIn: inputs.spacingIn, ...(inputs.layoutFromRight ? { layoutFromRight: true } : {}), ...(inputs.flipStuds ? { flipStuds: true } : {}),
         studType: lay.studType, trackType: lay.trackType,
         openings: inputs.openings.map(({ framing, ...o }) => o), // as framed: one with jambs on the stud layout wider, its rough opening as requested
@@ -1046,13 +1073,25 @@ const SHAPE_KEYS = { rect: ['lengthIn', 'heightIn'], rake: ['lengthIn', 'leftIn'
 const MEMBER_KEYS = ['stud', 'track', 'topTrack', 'spacingIn', 'header', 'jamb', 'sill'];
 const KIND_CODES = ['door', 'window', 'mep', 'steel'];
 const trim = (a) => { const out = [...a]; while (out.length && (out[out.length - 1] === '' || out[out.length - 1] == null)) out.pop(); return out; };
+// Links are standalone copies: openings use portable list keys rather than a Revit insert or this browser's id.
+function manualForLink(panel) {
+    if (!panel.manual) return '';
+    const keys = openingKeys(panel), portable = key => {
+        const i = keys.findIndex(k => key === k || key.startsWith(`${k}:`));
+        return i < 0 ? key : `opening#${i + 1}${key.slice(keys[i].length)}`;
+    };
+    const m = panel.manual;
+    return { members: Object.fromEntries(Object.entries(m.members).map(([k, v]) => [portable(k), v])),
+        ...(m.added ? { added: m.added.map(a => ({ ...a, from: portable(a.from) })) } : {}),
+        ...(m.types ? { types: Object.fromEntries(Object.entries(m.types).map(([k, v]) => [portable(k), v])) } : {}) };
+}
 export function encodePanel(panel) {
     const p = cleanPanel(panel);
     const packed = trim([1, p.mark, p.level, p.wallType, p.group, p.sideB ? 1 : 0, [p.shape.kind, ...SHAPE_KEYS[p.shape.kind].map(k => p.shape[k])],
         trim(MEMBER_KEYS.map(k => p.members[k])), p.openings.map(o => trim([KIND_CODES.indexOf(o.kind), o.leftIn, o.widthIn, o.heightIn, o.sillIn, o.head, o.jamb, o.sill, o.toLayout ? 1 : '',
-            o.offsetIn ?? '', o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : ''])), '', p.optimizeOpenings ? 1 : '',
+            o.offsetIn ?? (o.locked ? offsetOf(o) : ''), o.jambStyle || '', o.headStyle || '', o.sillStyle || '', o.headBearing === 'jacks' ? 1 : '', o.crippleEnds ? 1 : '', o.offsets || ''])), '', p.optimizeOpenings ? 1 : '',
         p.flipStuds ? 1 : '', p.layoutFromRight ? 1 : '', p.layoutStartIn || '', (p.clips || []).map(c => [c.type, c.x, c.y]), p.studFlips || '', p.cutbackIn ?? '',
-        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '', p.deflectionGapIn ?? '']);
+        p.seatPieces === false ? 0 : '', p.headEnds === 'flush' ? 1 : '', p.headCutbackIn ?? '', p.sillEnds === 'flush' ? 1 : '', p.sillCutbackIn ?? '', p.deflectionGapIn ?? '', manualForLink(p)]);
     const bytes = new TextEncoder().encode(JSON.stringify(packed));
     let bin = '';
     for (const b of bytes) bin += String.fromCharCode(b);
@@ -1062,13 +1101,14 @@ export function decodePanel(code) {
     const bin = atob(String(code || '').replace(/-/g, '+').replace(/_/g, '/'));
     const data = JSON.parse(new TextDecoder().decode(Uint8Array.from(bin, c => c.charCodeAt(0))));
     if (!Array.isArray(data) || data[0] !== 1) return cleanPanel(data); // a link written as the panel itself
-    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = '', deflectionGapIn = ''] = data;
+    const [, mark, level, wallType, group, sideB, shape = [], members = [], openings = [], , optimize, flipStuds, fromRight, startIn, clips = [], studFlips = [], cutbackIn = '', seat, headFlush, headCut = '', sillFlush, sillCut = '', deflectionGapIn = '', manual] = data;
     return cleanPanel({ mark, level, wallType, group, sideB: !!sideB, optimizeOpenings: optimize === 1, flipStuds: flipStuds === 1, layoutFromRight: fromRight === 1, layoutStartIn: startIn, ...(cutbackIn === '' ? {} : { cutbackIn }),
         ...(seat === 0 ? { seatPieces: false } : {}), ...(headFlush === 1 ? { headEnds: 'flush', headCutbackIn: headCut } : {}), ...(sillFlush === 1 ? { sillEnds: 'flush', sillCutbackIn: sillCut } : {}),
         ...(deflectionGapIn === '' ? {} : { deflectionGapIn }),
+        ...(manual ? { manual } : {}),
         clips: Array.isArray(clips) ? clips.map(([type, x, y]) => ({ type, x, y })) : [], studFlips: Array.isArray(studFlips) ? studFlips : [],
         shape: { kind: shape[0], ...Object.fromEntries((SHAPE_KEYS[shape[0]] || []).map((k, i) => [k, shape[i + 1]])) },
         members: Object.fromEntries(MEMBER_KEYS.map((k, i) => [k, members[i] ?? (k === 'spacingIn' ? 16 : '')])),
-        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill, toLayout, offsetIn, jambStyle, headStyle, sillStyle, jacks, crippleEnds]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill,
-            toLayout: toLayout === 1, offsetIn, jambStyle, headStyle, sillStyle, headBearing: jacks === 1 ? 'jacks' : '', crippleEnds: crippleEnds === 1 })) });
+        openings: openings.map(([w, leftIn, widthIn, heightIn, sillIn, head, jamb, sill, toLayout, offsetIn, jambStyle, headStyle, sillStyle, jacks, crippleEnds, offsets]) => ({ kind: KIND_CODES[w] || 'door', leftIn, widthIn, heightIn, sillIn, head, jamb, sill,
+            toLayout: toLayout === 1, offsetIn, jambStyle, headStyle, sillStyle, headBearing: jacks === 1 ? 'jacks' : '', crippleEnds: crippleEnds === 1, ...(offsets ? { offsets } : {}) })) });
 }

@@ -90,6 +90,9 @@ main.ws.nav-collapsed .nav-toggle::before { content: '◧'; font-size: 18px; }
 .cut-table tbody tr:hover { background: #f2f7fc; }
 .cut-table tbody tr.selected { background: #ffe3cc; }
 .cut-table tbody tr:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.cut-table .cut-type { min-width: 145px; width: 100%; max-width: 240px; min-height: 30px; padding: 3px 6px; font: inherit; }
+.cut-hint { margin: 5px 6px; }
+.ws-insp #combo { min-width: 0; max-width: 100%; }
 .issue-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
 .issue { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 2px 8px; padding: 5px 8px; border-left: 4px solid #c9a227; background: #fffaf0; border-radius: 0 6px 6px 0; }
 .issue.error { border-left-color: #b00020; background: #fff3f4; }

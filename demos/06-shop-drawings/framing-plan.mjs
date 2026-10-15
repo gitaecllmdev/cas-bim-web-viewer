@@ -391,7 +391,8 @@ function expandMembers(layout, inputs, panel, plan, catalog, issue) {
                 record({ memberKey, catalogKey: keyOf(m.type), designator: m.type, start: v3(x0, ya, D / 2), end: v3(x1, yb, D / 2), placementLengthIn: len, cut: cut(m),
                     orientation: open((yb - ya) / len, -(x1 - x0) / len, 0), assemblyKey: '', partKey: '', tags: tagsOf(m) });
             } else if ((m.role === 'head track' || m.role === 'sill track') && fr && (m.role === 'head track' ? fr.head : fr.sill)) {
-                const spec = m.role === 'head track' ? fr.head : fr.sill, head = m.role === 'head track', parts = spec.parts;
+                const spec = m.role === 'head track' ? fr.head : fr.sill, head = m.role === 'head track';
+                const parts = m.typeSources ? G.specParts((m.parts || [{ qty: 1, name: m.type }]).map(p => `(${p.qty}) ${p.name}`).join(' WITH ')) : spec.parts;
                 const yWebLow = m.y, yWebHigh = m.y + m.h, assemblyKey = memberKey;
                 const studQty = parts.studQty, trackQty = parts.trackQty, marks = m.marks?.length ? m.marks : [m.mark];
                 const markOf = (name) => { const j = (m.parts || []).findIndex(q => q.name === name); return marks[j >= 0 ? j : 0] ?? m.mark; };
@@ -466,6 +467,7 @@ function featuresOf(panel, inputs, layout, members, plan) {
     if (plan.accessories.length) f.add('clips');
     if (inputs.openings.some(o => o.clear)) f.add('framing-offset');
     if (members.some(m => m.manual) || layout.manual?.deleted) f.add('manual-members');
+    if (layout.manual?.typeCount) f.add('member-type-overrides');
     if (layout.members.some(m => m.seat)) f.add('seated-pieces');
     if (panel.openings.some(o => G.offsetsVary(o))) f.add('framing-offset-sides');
     if (panel.headEnds === 'flush' && layout.members.some(m => m.role === 'head track')) f.add('flush-headers');

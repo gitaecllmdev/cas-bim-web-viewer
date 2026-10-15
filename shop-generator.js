@@ -22,6 +22,7 @@ import * as P from './demos/06-shop-drawings/profiles.mjs';
 import * as DT from './demos/06-shop-drawings/details.mjs';
 import * as R from './demos/06-shop-drawings/opening-rules.mjs';
 import * as MAN from './demos/06-shop-drawings/manual.mjs';
+import * as CUT from './demos/06-shop-drawings/cutlist-types.mjs';
 import * as CL from './demos/06-shop-drawings/context-lines.mjs';
 import * as OC from './demos/06-shop-drawings/opening-context.mjs';
 import * as OP from './demos/06-shop-drawings/opening-profiles.mjs';
@@ -161,6 +162,8 @@ function markCheck(el) {
     notice(taken ? `${v} is another panel's mark: each panel keeps its own (${was} kept).` : 'A panel needs a mark: the one before is kept.', true);
 }
 main.addEventListener('change', (e) => {
+    const cutType = e.target.closest('[data-cutlist-type]');
+    if (cutType) { pickCutListType(cutType.dataset.cutlistType, cutType.value); return; }
     if (e.target.closest('[data-style], [data-style-q], [data-style-pick]')) { styleChange(e.target); return; }
     const prof = e.target.closest('[data-op-prof]');
     if (prof) { pickOpeningProfile(prof.dataset.opProf, prof.value); return; }
@@ -2031,9 +2034,11 @@ function renderBottom(f) {
     const links = linksNow();
     if (tab === 'openings') { body.innerHTML = openingSchedule(cur()); return; }
     if (tab === 'cut') {
+        const focused = body.contains(document.activeElement) ? document.activeElement.dataset.cutlistType : null;
         body.innerHTML = rows.length ? `<table class="cut-table" aria-label="Cut list"><thead><tr><th>Label</th><th>Qty</th><th>Function</th><th>Member</th><th>Cut length</th></tr></thead><tbody>
-            ${rows.map(r => `<tr tabindex="0" data-mark="${esc(r.mark)}" class="${links.marks.has(r.mark) ? 'selected' : ''}" aria-selected="${links.marks.has(r.mark)}"><td><b>${esc(r.mark)}</b></td><td>${r.qty}</td><td>${esc(r.func || '')}</td><td>${esc(r.designator)}</td><td>${esc(fmtFtIn(r.cutLengthIn))}</td></tr>`).join('')}</tbody></table>`
+            ${rows.map(r => `<tr tabindex="0" data-mark="${esc(r.mark)}" class="${links.marks.has(r.mark) ? 'selected' : ''}" aria-selected="${links.marks.has(r.mark)}"><td><b>${esc(r.mark)}</b></td><td>${r.qty}</td><td>${esc(r.func || '')}</td><td><select class="cut-type" data-cutlist-type="${esc(r.mark)}" aria-label="Member type for ${esc(r.mark)}" title="Change the pieces in this row; panel defaults stay unchanged. Same family, depth and flange; alternate thicknesses. Change section sizes under Members.">${CUT.suggestions(cur(), r.designator, Object.values(recent).flat()).map(name => `<option value="${esc(name)}"${name === r.designator ? ' selected' : ''}>${esc(name)}</option>`).join('')}</select></td><td>${esc(fmtFtIn(r.cutLengthIn))}</td></tr>`).join('')}</tbody></table><p class="cut-hint muted small">Change types by row; panel defaults stay unchanged. Undo restores the previous choice.</p>`
             : `<p class="muted">${f.layout ? 'No members.' : 'Not framed yet: no cut list (see Issues).'}</p>`;
+        if (focused) [...body.querySelectorAll('[data-cutlist-type]')].find(el => el.dataset.cutlistType === focused)?.focus({ preventScroll: true });
         return;
     }
     const modelLinked = G.isFromModel(cur());
@@ -2045,6 +2050,20 @@ function renderBottom(f) {
             ${note ? `<span class="note">${esc(note)}</span>` : ''}
             ${actions.length ? `<span class="acts">${actions.map((a, k) => `<button class="secondary" data-issue-act="${n}:${k}">${esc(a.label)}</button>`).join('')}</span>` : ''}</li>`;
     }).join('')}</ol>` : '<p class="muted">No issues.</p>';
+}
+function pickCutListType(mark, type) {
+    const p = cur(), memberKey = current.plan?.cutList.find(r => r.mark === mark)?.memberKeys[0], result = CUT.setRowType(p, layoutA(), mark, type);
+    if (result.error) { notice(result.error, true); renderBottom(current); return; }
+    if (!result.changed) return;
+    historyHint = { label: `${mark} member type` };
+    replacePanel(result.panel);
+    selection = W.NONE; // Labels can regroup after a type choice; never select a different piece under the old label.
+    const kind = /^(S|CS|CT)$/.test(G.parseMember(type)?.profile || '') ? 'stud' : 'track';
+    recent[kind] = G.remember(recent[kind], type); store(KEYS.recent, recent);
+    changed(); renderWorkspace(); renderDatalists();
+    const nextMark = current.plan?.members.find(m => m.memberKey === memberKey)?.mark;
+    [...main.querySelectorAll('[data-cutlist-type]')].find(el => el.dataset.cutlistType === nextMark)?.focus({ preventScroll: true });
+    notice(`${result.changed} ${mark} piece${result.changed === 1 ? '' : 's'} changed to ${type}. Panel defaults kept; labels regroup by type and length.`);
 }
 // The selection's own card at the top of the properties.
 function renderInspectorContext(p, f) {
@@ -3702,7 +3721,7 @@ main.addEventListener('click', (e) => {
     const ctx = e.target.closest('[data-ctx]');
     if (ctx) { const c = ctx.dataset.ctx; if (c === 'clear') selectTarget(W.NONE); else if (c === 'select-opening') selectTarget({ kind: 'opening', key: ctx.dataset.v }, { locate: true }); else if (c === 'framing') runCommand('open-framing', ctx.dataset.v); return; }
     const row = e.target.closest('tr[data-mark]');
-    if (row) { selectTarget({ kind: 'mark', key: row.dataset.mark }); return; }
+    if (row && !e.target.closest('select, input, button')) { selectTarget({ kind: 'mark', key: row.dataset.mark }); return; }
     const iss = e.target.closest('[data-issue]');
     if (iss && !e.target.closest('button')) { selectTarget({ kind: 'issue', key: Number(iss.dataset.issue) }); return; }
     if (e.target.closest('.mark-hit')) { selection = W.NONE; renderWorkspace(); renameFocus(); return; }

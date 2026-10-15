@@ -8,10 +8,10 @@
 import { round16 } from '../common/framing.mjs';
 
 const r16 = (v) => round16(Number(v));
-const manualOf = (panel) => ({ members: { ...(panel.manual?.members || {}) }, added: [...(panel.manual?.added || [])] });
+const manualOf = (panel) => ({ members: { ...(panel.manual?.members || {}) }, added: [...(panel.manual?.added || [])], ...(panel.manual?.types ? { types: structuredClone(panel.manual.types) } : {}) });
 const withManual = (panel, m) => {
-    const out = { ...panel }, has = Object.keys(m.members).length || m.added.length;
-    if (has) out.manual = { members: m.members, ...(m.added.length ? { added: m.added } : {}) }; else delete out.manual;
+    const out = { ...panel }, hasTypes = Object.keys(m.types || {}).length, has = Object.keys(m.members).length || m.added.length || hasTypes;
+    if (has) out.manual = { members: m.members, ...(m.added.length ? { added: m.added } : {}), ...(hasTypes ? { types: m.types } : {}) }; else delete out.manual;
     return out;
 };
 const boxOf = (m) => ({ x: r16(m.x), y: r16(m.y), w: r16(m.w), h: r16(m.h) });
@@ -32,6 +32,7 @@ export function lock(panel, key) {
     const man = manualOf(panel);
     if (isAdded(key)) man.added = man.added.filter(a => `manual:${a.id}` !== key);
     else delete man.members[key];
+    if (man.types) delete man.types[key];
     return withManual(panel, man);
 }
 export function unlockAll(panel, layout) {
@@ -48,7 +49,7 @@ export function place(panel, layout, key, box) {
     if (!(b.w > 0 && b.h > 0)) return panel;
     const man = manualOf(panel);
     if (isAdded(key)) man.added = man.added.map(a => (`manual:${a.id}` === key ? { ...a, ...b } : a));
-    else man.members[key] = b;
+    else man.members[key] = { ...(man.members[key]?.type ? { type: man.members[key].type } : {}), ...b };
     return withManual(panel, man);
 }
 export function move(panel, layout, key, dx = 0, dy = 0) {
@@ -62,7 +63,9 @@ export function copy(panel, layout, key, dx = 0, dy = 0) {
     const m = find(layout, key), from = sourceOf(panel, key);
     if (!m || !from) return { panel, key: null };
     const man = manualOf(panel), id = nextId(man), src = isAdded(key) ? man.added.find(a => `manual:${a.id}` === key) : null;
-    man.added.push({ id, from, ...boxOf({ ...m, x: m.x + dx, y: m.y + dy }), ...(src?.mirrored ? { mirrored: true } : {}) });
+    const type = src?.type || man.members[key]?.type;
+    man.added.push({ id, from, ...boxOf({ ...m, x: m.x + dx, y: m.y + dy }), ...(src?.mirrored ? { mirrored: true } : {}), ...(type ? { type } : {}) });
+    if (man.types?.[key]) man.types[`manual:${id}`] = { ...man.types[key] };
     return { panel: withManual(panel, man), key: `manual:${id}` };
 }
 // Across the panel's middle (left to right), facing the other way.
@@ -70,13 +73,16 @@ export function mirror(panel, layout, key) {
     const m = find(layout, key), from = sourceOf(panel, key);
     if (!m || !from) return { panel, key: null };
     const man = manualOf(panel), id = nextId(man), src = isAdded(key) ? man.added.find(a => `manual:${a.id}` === key) : null;
-    man.added.push({ id, from, ...boxOf({ ...m, x: layout.lengthIn - m.x - m.w }), ...(src?.mirrored ? {} : { mirrored: true }) });
+    const type = src?.type || man.members[key]?.type;
+    man.added.push({ id, from, ...boxOf({ ...m, x: layout.lengthIn - m.x - m.w }), ...(src?.mirrored ? {} : { mirrored: true }), ...(type ? { type } : {}) });
+    if (man.types?.[key]) man.types[`manual:${id}`] = { ...man.types[key] };
     return { panel: withManual(panel, man), key: `manual:${id}` };
 }
 export function remove(panel, key) {
     const man = manualOf(panel);
     if (isAdded(key)) man.added = man.added.filter(a => `manual:${a.id}` !== key);
     else man.members[key] = { deleted: true };
+    if (isAdded(key) && man.types) delete man.types[key];
     return withManual(panel, man);
 }
 // Another member type for these members (unlocked where they are: nothing moves). -> { panel, changed: [{ key, from, to }] }
@@ -85,6 +91,7 @@ export function setType(panel, layout, keys, type) {
     for (const key of keys) {
         const m = find(layout, key);
         if (!m || m.parts?.length || m.type === type) continue;
+        if (man.types) delete man.types[key]; // The explicit inspector edit supersedes this member's cut-list choice.
         if (isAdded(key)) man.added = man.added.map(a => (`manual:${a.id}` === key ? { ...a, type } : a));
         else man.members[key] = { ...(man.members[key] && !man.members[key].deleted ? man.members[key] : boxOf(m)), type };
         changed.push({ key, from: m.type, to: type });
