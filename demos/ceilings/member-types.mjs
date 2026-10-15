@@ -12,6 +12,7 @@ export function typeGroup(role, mode) {
     if (role === 'joist') return 'joist';
     if (role === 'opening-frame') return 'track';
     if (role === 'perimeter') return mode === 'grid' ? 'trim' : 'track';
+    if (['panel','light','diffuser'].includes(role)) return role;
     return null;
 }
 export function selectedType(selections, role, mode) {

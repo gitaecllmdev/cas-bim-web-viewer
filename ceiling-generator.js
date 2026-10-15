@@ -6,6 +6,7 @@ import { parseLength } from './demos/06-shop-drawings/generator.mjs';
 import { fmtFtIn } from './demos/common/framing.mjs';
 import { CeilingSketch } from './ceiling-sketch.js';
 import { TYPE_OPTIONS, typeGroup } from './demos/ceilings/member-types.mjs';
+import { assignment, rowAssignment, resetRow, lineMove, lineMoveError, layoutBasis } from './demos/ceilings/editing.mjs';
 
 const KEY = 'cas-ceiling-generator:project:v1', PREFS = 'cas-ceiling-generator:prefs:v1';
 const $ = s => document.querySelector(s), uid = () => crypto.randomUUID();
@@ -17,7 +18,7 @@ try {
 } catch (e) { startupNotice = `Saved project could not be read: ${e.message}. Import a saved project or add a ceiling.`; }
 let prefs = { view: 'layout', result: 'quantities' };
 try { const p = JSON.parse(localStorage.getItem(PREFS)); if (['layout', 'panels', 'framing', 'iso', 'drawing'].includes(p?.view)) prefs.view = p.view; if (p?.result === 'checks') prefs.result = 'checks'; } catch { /* Defaults are usable. */ }
-let undo = [], redo = [], selectedOpening = null, plan = null, fileDirty = false, noticeTimer, sketch;
+let undo = [], redo = [], selectedOpening = null, selectedLine = null, plan = null, fileDirty = false, noticeTimer, sketch, defaultsScope = '', selectionScope = null;
 const current = () => project.ceilings.find(c => c.id === project.currentId);
 function parseDimension(value) { const s = value.trim(), negative = s.startsWith('-'), n = parseLength(negative ? s.slice(1) : s); return n == null ? null : negative ? -n : n; }
 function notice(message) { $('#notice').textContent = message; $('#notice').hidden = false; clearTimeout(noticeTimer); noticeTimer = setTimeout(() => { $('#notice').hidden = true; }, 5500); }
@@ -36,6 +37,8 @@ const safeName = s => String(s).replace(/[^a-z0-9_-]/gi, '_').slice(0, 80) || 'c
 const modeName = c => c.mode === 'hardlid' ? 'Hardlid framing' : 'Ceiling grid';
 function render() {
     const c = current(); plan = c ? resolveCeilingPlan(c) : null;
+    if(selectionScope!==c?.id){selectedLine=null;selectedOpening=null;selectionScope=c?.id;}
+    if(selectedLine&&!plan?.layoutLines.some(l=>l.key===selectedLine))selectedLine=null;
     $('#ceiling-count').textContent = project.ceilings.length;
     $('#ceiling-list').innerHTML = project.ceilings.map(c => `<button class="ceiling-card ${c.id === project.currentId ? 'active' : ''}" data-ceiling="${esc(c.id)}" aria-pressed="${c.id === project.currentId}"><div class="card-mode"><b>${esc(c.mark)}</b><i aria-hidden="true">${c.mode === 'grid' ? '▦' : '▤'}</i></div><span>${modeName(c)}</span><span>${fmtFtIn(c.lengthIn)} × ${fmtFtIn(c.depthIn)}</span></button>`).join('') || '<p class="property-hint">No ceilings yet. Add one to start.</p>';
     $('#undo').disabled = !undo.length; $('#redo').disabled = !redo.length;
@@ -52,17 +55,18 @@ function render() {
     $('#boundary-actions').hidden = !drawingBoundary;
     document.querySelectorAll('[data-sketch-tool]').forEach(b => { const active=b.dataset.sketchTool===sketch?.tool; b.setAttribute('aria-pressed',String(active)); b.classList.toggle('drawing',active); b.disabled=!c; });
     $('#sketch-kind').value=sketch?.kind || 'void'; $('#sketch-snap').value=String(sketch?.step || 1);
+    $('#sketch-constraint').value=sketch?.constraint||'free';
     $('#preview').classList.toggle('drawing-mode', sketch?.tool !== 'select');
     $('#tool-hint').textContent = sketch?.status() || '';
     const invalid = !c || plan.issues.some(i => i.severity === 'error');
     for (const action of ['duplicate', 'delete', 'boundary', 'reset-boundary', 'pdf', 'csv']) document.querySelectorAll(`[data-action="${action}"]`).forEach(b => { b.disabled = !c || (['pdf', 'csv'].includes(action) && invalid); });
     document.querySelector('[data-action="layout"]').disabled = !project.ceilings.length;
-    if (!c) { $('#preview').innerHTML = '<div class="empty"><h2>Your next ceiling starts here</h2><p>Add a ceiling to lay out hardlid framing or acoustical grid.</p><button data-action="new">+ New ceiling</button></div>'; sketch?.setScene(null,null); $('#properties').innerHTML = ''; $('#results').innerHTML = '<p class="result-note">Quantities appear when a ceiling is added.</p>'; return; }
+    if (!c) { $('#preview').innerHTML = '<div class="empty"><h2>Your next ceiling starts here</h2><p>Add a ceiling to lay out hardlid framing or acoustical grid.</p><button data-action="new">+ New ceiling</button></div>'; sketch?.setScene(null,null); $('#properties').innerHTML = ''; $('#member-defaults').innerHTML=''; $('#member-defaults').hidden=true; defaultsScope=''; $('#results').innerHTML = '<p class="result-note">Quantities appear when a ceiling is added.</p>'; return; }
     renderPreview(); renderProperties(); renderResults(); persist();
 }
 function renderPreview() {
     if (prefs.view === 'drawing') { $('#preview').innerHTML = opsSvg(sheetOps(plan, project.name)); sketch?.setScene(null,null); return; }
-    const rendered = layoutOps(plan, { view: prefs.view, selectedOpening });
+    const rendered = layoutOps(plan, { view: prefs.view, selectedOpening, selectedLine });
     const points = rendered.ops.flatMap(o => o.t === 'poly' ? o.pts : o.t === 'line' ? [[o.x1, o.y1], [o.x2, o.y2]] : [[o.x, o.y]]);
     const box = bounds(points), viewBox = [box.minX - .65, box.minY - .35, box.maxX - box.minX + 1.3, box.maxY - box.minY + .7];
     const fontMin = viewBox[2] / Math.max(240, $('#preview').clientWidth) * 10;
@@ -76,15 +80,39 @@ const section = (title, content, hint = '') => `<section class="property-section
 function renderProperties() {
     const c = current(), s = c.settings, opening = c.openings.find(o => o.id === selectedOpening);
     let html = section('Ceiling', field('project-name', 'Project', project.name, true, 'maxlength="200"') + field('ceiling-mark', 'Ceiling mark', c.mark, true, 'maxlength="60"') + select('mode', 'System', c.mode, [['grid', 'Ceiling grid / ACT'], ['hardlid', 'Hardlid framing']]) + field('elevation', 'Elevation', fmtFtIn(c.elevationIn), true));
+    const line=plan.layoutLines.find(l=>l.key===selectedLine);
+    if(line)html=section(line.role==='main'?'Selected main':line.role==='joist'?'Selected joist':'Selected runner',field('member-position',`${line.axis.toUpperCase()} position`,fmtFtIn(line.positionIn),true),`${line.memberKeys.length} piece(s) on this line. Drag or use arrow keys.`).replace('</section>','<button class="secondary" data-action="reset-line">Reset this line</button></section>')+html;
     html += section('Footprint', select('shape', 'Shape', c.shape, [['rectangle', 'Rectangle'], ['l-shape', 'L-shape'], ...(c.shape === 'custom' ? [['custom', 'Drawn footprint']] : [])]) + (c.shape !== 'custom' ? field('length', 'Length', fmtFtIn(c.lengthIn)) + field('depth', 'Depth', fmtFtIn(c.depthIn)) : '') + (c.shape === 'l-shape' ? field('notch-width', 'Notch width', fmtFtIn(c.notchWidthIn)) + field('notch-depth', 'Notch depth', fmtFtIn(c.notchDepthIn)) : ''), 'Enter 10\'-6", 10.5\' or 126 (inches).');
+    html += section('Ceiling slope',field('slope-x','Rise X / 12″ run',String(c.slope?.riseX||0))+field('slope-y','Rise Y / 12″ run',String(c.slope?.riseY||0)),'Use 0 for flat. Layout dimensions follow the ceiling surface; 3D shows the slope.');
     html += section(c.mode === 'grid' ? 'Grid layout' : 'Framing layout', (c.mode === 'grid' ? select('tile', 'Panel module', s.tileDepthIn, [[24, '2 × 2 ft'], [48, '2 × 4 ft']]) : field('joist-spacing', 'Joist spacing', fmtFtIn(s.joistSpacingIn), true)) + select('direction', c.mode === 'grid' ? 'Main runner direction' : 'Joist direction', s.direction, [[0, 'Along depth ↑'], [90, 'Along length →']]) + field('origin-x', 'Origin X', fmtFtIn(s.originX)) + field('origin-y', 'Origin Y', fmtFtIn(s.originY)), c.mode === 'grid' ? 'Generic grid: 4 ft main spacing. Product-specific connectors and supports are a later step.' : 'Generic joist and track layout. Framing sizes and supports need a project-specific selection.').replace('</section>', '<button class="secondary" data-action="balance">Balance layout</button></section>');
     html += `<section class="property-section"><h3>Openings &amp; fixtures <span class="muted">${c.openings.length}</span></h3><div class="opening-add"><button class="secondary" data-add-opening="void">+ Opening</button><button class="secondary" data-add-opening="light">+ Light</button><button class="secondary" data-add-opening="diffuser">+ Diffuser</button></div>${c.openings.map((o, i) => `<div class="opening-row"><button class="${o.id === selectedOpening ? 'active' : ''}" data-select-opening="${esc(o.id)}">${i + 1}. ${esc(o.kind)} · ${fmtFtIn(o.width)} × ${fmtFtIn(o.depth)}</button><button class="remove-opening" data-remove-opening="${esc(o.id)}" aria-label="Remove ${esc(o.kind)} ${i + 1}">×</button></div>`).join('')}${opening ? `<div class="property-fields">${select('opening-kind', 'Selected item', opening.kind, [['void', 'Opening / void'], ['light', 'Light'], ['diffuser', 'Diffuser']])}${field('opening-x', 'X from origin', fmtFtIn(opening.x))}${field('opening-y', 'Y from origin', fmtFtIn(opening.y))}${field('opening-width', 'Width', fmtFtIn(opening.width))}${field('opening-depth', 'Depth', fmtFtIn(opening.depth))}</div>` : '<p class="property-hint">Click an item in the plan or this list to edit its size and position.</p>'}</section>`;
     $('#properties').innerHTML = html;
 }
 function renderResults() {
+    $('#member-defaults').hidden=prefs.result==='checks';
     if (prefs.result === 'checks') { $('#results').innerHTML = `<ul class="check-list">${plan.issues.map(i => `<li><span class="check-label ${i.severity === 'error' ? 'error' : ''}">${i.severity === 'error' ? 'FIX INPUT' : 'TO RESOLVE'}</span><span>${esc(i.message)}</span></li>`).join('')}</ul>`; return; }
-    const typePicker=q=>{ const group=typeGroup(q.role,current().mode); return group ? `<select data-type-group="${group}" aria-label="Type for ${esc(q.mark)}"><option value="">Select type…</option>${TYPE_OPTIONS[group].map(([key,name])=>`<option value="${esc(key)}" ${q.typeSelection?.key===key?'selected':''}>${esc(name)}</option>`).join('')}</select>` : '<span class="muted">—</span>'; };
-    $('#results').innerHTML = `<table><thead><tr><th>Mark</th><th>Description</th><th>Type</th><th class="num">Pieces</th><th class="num">Length</th><th class="num">Total LF</th></tr></thead><tbody>${plan.quantities.map(q => `<tr><td>${esc(q.mark)}</td><td>${esc(q.description)}${q.role === 'panel' ? `<span class="muted"> · ${q.full} full / ${q.cut} cut</span>` : ''}</td><td>${typePicker(q)}</td><td class="num">${q.quantity}</td><td class="num">${q.lengthIn ? fmtFtIn(q.lengthIn) : '—'}</td><td class="num">${q.totalLengthFt != null ? q.totalLengthFt.toFixed(1) : '—'}</td></tr>`).join('')}</tbody></table><p class="result-note">Choose types here; matching member rows update together. Installed quantities exclude waste, hangers and bracing.</p>`;
+    renderMemberDefaults();
+    const focused=document.activeElement,focus=focused?.dataset.rowKey?{key:focused.dataset.rowKey,field:focused.dataset.rowField}:null;
+    const input=(q,field,value)=>`<input data-row-key="${q.rowKey}" data-row-field="${field}" aria-label="${field==='type'?'Type':'Description'} for ${esc(q.mark)}" value="${esc(value)}" maxlength="240" ${field==='type'?`list="type-options-${typeGroup(q.role,current().mode)}"`:''}>`;
+    $('#results').innerHTML = `<table><thead><tr><th>Mark</th><th>Description</th><th>Member type</th><th class="num">Pieces</th><th class="num">Length</th><th class="num">Total LF</th><th></th></tr></thead><tbody>${plan.quantities.map(q => `<tr data-quantity-row="${q.rowKey}"><td>${esc(q.mark)}${q.overridden?'<small class="row-override">override</small>':''}</td><td>${input(q,'description',q.description)}</td><td>${input(q,'type',q.typeSelection?.name||'')}</td><td class="num">${q.quantity}</td><td class="num">${q.lengthIn ? fmtFtIn(q.lengthIn) : '—'}</td><td class="num">${q.totalLengthFt != null ? q.totalLengthFt.toFixed(1) : '—'}</td><td>${q.overridden?`<button class="text-button" data-reset-row="${q.rowKey}">Use defaults</button>`:''}</td></tr>`).join('')}</tbody></table><p class="result-note">Set shared values above to fill matching rows. Row edits override those values until “Use defaults”. Installed quantities exclude waste, hangers and bracing.</p>`;
+    if(focus)document.querySelector(`[data-row-key="${focus.key}"][data-row-field="${focus.field}"]`)?.focus({preventScroll:true});
+}
+function renderMemberDefaults(){
+    const c=current(),host=$('#member-defaults'),scope=`${c.id}:${c.mode}`;
+    if(defaultsScope===scope&&host.contains(document.activeElement))return;
+    const labels={main:'Main',cross:'Runner / cross tee',joist:'Joists',track:'Track / opening frames',trim:'Perimeter / trim',panel:'Panels',light:'Lights',diffuser:'Diffusers'};
+    const primary=c.mode==='grid'?['main','cross']:['joist','track'],present=[...new Set(plan.quantities.map(q=>typeGroup(q.role,c.mode)).filter(Boolean))],other=present.filter(g=>!primary.includes(g));
+    const row=group=>{
+        const role=group==='main'?'main-runner':group==='cross'?'cross-tee-4':group==='trim'||group==='track'?'perimeter':group;
+        const type=assignment(c,role,'__shared__','').typeSelection?.name||'',desc=c.memberDefaults?.[group]?.description||'';
+        return `<div class="member-default-group"><strong>${labels[group]}</strong><label>Type<input data-default-group="${group}" data-default-field="type" data-type-group="${group}" list="type-options-${group}" value="${esc(type)}" placeholder="Type your member type" maxlength="240"></label><label>Description<input data-default-group="${group}" data-default-field="description" value="${esc(desc)}" placeholder="Use item descriptions" maxlength="240"></label><datalist id="type-options-${group}">${(TYPE_OPTIONS[group]||[]).map(([key,name])=>`<option value="${esc(name)}">${esc(key)}</option>`).join('')}</datalist></div>`;
+    };
+    const open=host.querySelector('details')?.open;
+    host.innerHTML=`<div class="primary-member-defaults">${primary.map(row).join('')}</div>${other.length?`<details ${open?'open':''}><summary>Other items</summary>${other.map(row).join('')}</details>`:''}`;defaultsScope=scope;
+}
+function moveMember(key,position){
+    const line=plan.layoutLines.find(l=>l.key===key),error=lineMoveError(plan,line,position);if(error){notice(error);return false;}
+    return edit(c=>Object.assign(c,lineMove(c,line,position)));
 }
 function nextMark(p) { let n = 1; while (p.ceilings.some(c => c.mark.toLowerCase() === `c-${String(n).padStart(3, '0')}`)) n++; return `C-${String(n).padStart(3, '0')}`; }
 function addOpening(kind) {
@@ -98,7 +126,11 @@ function addOpening(kind) {
     notice('No clear area fits this item. Adjust the footprint or existing openings first.');
 }
 document.addEventListener('change', event => {
-    if (event.target.dataset.typeGroup) { const group=event.target.dataset.typeGroup, value=event.target.value; edit(c=>{c.typeSelections={...c.typeSelections,[group]:value};}); return; }
+    const target=event.target;
+    if(target.dataset.defaultGroup){const group=target.dataset.defaultGroup,field=target.dataset.defaultField,value=target.value.trim();edit(c=>{c.memberDefaults={...c.memberDefaults,[group]:{...c.memberDefaults?.[group],[field]:value}};});return;}
+    if(target.dataset.rowKey){const row=plan.quantities.find(q=>q.rowKey===target.dataset.rowKey);edit(c=>Object.assign(c,rowAssignment(c,row,target.dataset.rowField,target.value)));return;}
+    if(target.id==='member-position'){const value=parseDimension(target.value);if(value==null)notice('Enter a member position as feet and inches.');else moveMember(selectedLine,value);return;}
+    if(target.id==='sketch-constraint'){sketch.constraint=target.value;sketch.paint();return;}
     if (event.target.id==='sketch-kind') { sketch.kind=event.target.value; sketch.setTool('opening'); return; }
     if (event.target.id==='sketch-snap') { sketch.step=Number(event.target.value); sketch.paint(); return; }
     const id = event.target.dataset.field; if (!id) return;
@@ -108,7 +140,8 @@ document.addEventListener('change', event => {
     if (!stringFields.includes(id) && !Number.isFinite(parsed)) { notice('Enter a valid feet-and-inches length, such as 10\'-6".'); render(); return; }
     edit((c, p) => {
         const map = { length: 'lengthIn', depth: 'depthIn', 'notch-width': 'notchWidthIn', 'notch-depth': 'notchDepthIn', elevation: 'elevationIn' };
-        if (id === 'project-name') p.name = parsed;
+        if(id==='slope-x'||id==='slope-y'){c.slope={riseX:0,riseY:0,...c.slope,[id==='slope-x'?'riseX':'riseY']:parsed};}
+        else if (id === 'project-name') p.name = parsed;
         else if (id === 'ceiling-mark') c.mark = parsed;
         else if (id === 'mode' || id === 'shape') c[id] = parsed;
         else if (map[id]) c[map[id]] = parsed;
@@ -123,17 +156,18 @@ document.addEventListener('change', event => {
 document.addEventListener('click', event => {
     if (event.target.closest('#preview') && !event.target.closest('button')) return;
     const t = event.target.closest('button,a,[data-opening]');
+    if(t?.dataset.resetRow){const row=plan.quantities.find(q=>q.rowKey===t.dataset.resetRow);if(row)edit(c=>{const next=resetRow(c,row);if(next.itemOverrides)c.itemOverrides=next.itemOverrides;else delete c.itemOverrides;});return;}
     if(t?.hasAttribute('data-sketch-fit')){sketch.fit();return;}
-    if (t?.dataset.sketchTool) { selectedOpening=null; sketch.setTool(t.dataset.sketchTool); return; }
+    if (t?.dataset.sketchTool) { selectedOpening=null;selectedLine=null; sketch.setTool(t.dataset.sketchTool); return; }
     if (t?.dataset.ceiling) { project.currentId = t.dataset.ceiling; selectedOpening = null; sketch.reset(); persist(); render(); return; }
     if (t?.dataset.view) { prefs.view = t.dataset.view; sketch.reset(); savePrefs(); render(); return; }
-    if (t?.dataset.result) { prefs.result = t.dataset.result; savePrefs(); renderResults(); document.querySelectorAll('[data-result]').forEach(b => { b.setAttribute('aria-selected', String(b === t)); b.tabIndex = b === t ? 0 : -1; }); $('#results').setAttribute('aria-labelledby', t.id); return; }
-    if (t?.dataset.selectOpening || t?.dataset.opening) { selectedOpening = t.dataset.selectOpening || t.dataset.opening; render(); return; }
+    if (t?.dataset.result) { prefs.result = t.dataset.result; savePrefs(); render(); return; }
+    if (t?.dataset.selectOpening || t?.dataset.opening) { selectedOpening = t.dataset.selectOpening || t.dataset.opening; selectedLine=null; render(); return; }
     if (t?.dataset.removeOpening) { edit(c => { c.openings = c.openings.filter(o => o.id !== t.dataset.removeOpening); }); return; }
     if (t?.dataset.addOpening) { addOpening(t.dataset.addOpening); return; }
     const action = t?.dataset.action;
     if (action === 'new') { selectedOpening = null; sketch.reset(); commit(p => { if (p.ceilings.length >= 50) throw Error('Use up to 50 ceilings per project.'); const c = newCeiling(uid(), nextMark(p), current()?.mode || 'grid'); p.ceilings.push(c); p.currentId = c.id; }); }
-    else if (action === 'duplicate') { selectedOpening = null; commit(p => { const c = structuredClone(current()); c.id = uid(); c.mark = nextMark(p); c.openings.forEach(o => { o.id = uid(); }); p.ceilings.push(c); p.currentId = c.id; }); }
+    else if (action === 'duplicate') { selectedOpening = null;selectedLine=null; commit(p => { const c = structuredClone(current()),oldId=c.id,ids=[]; c.id = uid(); c.mark = nextMark(p); c.openings.forEach(o => {const old=o.id;o.id=uid();ids.push([old,o.id]);});if(c.itemOverrides)c.itemOverrides=Object.fromEntries(Object.entries(c.itemOverrides).map(([k,v])=>{let key=k.startsWith(oldId+':')?c.id+k.slice(oldId.length):k;for(const[a,b]of ids)key=key.replace(`:opening:${a}:`,`:opening:${b}:`).replace(`:fixture:${a}`,`:fixture:${b}`);return[key,v];})); p.ceilings.push(c); p.currentId = c.id; }); }
     else if (action === 'delete') { sketch.reset(); commit(p => { p.ceilings = p.ceilings.filter(c => c.id !== p.currentId); p.currentId = p.ceilings[0]?.id || null; }); }
     else if (action === 'undo' || action === 'redo') history(action);
     else if (action === 'save') { download(`${safeName(project.name)}.ceiling-project.json`, JSON.stringify(project, null, 2), 'application/json'); fileDirty = false; persist(); notice('Project downloaded. Import it to continue on another browser.'); }
@@ -143,25 +177,29 @@ document.addEventListener('click', event => {
     else if (action === 'pdf') download(`${safeName(current().mark)}-ceiling.pdf`, ceilingPdf(plan, project.name), 'application/pdf');
     else if (action === 'balance') edit(c => { const b = bounds(c.outline), s = c.settings, ux = c.mode === 'hardlid' ? s.joistSpacingIn : s.direction === 0 ? 24 : s.tileDepthIn, vy = c.mode === 'hardlid' ? s.joistSpacingIn : s.direction === 0 ? s.tileDepthIn : 24; const offset = (size, spacing) => { const rem = size % spacing; return (rem < .01 ? spacing : rem + spacing) / 2; }; s.originX = b.minX + offset(b.maxX - b.minX, ux); s.originY = b.minY + offset(b.maxY - b.minY, vy); });
     else if (action === 'reset-boundary') { sketch.reset(); edit(c => { c.shape = 'rectangle'; c.outline = footprint('rectangle', c.lengthIn, c.depthIn); }); }
+    else if(action==='reset-members'){selectedLine=null;edit(c=>{delete c.layoutEdits;});}
+    else if(action==='reset-line'){const key=selectedLine;edit(c=>{if(c.layoutEdits?.basis===layoutBasis(c))delete c.layoutEdits.lines[key];});}
     else if (action === 'boundary') { if (sketch.tool==='boundary') sketch.finish(); else { selectedOpening=null; sketch.setTool('boundary'); } }
 });
 function savePrefs() { try { localStorage.setItem(PREFS, JSON.stringify(prefs)); } catch { /* Presentation preferences are optional. */ } }
-function history(action) { const from = action === 'undo' ? undo : redo, to = action === 'undo' ? redo : undo; if (!from.length) return; to.push(JSON.stringify(project)); project = readProject(from.pop()); selectedOpening = null; sketch.reset(); fileDirty = true; persist(); render(); }
+function history(action) { const from = action === 'undo' ? undo : redo, to = action === 'undo' ? redo : undo; if (!from.length) return; to.push(JSON.stringify(project)); project = readProject(from.pop()); selectedOpening = null;selectedLine=null; sketch.reset(); fileDirty = true; persist(); render(); }
 document.addEventListener('keydown', event => {
     if (sketch.key(event)) return;
     const typing = event.target.closest('input,select,textarea');
     if (event.target.matches('[role=tab]') && ['ArrowRight', 'ArrowLeft', 'Home', 'End'].includes(event.key)) { event.preventDefault(); const tabs = [...event.target.parentElement.querySelectorAll('[role=tab]')], at = tabs.indexOf(event.target), next = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1 : (at + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length; tabs[next].click(); tabs[next].focus(); return; }
-    if (event.target.dataset.opening && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectedOpening = event.target.dataset.opening; render(); return; }
+    if (event.target.dataset.opening && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectedOpening = event.target.dataset.opening; selectedLine=null; render(); return; }
+    if (event.target.dataset.layoutLine && ['Enter', ' '].includes(event.key)) { event.preventDefault(); selectedLine=event.target.dataset.layoutLine;selectedOpening=null; render(); document.querySelector(`[data-layout-line="${selectedLine}"]`)?.focus(); return; }
     if (typing) return;
     if ((event.ctrlKey || event.metaKey) && ['z', 'y'].includes(event.key.toLowerCase())) { event.preventDefault(); history(event.key.toLowerCase() === 'y' || event.shiftKey ? 'redo' : 'undo'); }
 });
 $('#import-file').addEventListener('change', async event => {
     const file = event.target.files[0]; event.target.value = ''; if (!file) return;
-    try { if (file.size > 2_000_000) throw Error('Use a ceiling project file smaller than 2 MB.'); const imported = readProject(await file.text()); undo.push(JSON.stringify(project)); redo = []; project = imported; selectedOpening = null; sketch.reset(); fileDirty = false; persist(); render(); notice(`Imported ${project.ceilings.length} ceiling(s). Undo restores the previous project.`); }
+    try { if (file.size > 2_000_000) throw Error('Use a ceiling project file smaller than 2 MB.'); const imported = readProject(await file.text()); undo.push(JSON.stringify(project)); redo = []; project = imported; selectedOpening = null;selectedLine=null; sketch.reset(); fileDirty = false; persist(); render(); notice(`Imported ${project.ceilings.length} ceiling(s). Undo restores the previous project.`); }
     catch (e) { notice(e.message); }
 });
 sketch = new CeilingSketch({ root:$('#preview'), ceiling:current, selected:()=>selectedOpening,
-    select:id=>{selectedOpening=id;render();}, patch:patch=>edit(c=>Object.assign(c,patch)),
-    opening:o=>{const previous=selectedOpening;selectedOpening=o.id;const ok=edit(c=>{const i=c.openings.findIndex(v=>v.id===o.id);if(i<0)c.openings.push(o);else c.openings[i]=o;});if(!ok)selectedOpening=previous;return ok;},
+    selectedLine:()=>selectedLine,plan:()=>plan,selectLine:key=>{selectedLine=key;selectedOpening=null;render();},moveLine:moveMember,
+    select:id=>{selectedOpening=id;selectedLine=null;render();}, patch:patch=>edit(c=>Object.assign(c,patch)),
+    opening:o=>{const previous=selectedOpening,previousLine=selectedLine;selectedOpening=o.id;selectedLine=null;const ok=edit(c=>{const i=c.openings.findIndex(v=>v.id===o.id);if(i<0)c.openings.push(o);else c.openings[i]=o;});if(!ok){selectedOpening=previous;selectedLine=previousLine;}return ok;},
     notice, refresh:()=>{prefs.view='layout';render();}, format:fmtFtIn, parse:parseDimension });
 render(); if (startupNotice) notice(startupNotice);

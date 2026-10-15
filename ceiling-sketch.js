@@ -1,17 +1,22 @@
 // Wall-style sketch gestures. Model edits happen once on release; pointer previews are disposable UI state.
 import { boundaryCursor, closeBoundary, rectFromPoints, moveOpening, resizeOpening, openingError, moveCorner, moveEdge, outlineEdit, snap } from './demos/ceilings/sketch.mjs';
 import { escapeHtml as esc } from './demos/ceilings/drawing.mjs';
+import { clipStation } from './demos/ceilings/geometry.mjs';
+import { lineMoveError } from './demos/ceilings/editing.mjs';
 
 export class CeilingSketch {
-    constructor({ root, ceiling, selected, select, patch, opening, notice, refresh, format, parse }) {
-        Object.assign(this, { root, ceiling, selected, select, patch, opening, notice, refresh, format, parse });
+    constructor({ root, ceiling, selected, select, patch, opening, notice, refresh, format, parse, selectedLine, selectLine, plan, moveLine }) {
+        Object.assign(this, { root, ceiling, selected, select, patch, opening, notice, refresh, format, parse, selectedLine, selectLine, plan, moveLine });
         this.tool = 'select'; this.kind = 'void'; this.step = 1; this.points = []; this.cursor = null; this.typed = ''; this.drag = null; this.scene = null;
+        this.constraint='free';
         root.addEventListener('pointerdown', e => this.down(e));
         root.addEventListener('pointermove', e => this.move(e));
         root.addEventListener('pointerup', e => this.up(e));
         root.addEventListener('pointercancel', () => { this.drag = null; this.paint(); });
         root.addEventListener('pointerleave', () => { if (!this.drag && this.tool === 'boundary') { this.cursor = null; this.paint(); } });
-        root.addEventListener('dblclick', e => { if (this.tool === 'boundary') { e.preventDefault(); this.finish(); } });
+        root.addEventListener('dblclick', e => {
+            if(this.tool==='boundary'){e.preventDefault();this.finish();return;}
+        });
         root.addEventListener('wheel',e=>this.zoom(e),{passive:false});
         document.querySelector('#sketch-length').addEventListener('input', e => { this.typed = e.target.value; this.paint(); });
     }
@@ -32,7 +37,13 @@ export class CeilingSketch {
         const q = p.matrixTransform(this.svg.getScreenCTM().inverse());
         return [(q.x - this.scene.left) / this.scene.scale + this.scene.minX, -((q.y - this.scene.top) / this.scene.scale + this.scene.minY)];
     }
-    aim(point) { return boundaryCursor(point, this.points, { step: this.step, tolerance: this.unit * 9 / this.scene.scale }); }
+    aim(point,event={}) { return boundaryCursor(point, this.points, { step: this.step, tolerance: this.unit * 9 / this.scene.scale, constraint:event.shiftKey?'ortho':this.constraint }); }
+    lengthPoint(last,aim,length){const dx=aim[0]-last[0],dy=aim[1]-last[1],d=Math.hypot(dx,dy)||1;return[last[0]+(dx||(!dy?1:0))*length/d,last[1]+dy*length/d];}
+    insertCorner(i,q){
+        const c=this.ceiling(),a=c.outline[i],b=c.outline[(i+1)%c.outline.length],dx=b[0]-a[0],dy=b[1]-a[1],t=((q[0]-a[0])*dx+(q[1]-a[1])*dy)/(dx*dx+dy*dy);
+        if(t<.01||t>.99||c.outline.length>=96)return;
+        const outline=structuredClone(c.outline);outline.splice(i+1,0,[a[0]+dx*t,a[1]+dy*t]);const result=outlineEdit(c,outline);if(result.error)this.notice(result.error);else this.patch(result);
+    }
     setViewport(box) { this.viewport=box;this.scene.viewBox=box;this.svg.setAttribute('viewBox',box.join(' '));this.paint(); }
     zoom(e) {
         if(!this.scene||!this.svg||e.ctrlKey||e.metaKey)return;
@@ -47,12 +58,14 @@ export class CeilingSketch {
     status() {
         if (this.tool === 'boundary') return this.cursor?.closing ? 'Click the starting point to close the footprint.' : this.points.length ? 'Click the next corner, or type a length and press Enter. Click the start to close; Backspace undoes a corner.' : 'Click the first corner. The existing ceiling stays until you finish. Escape cancels.';
         if (this.tool === 'opening') return `Drag corner to corner to draw a ${this.kind === 'void' ? 'ceiling opening' : this.kind}. Escape cancels.`;
-        return this.selected() ? 'Drag the opening to move it; drag a corner to resize. Arrow keys move; Delete removes.' : 'Drag a ceiling corner or edge to reshape it. Draw an opening, or click one to move and resize it.';
+        if(this.selectedLine?.())return 'Drag this main or runner across its run, or use arrow keys. Set an exact position in Properties.';
+        return this.selected() ? 'Drag the opening to move it; drag a corner to resize. Arrow keys move; Delete removes.' : 'Draw at any angle; Shift locks axes. Drag members or ceiling corners/edges. Double-click an edge to add a corner; Delete removes a focused corner.';
     }
     paint() {
         const svg = this.svg, c = this.ceiling(); if (!svg || !this.scene || !c) return;
         svg.querySelector('.sketch-overlay')?.remove();
-        for (const node of svg.children) node.style.opacity = this.tool === 'boundary' ? '.18' : '1';
+        const dim=this.tool==='boundary';
+        if(this.baseSvg!==svg||this.dimmed!==dim){for(const node of svg.children)node.style.opacity=dim?'.18':'1';this.baseSvg=svg;this.dimmed=dim;}
         const overlay = document.createElementNS('http://www.w3.org/2000/svg', 'g'); overlay.classList.add('sketch-overlay');
         const u = this.unit, font = 12 * u, stroke = 1.8 * u, r = 5 * u, parts = [], map = p => this.map(p);
         const line = (a, b, color = '#bd861d', dash = '') => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" stroke="${color}" stroke-width="${stroke}" ${dash ? `stroke-dasharray="${dash}"` : ''} pointer-events="none"/>`;
@@ -72,10 +85,10 @@ export class CeilingSketch {
             if (this.cursor) {
                 let end = this.cursor.point;
                 const last = points.at(-1), length = this.parse(this.typed);
-                if (last && this.typed && length > 0) { const axis = Math.abs(end[0]-last[0]) >= Math.abs(end[1]-last[1]) ? 0 : 1; end = [...last]; end[axis] += Math.sign(this.cursor.point[axis]-last[axis] || 1) * length; }
+                if (last && this.typed && length > 0) end=this.lengthPoint(last,end,length);
                 const q = map(end);
                 if (last) {
-                    const closed=this.cursor.closing?closeBoundary(points):null,tail=closed?.outline?closed.outline.slice(points.length):[];
+                    const closed=this.cursor.closing?closeBoundary(points,{constraint:this.constraint}):null,tail=closed?.outline?closed.outline.slice(points.length):[];
                     const route=[last,...tail,end];
                     for(let i=1;i<route.length;i++){const a=map(route[i-1]),b=map(route[i]);parts.push(line(a,b,this.cursor.closing?'#23733c':'#bd861d',`${5*u} ${4*u}`),text([(a[0]+b[0])/2,(a[1]+b[1])/2-12*u],`${this.format(Math.hypot(route[i][0]-route[i-1][0],route[i][1]-route[i-1][1]))}${this.typed?' · Enter':''}`));}
                 }
@@ -92,6 +105,15 @@ export class CeilingSketch {
                 const corners = { sw: [o.x,o.y], se: [o.x+o.width,o.y], ne: [o.x+o.width,o.y+o.depth], nw: [o.x,o.y+o.depth] };
                 if (!this.drag && this.tool === 'select') for (const [key,p] of Object.entries(corners)) parts.push(grip(map(p), `data-sketch-resize="${key}"`, `Resize ${key} opening corner`));
                 if (this.drag && error) parts.push(text([a[0],a[1]+18*u], error, color, 'start'));
+            }
+        }
+        if(this.tool==='select'&&this.selectedLine?.()){
+            const logical=this.plan().layoutLines.find(l=>l.key===this.selectedLine());
+            if(logical){const position=this.drag?.previewPosition??logical.positionIn,error=lineMoveError(this.plan(),logical,position),holes=c.openings.filter(o=>c.mode==='hardlid'||o.kind==='void'),color=error?'#b12d24':'#b37c20';
+                const segments=clipStation(c.outline,holes,logical.axis==='x',position);
+                for(const segment of segments)parts.push(line(map(segment[0]),map(segment[1]),color,this.drag?`${5*u} ${3*u}`:''));
+                const segment=segments[0];if(segment){const a=map(segment[0]),b=map(segment[1]);parts.push(text([(a[0]+b[0])/2+9*u,(a[1]+b[1])/2-12*u],`${logical.role==='main'?'Main':logical.role==='joist'?'Joist':'Runner'} · ${this.format(position)}`,color));}
+                if(error&&this.drag)parts.push(text([this.scene.viewBox[0]+12*u,this.scene.viewBox[1]+22*u],error,color,'start'));
             }
         }
         if (this.tool === 'select' && !this.selected()) {
@@ -114,12 +136,13 @@ export class CeilingSketch {
         if (e.button !== 0) return;
         const q = this.local(e), c = this.ceiling(); if (!q || !c) return;
         e.preventDefault(); this.root.focus({preventScroll:true}); this.root.setPointerCapture(e.pointerId);
-        if (this.tool === 'boundary') { this.cursor = this.aim(q); this.drag = { kind: 'boundary', screen: [e.clientX,e.clientY] }; }
+        if (this.tool === 'boundary') { this.cursor = this.aim(q,e); this.drag = { kind: 'boundary', screen: [e.clientX,e.clientY] }; }
         else if (this.tool === 'opening') { const a = q.map(v=>snap(v,this.step)); this.drag = { kind: 'new-opening', start: a, previewOpening: { id: crypto.randomUUID(),kind:this.kind,...rectFromPoints(a,a) }, screen: [e.clientX,e.clientY] }; }
         else {
-            const resize = e.target.closest('[data-sketch-resize]'), hit = e.target.closest('[data-opening]'), corner = e.target.closest('[data-sketch-corner]'), edge = e.target.closest('[data-sketch-edge]');
+            const resize = e.target.closest('[data-sketch-resize]'), hit = e.target.closest('[data-opening]'), corner = e.target.closest('[data-sketch-corner]'), edge = e.target.closest('[data-sketch-edge]'),lineHit=e.target.closest('[data-layout-line]');
             const o = c.openings.find(o=>o.id===(hit?.dataset.opening || this.selected()));
             if ((resize || hit) && o) { this.drag = { kind: resize ? 'resize' : 'move-opening', original: structuredClone(o), corner: resize?.dataset.sketchResize, start:q, screen:[e.clientX,e.clientY] }; this.select(o.id); }
+            else if(lineHit){const line=this.plan().layoutLines.find(l=>l.key===lineHit.dataset.layoutLine);this.drag={kind:'member-line',line,start:q,screen:[e.clientX,e.clientY]};this.selectLine(line.key);}
             else if (corner || edge) this.drag = { kind: corner ? 'corner' : 'edge', index:Number(corner?.dataset.sketchCorner ?? edge.dataset.sketchEdge), original:structuredClone(c.outline), start:q, screen:[e.clientX,e.clientY] };
             else { this.select(null); this.drag = null; }
         }
@@ -128,14 +151,15 @@ export class CeilingSketch {
     move(e) {
         if(this.drag?.kind==='pan'){const d=this.drag;this.setViewport([d.view[0]-(e.clientX-d.screen[0])*d.unit,d.view[1]-(e.clientY-d.screen[1])*d.unit,d.view[2],d.view[3]]);return;}
         const q = this.local(e); if (!q) return;
-        if (this.tool === 'boundary') { this.cursor = this.aim(q); this.paint(); return; }
+        if (this.tool === 'boundary') { this.cursor = this.aim(q,e); this.paint(); return; }
         const d = this.drag; if (!d) return;
         d.moved ||= Math.hypot(e.clientX-d.screen[0],e.clientY-d.screen[1]) > 3;
         if (!d.moved) return;
         if (d.kind === 'new-opening') d.previewOpening = { ...d.previewOpening,...rectFromPoints(d.start,q.map(v=>snap(v,this.step))) };
         else if (d.kind === 'move-opening') d.previewOpening = moveOpening(d.original,[q[0]-d.start[0],q[1]-d.start[1]],this.step);
         else if (d.kind === 'resize') d.previewOpening = resizeOpening(d.original,d.corner,q,this.step);
-        else if (d.kind === 'corner') d.previewOutline = moveCorner(d.original,d.index,q,this.step);
+        else if (d.kind === 'member-line') {const axis=d.line.axis==='x'?0:1;d.previewPosition=snap(d.line.positionIn+q[axis]-d.start[axis],this.step);}
+        else if (d.kind === 'corner') d.previewOutline = moveCorner(d.original,d.index,q,this.step,this.constraint);
         else if (d.kind === 'edge') d.previewOutline = moveEdge(d.original,d.index,[q[0]-d.start[0],q[1]-d.start[1]],this.step);
         this.paint();
     }
@@ -143,9 +167,13 @@ export class CeilingSketch {
         if (this.root.hasPointerCapture(e.pointerId)) this.root.releasePointerCapture(e.pointerId);
         const d = this.drag; this.drag = null; if (!d) return;
         if(d.kind==='pan'){this.paint();return;}
-        if (d.kind === 'boundary') { this.cursor = this.aim(this.local(e)); this.addCorner(); return; }
-        if (!d.moved) { if (d.kind === 'new-opening') this.notice('Drag from one corner to the opposite corner to size the opening.'); this.paint(); return; }
+        if (d.kind === 'boundary') { this.cursor = this.aim(this.local(e),e); this.addCorner(); return; }
+        if (!d.moved) {
+            if(d.kind==='edge'){const now=performance.now();if(this.edgeClick?.index===d.index&&now-this.edgeClick.time<500){this.edgeClick=null;this.insertCorner(d.index,this.local(e));}else this.edgeClick={index:d.index,time:now};}
+            if (d.kind === 'new-opening') this.notice('Drag from one corner to the opposite corner to size the opening.'); this.paint(); return;
+        }
         const c = this.ceiling();
+        if(d.kind==='member-line'){if(d.previewPosition!=null)this.moveLine(d.line.key,d.previewPosition);this.paint();return;}
         if (d.previewOpening) {
             const error = openingError(c.outline,d.previewOpening,c.openings);
             if (error) this.notice(error);
@@ -157,11 +185,11 @@ export class CeilingSketch {
         if (!point) return;
         if (this.cursor?.closing && this.points.length >= 3) { this.finish(); return; }
         const last = this.points.at(-1); if (last && Math.hypot(point[0]-last[0],point[1]-last[1]) < .01) return;
-        if (this.points.length >= 48) { this.notice('Use up to 48 footprint corners.'); return; }
+        if (this.points.length >= 96) { this.notice('Use up to 96 footprint corners.'); return; }
         this.points.push([...point]); this.typed = ''; this.paint();
     }
     finish() {
-        const closed = closeBoundary(this.points), result = closed.error ? closed : outlineEdit(this.ceiling(),closed.outline);
+        const closed = closeBoundary(this.points,{constraint:this.constraint}), result = closed.error ? closed : outlineEdit(this.ceiling(),closed.outline);
         if (result.error) { this.notice(result.error); return; }
         this.reset(); this.patch(result);
     }
@@ -174,8 +202,8 @@ export class CeilingSketch {
                 e.preventDefault(); const length = this.parse(this.typed), last = this.points.at(-1);
                 if (this.typed) {
                     if (!last || !(length > 0)) { this.notice('Place the first corner, then enter a positive segment length.'); return true; }
-                    const aim = this.cursor?.point || [last[0]+1,last[1]], axis = Math.abs(aim[0]-last[0]) >= Math.abs(aim[1]-last[1]) ? 0 : 1, p = [...last];
-                    p[axis] += Math.sign(aim[axis]-last[axis] || 1)*length; this.cursor = { point:p,closing:false }; this.addCorner(p);
+                    const aim = this.cursor?.point || [last[0]+1,last[1]],p=this.lengthPoint(last,aim,length);
+                    this.cursor = { point:p,closing:false }; this.addCorner(p);
                 } else this.finish();
                 return true;
             }
@@ -184,11 +212,17 @@ export class CeilingSketch {
         }
         const arrow = { ArrowLeft:[-1,0],ArrowRight:[1,0],ArrowUp:[0,1],ArrowDown:[0,-1] }[e.key];
         const grip = e.target.closest('[data-sketch-corner],[data-sketch-edge],[data-sketch-resize]');
+        if(!input&&e.target.hasAttribute('data-sketch-corner')&&['Delete','Backspace'].includes(e.key)){
+            e.preventDefault();const c=this.ceiling();if(c.outline.length<=3){this.notice('A footprint needs at least three corners.');return true;}const outline=c.outline.filter((_,i)=>i!==Number(e.target.dataset.sketchCorner)),result=outlineEdit(c,outline);if(result.error)this.notice(result.error);else this.patch(result);return true;
+        }
+        if(!input&&this.tool==='select'&&this.selectedLine?.()&&arrow&&!grip&&!e.target.matches('[role=tab]')){
+            const line=this.plan().layoutLines.find(l=>l.key===this.selectedLine());if(!line)return false;const direction=arrow[line.axis==='x'?0:1];if(!direction)return false;e.preventDefault();this.moveLine(line.key,line.positionIn+direction*(e.shiftKey?6:this.step));this.root.querySelector(`[data-layout-line="${line.key}"]`)?.focus();return true;
+        }
         if (!input && this.tool === 'select' && arrow && grip) {
             e.preventDefault(); const step=e.shiftKey?6:this.step, delta=arrow.map(n=>n*step), c=this.ceiling();
             const corner=grip.dataset.sketchCorner, edge=grip.dataset.sketchEdge, resize=grip.dataset.sketchResize;
             if (resize) { const o=c.openings.find(o=>o.id===this.selected()); if(o){const at=[resize.includes('w')?o.x:o.x+o.width,resize.includes('s')?o.y:o.y+o.depth],next=resizeOpening(o,resize,at.map((v,i)=>v+delta[i]),this.step),error=openingError(c.outline,next,c.openings);if(error)this.notice(error);else this.opening(next);} }
-            else { const p=corner!=null?moveCorner(c.outline,Number(corner),c.outline[Number(corner)].map((v,i)=>v+delta[i]),this.step):moveEdge(c.outline,Number(edge),delta,this.step),result=outlineEdit(c,p); if(result.error)this.notice(result.error);else this.patch(result); }
+            else { const p=corner!=null?moveCorner(c.outline,Number(corner),c.outline[Number(corner)].map((v,i)=>v+delta[i]),this.step,this.constraint):moveEdge(c.outline,Number(edge),delta,this.step),result=outlineEdit(c,p); if(result.error)this.notice(result.error);else this.patch(result); }
             const selector=resize?`[data-sketch-resize="${resize}"]`:corner!=null?`[data-sketch-corner="${corner}"]`:`[data-sketch-edge="${edge}"]`;
             this.root.querySelector(selector)?.focus(); return true;
         }
