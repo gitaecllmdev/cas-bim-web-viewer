@@ -78,6 +78,17 @@ let ask = null; // the opening just added: the catalogue asks for its members
 let hover = null; // what the pointer is over: 'op:2', 'edge:3', 'pt:1', 'peak', …
 let sketchEdge = null; // transient outline selection: { panelId, key }, never part of the project or Undo
 let drag = null, rectDraw = null, peri = null, svgEl = null, view = null;
+let sketchZoom = 1, sketchZoomPanel = null;
+const sketchZoomSteps = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
+main.querySelector('.sketch-zoom').addEventListener('click', e => {
+    const button = e.target.closest('[data-sketch-zoom]');
+    if (!button || !cur() || drag) return;
+    const action = button.dataset.sketchZoom;
+    sketchZoom = action === 'fit' ? 1 : action === 'in'
+        ? sketchZoomSteps.find(n => n > sketchZoom) ?? 4
+        : [...sketchZoomSteps].reverse().find(n => n < sketchZoom) ?? 0.5;
+    fit(); renderSketch();
+});
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
 const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,selectedEdge:()=>sketchEdge?.panelId===cur()?.id?sketchEdge.key:null,
@@ -837,6 +848,7 @@ function setTool(next, render = true) {
 // The view (SVG user units, y down: wall y is -y): the panel with room for dimensions; while drawing the perimeter, a
 // fixed canvas big enough to draw in.
 function fit() {
+    if (sketchZoomPanel !== cur().id) { sketchZoomPanel = cur().id; sketchZoom = 1; }
     const { lengthIn: L, heightIn: H } = G.shapeTop(cur().shape);
     if (tool === 'perimeter') {
         const W = Math.max(L || 0, 240) * 1.25 + 60, Hh = Math.max(H || 0, 144) * 1.25 + 40;
@@ -846,13 +858,18 @@ function fit() {
         const hi = Math.max(H, 12, ...ys) + (ctx.show && ctx.grids.length ? pad * 0.6 : 0), lo = Math.min(0, ...ys);
         view = { x: -pad * 1.7 - (ys.length ? pad * 0.6 : 0), y: -(hi + pad * 1.5), w: Math.max(L, 12) + pad * 3.4 + (ys.length ? pad * 0.6 : 0), h: hi - lo + pad * 3.1 };
     }
+    const w = view.w / sketchZoom, h = view.h / sketchZoom;
+    view = { x: view.x + (view.w - w) / 2, y: view.y + (view.h - h) / 2, w, h };
 }
 function renderSketch() {
     const box = main.querySelector('#sketch');
     if (!box) return;
     const p = cur(), { lengthIn: L, heightIn: H, top } = G.shapeTop(p.shape);
     if (!svgEl || !box.contains(svgEl)) { box.innerHTML = '<svg role="img" aria-label="The panel\'s elevation"></svg>'; svgEl = box.querySelector('svg'); bindSketch(svgEl); }
-    if (!view) fit();
+    if (!view || sketchZoomPanel !== p.id) fit();
+    main.querySelector('#sketch-zoom-percent').textContent = Math.round(sketchZoom * 100) + '%';
+    main.querySelector('[data-sketch-zoom=out]').disabled = sketchZoom <= 0.5;
+    main.querySelector('[data-sketch-zoom=in]').disabled = sketchZoom >= 4;
     svgEl.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
     svgEl.dataset.tool = tool;
     svgEl.dataset.outside = String(tool === 'perimeter' && !!peri?.cursor && !SK.pointInPanel(p, peri.cursor));

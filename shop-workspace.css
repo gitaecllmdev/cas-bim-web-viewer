@@ -463,3 +463,13 @@ td .oc { display: block; margin: 3px 0 0; }
 @media(max-width:600px) { .sketch-member-bar input { font-size:16px; } .framing-scope label { min-height:32px; } }
 
 .nav-export { margin-top:6px;padding:10px;background:#fff;border:1px solid #b8c9da;border-top:3px solid #2468a8;border-radius:6px; }.nav-export h3 { margin:0 0 6px;font-size:15px; }.export-help,.export-block p { margin:4px 0 8px;font-size:11px;line-height:1.4;color:#566b80; }.export-block { padding:9px 0;border-top:1px solid #e0e6ed; }.export-block strong { font-size:12px; }.export-block button { display:block;width:100%;margin-top:5px;text-align:left;padding:6px 7px;font-size:12px; }.export-block:last-child { padding-bottom:0; }.export-print-tip { padding:10px 12px;background:#edf4fb;border-left:3px solid #2468a8;font-size:13px;line-height:1.5; }
+
+/* Presentation-only sketch zoom; keep gesture hints clear of its controls. */
+.sketch-zoom{position:absolute;z-index:4;top:8px;right:8px;display:flex;align-items:center;gap:2px;padding:3px;border:1px solid #c9d5e0;border-radius:6px;background:#fffffff0;color:#1e3a56;box-shadow:0 1px 4px #16324c14}
+.sketch-zoom button{min-height:28px;padding:3px 8px;background:transparent;color:inherit;border:0;border-radius:3px;font:inherit;font-size:12px;cursor:pointer}
+.sketch-zoom button:hover:not(:disabled){background:#e4edf6}
+.sketch-zoom button:focus-visible{outline:2px solid #286cad;outline-offset:-2px}
+.sketch-zoom button:disabled{opacity:.35;cursor:default}
+.sketch-zoom output{min-width:40px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
+#view-sketch .sketch-help{max-width:calc(100% - 215px)}
+@media(max-width:820px){#view-sketch .sketch-help{top:48px;max-width:calc(100% - 16px)}}
