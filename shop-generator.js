@@ -1201,7 +1201,7 @@ function applyDrag(d, [x, y]) {
 }
 function addPointAt(p, [x, y], onTop = false) {
     if(!G.canEdit(p,'shape')||SK.pinned(p,'top')||!SK.pointInPanel(p,[x,y]))return false;
-    const shape=G.changeShape(p.shape,'custom'),pts=shape.points,{lengthIn:L,heightIn:H,top}=G.shapeTop(p.shape);
+    const shape=p.shape.kind==='custom'?structuredClone(p.shape):G.changeShape(p.shape,'custom'),pts=shape.points,{lengthIn:L,heightIn:H,top}=G.shapeTop(p.shape);
     if (!(x > 1 && x < L - 1 && y > 12) || pts.some(pt => Math.abs(pt[0] - x) < 3)) return false;
     const point=onTop?[round16(x),topAt(top,round16(x),H)]:[snap(x),snap(y)];if(!SK.pointInPanel(p,point)||pts.some(pt=>Math.abs(pt[0]-point[0])<3))return false;
     pts.push(point);
