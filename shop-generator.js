@@ -79,16 +79,27 @@ let hover = null; // what the pointer is over: 'op:2', 'edge:3', 'pt:1', 'peak',
 let sketchEdge = null; // transient outline selection: { panelId, key }, never part of the project or Undo
 let drag = null, rectDraw = null, peri = null, svgEl = null, view = null;
 let sketchZoom = 1, sketchZoomPanel = null;
+let sketchPan = false, panDrag = null, panOffset = { x: 0, y: 0 };
 const sketchZoomSteps = [0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4];
 main.querySelector('.sketch-zoom').addEventListener('click', e => {
+    if (e.target.closest('[data-sketch-pan]')) {
+        if (!cur() || drag || panDrag) return;
+        sketchPan = !sketchPan; renderSketch(); renderHint(); return;
+    }
     const button = e.target.closest('[data-sketch-zoom]');
-    if (!button || !cur() || drag) return;
+    if (!button || !cur() || drag || panDrag) return;
     const action = button.dataset.sketchZoom;
+    if (action === 'fit') { panOffset = { x: 0, y: 0 }; sketchPan = false; }
     sketchZoom = action === 'fit' ? 1 : action === 'in'
         ? sketchZoomSteps.find(n => n > sketchZoom) ?? 4
         : [...sketchZoomSteps].reverse().find(n => n < sketchZoom) ?? 0.5;
-    fit(); renderSketch();
+    fit(); renderSketch(); renderHint();
 });
+main.addEventListener('keydown', e => {
+    if (e.key !== 'Escape' || !sketchPan) return;
+    sketchPan = false; panDrag = null; renderSketch(); renderHint();
+    e.preventDefault(); e.stopImmediatePropagation();
+}, true);
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
 const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,selectedEdge:()=>sketchEdge?.panelId===cur()?.id?sketchEdge.key:null,
@@ -806,7 +817,7 @@ function renderTools() {
 function renderHint() {
     const el = $('#tool-hint');
     const help = $('#sketch-help'), custom = cur()?.shape.kind === 'custom', free = G.canEdit(cur(), 'shape');
-    const hints = tool === 'perimeter' ? [['Click inside wall','add corner'],['Double-click / Enter','close outline'],['Backspace','undo corner'],['Esc','cancel']]
+    const hints = sketchPan ? [['Drag','pan view'],['Pan / Esc','return to editing'],['Show all','reset view']] : tool === 'perimeter' ? [['Click inside wall','add corner'],['Double-click / Enter','close outline'],['Backspace','undo corner'],['Esc','cancel']]
         : tool === 'opening' ? [['Drag inside wall','draw opening'],['Esc','cancel']]
         : tool === 'clip' ? [['Click stud','add clip'],['Click clip','remove'],['Esc','finish']]
         : [['Click member','select'],['Click dimension','type size'],...(free ? [['Click top / inside wall','add top point'],['Drag corner / point','reshape freely'],...(custom ? [['Double-click point','remove interior point']] : [])] : [])];
@@ -834,6 +845,7 @@ function renderHint() {
     el.title = el.textContent;
 }
 function setTool(next, render = true) {
+    sketchPan = false; panDrag = null;
     tool = next;
     sketchEdge = null;
     drag = null; rectDraw = null;
@@ -848,7 +860,7 @@ function setTool(next, render = true) {
 // The view (SVG user units, y down: wall y is -y): the panel with room for dimensions; while drawing the perimeter, a
 // fixed canvas big enough to draw in.
 function fit() {
-    if (sketchZoomPanel !== cur().id) { sketchZoomPanel = cur().id; sketchZoom = 1; }
+    if (sketchZoomPanel !== cur().id) { sketchZoomPanel = cur().id; sketchZoom = 1; panOffset = { x: 0, y: 0 }; sketchPan = false; panDrag = null; }
     const { lengthIn: L, heightIn: H } = G.shapeTop(cur().shape);
     if (tool === 'perimeter') {
         const W = Math.max(L || 0, 240) * 1.25 + 60, Hh = Math.max(H || 0, 144) * 1.25 + 40;
@@ -859,7 +871,7 @@ function fit() {
         view = { x: -pad * 1.7 - (ys.length ? pad * 0.6 : 0), y: -(hi + pad * 1.5), w: Math.max(L, 12) + pad * 3.4 + (ys.length ? pad * 0.6 : 0), h: hi - lo + pad * 3.1 };
     }
     const w = view.w / sketchZoom, h = view.h / sketchZoom;
-    view = { x: view.x + (view.w - w) / 2, y: view.y + (view.h - h) / 2, w, h };
+    view = { x: view.x + (view.w - w) / 2 + panOffset.x, y: view.y + (view.h - h) / 2 + panOffset.y, w, h };
 }
 function renderSketch() {
     const box = main.querySelector('#sketch');
@@ -871,6 +883,9 @@ function renderSketch() {
     main.querySelector('[data-sketch-zoom=out]').disabled = sketchZoom <= 0.5;
     main.querySelector('[data-sketch-zoom=in]').disabled = sketchZoom >= 4;
     svgEl.setAttribute('viewBox', `${view.x} ${view.y} ${view.w} ${view.h}`);
+    svgEl.dataset.pan = String(sketchPan);
+    svgEl.dataset.panning = String(!!panDrag);
+    main.querySelector('[data-sketch-pan]').setAttribute('aria-pressed', String(sketchPan));
     svgEl.dataset.tool = tool;
     svgEl.dataset.outside = String(tool === 'perimeter' && !!peri?.cursor && !SK.pointInPanel(p, peri.cursor));
     const scale = Math.min(Math.max(1, svgEl.clientWidth - 2) / view.w, Math.max(1, svgEl.clientHeight - 2) / view.h);
@@ -1096,9 +1111,14 @@ function bindSketch(svg) {
         const key = hit?.dataset.memberKey, rec = current.plan?.members?.find(m => m.memberKey === key || m.memberKey.startsWith(`${key}:`));
         if (rec) { selectTarget({ kind: 'member', key: rec.memberKey }); if (keyboard) document.querySelector('#sketch-member-tools button')?.focus(); }
     };
-    svg.addEventListener('keydown', e => { if (!['Enter',' '].includes(e.key))return;if(e.target.matches('[data-sketch-edge]')){e.preventDefault();selectEdge(e.target,true);}else if(e.target.matches('[data-member-key]')){e.preventDefault();selectMember(e.target,true);} });
+    svg.addEventListener('keydown', e => { if (sketchPan) { if (['Enter',' '].includes(e.key))e.preventDefault(); return; } if (!['Enter',' '].includes(e.key))return;if(e.target.matches('[data-sketch-edge]')){e.preventDefault();selectEdge(e.target,true);}else if(e.target.matches('[data-member-key]')){e.preventDefault();selectMember(e.target,true);} });
     svg.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // a right-click opens the sketch's menu instead
+        if (sketchPan) {
+            e.preventDefault(); svg.setPointerCapture(e.pointerId);
+            panDrag = { x: e.clientX, y: e.clientY, offset: { ...panOffset }, inverse: svg.getScreenCTM().inverse() };
+            renderSketch(); return;
+        }
         if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
         const edgeHit=e.target.closest('[data-sketch-edge]');
         if(tool==='select'&&edgeHit){
@@ -1131,6 +1151,14 @@ function bindSketch(svg) {
         if (m && sel !== Number(m[1])) { sel = Number(m[1]); if (ask !== sel) ask = null; renderCatalogue(); renderChips(); renderSketch(); }
     });
     svg.addEventListener('pointermove', (e) => {
+        if (sketchPan) {
+            if (panDrag) {
+                const dx = e.clientX - panDrag.x, dy = e.clientY - panDrag.y, m = panDrag.inverse;
+                panOffset = { x: panDrag.offset.x - m.a * dx - m.c * dy, y: panDrag.offset.y - m.b * dx - m.d * dy };
+                fit(); renderSketch();
+            }
+            return;
+        }
         if(sketchControls.dialog.open)return;
         if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
         const q = wallPoint(e);
@@ -1150,6 +1178,7 @@ function bindSketch(svg) {
         refresh();
     });
     const end = (e) => {
+        if (panDrag) { panDrag = null; if (svg.hasPointerCapture(e.pointerId))svg.releasePointerCapture(e.pointerId); renderSketch(); return; }
         const d = drag;
         drag = null;
         if (!d) return;
@@ -1166,10 +1195,11 @@ function bindSketch(svg) {
         refresh(true);
     };
     svg.addEventListener('pointerup', end);
-    svg.addEventListener('pointercancel', () => { drag = null; rectDraw = null; renderSketch(); });
+    svg.addEventListener('pointercancel', () => { panDrag = null; drag = null; rectDraw = null; renderSketch(); });
     svg.addEventListener('pointerleave', () => { if (!drag && hover) { hover = null; renderSketch(); } });
-    svg.addEventListener('contextmenu', openMenu);
+    svg.addEventListener('contextmenu', e => { if (sketchPan) { e.preventDefault(); return; } openMenu(e); });
     svg.addEventListener('dblclick', (e) => {
+        if (sketchPan) { e.preventDefault(); return; }
         if (tool === 'perimeter') { finishPerimeter(); return; }
         // The SVG redraws between clicks; the native double-click target can be their common SVG ancestor.
         const h = e.target.closest('[data-drag^="pt:"]') || document.elementFromPoint(e.clientX,e.clientY)?.closest('[data-drag^="pt:"]'), p = cur();
@@ -1251,6 +1281,7 @@ document.addEventListener('keydown', (e) => {
         return;
     }
     if (e.key === '?' && !e.altKey) { e.preventDefault(); openHelp(); return; }
+    if (sketchPan && prefs.view === 'sketch') return;
     if (!cur()) return;
     if ((e.key === 'Delete' || e.key === 'Backspace') && selectionKey(e, 'delete')) return;
     if ((e.key === 'm' || e.key === 'M') && !e.altKey && selectionKey(e, 'mirror')) return;

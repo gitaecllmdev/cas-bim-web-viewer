@@ -471,5 +471,11 @@ td .oc { display: block; margin: 3px 0 0; }
 .sketch-zoom button:focus-visible{outline:2px solid #286cad;outline-offset:-2px}
 .sketch-zoom button:disabled{opacity:.35;cursor:default}
 .sketch-zoom output{min-width:40px;text-align:center;font-size:12px;font-variant-numeric:tabular-nums}
-#view-sketch .sketch-help{max-width:calc(100% - 215px)}
+#view-sketch .sketch-help{max-width:calc(100% - 265px)}
 @media(max-width:820px){#view-sketch .sketch-help{top:48px;max-width:calc(100% - 16px)}}
+
+.sketch-zoom [data-sketch-pan][aria-pressed="true"],.sketch-zoom [data-sketch-pan][aria-pressed="true"]:hover{background:#1e3a56;color:#fff}
+#view-sketch svg[data-pan="true"],#view-sketch svg[data-pan="true"] *{cursor:grab!important}
+#view-sketch svg[data-pan="true"]{touch-action:none}
+#view-sketch svg[data-pan="true"] *{pointer-events:none}
+#view-sketch svg[data-panning="true"],#view-sketch svg[data-panning="true"] *{cursor:grabbing!important}
