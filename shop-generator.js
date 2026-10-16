@@ -798,7 +798,7 @@ function renderHint() {
     const hints = tool === 'perimeter' ? [['Click inside wall','add corner'],['Double-click / Enter','close outline'],['Backspace','undo corner'],['Esc','cancel']]
         : tool === 'opening' ? [['Drag inside wall','draw opening'],['Esc','cancel']]
         : tool === 'clip' ? [['Click stud','add clip'],['Click clip','remove'],['Esc','finish']]
-        : [['Click','select edge or member'],['Click dimension','type size'],...(free ? [['Drag corner','reshape freely'],...(custom ? [['Click inside wall','add top point'],['Double-click point','remove interior point']] : [])] : [])];
+        : [['Click member','select'],['Click dimension','type size'],...(free ? [['Click top / inside wall','add top point'],['Drag corner / point','reshape freely'],...(custom ? [['Double-click point','remove interior point']] : [])] : [])];
     help.innerHTML = hints.map(([gesture,action])=>`<span><b>${gesture}</b> ${action}</span>`).join('');
     el.hidden = tool === 'select' || tool === 'opening';
     if (tool === 'perimeter') {
@@ -913,7 +913,7 @@ function renderSketch() {
     // selected opening's corners, diamonds at the middle of its edges (resize it).
     if (tool === 'select') outline.forEach(([x,y],i)=>{
         const [x2,y2]=outline[(i+1)%outline.length],key=i===0?'bottom:0':i===1?'right':i===outline.length-1?'left':`top:${outline.length-2-i}`,selected=sketchEdge?.panelId===p.id&&sketchEdge.key===key;
-        parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit${selected?' sk-edge-selected':''}" data-hover="edge:${i}" data-sketch-edge="${key}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="Select ${key.replace(':',' edge ')}"><title>Select edge${Math.abs(x2-x)>1e-6&&Math.abs(y2-y)>1e-6?' to edit its slope':''}</title></line>`);
+        parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit${selected?' sk-edge-selected':''}" data-hover="edge:${i}" data-sketch-edge="${key}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="Select ${key.replace(':',' edge ')}"><title>${key.startsWith('top:')&&free&&!SK.pinned(p,'top')?'Click to add a top point; Tab then Enter selects the edge without adding a point':'Select edge'+(Math.abs(x2-x)>1e-6&&Math.abs(y2-y)>1e-6?' to edit its slope':'')}</title></line>`);
     });
     const handle = (x, y, what, title) => `<circle cx="${x}" cy="${Y(y)}" r="${u * 1.5}" class="sk-handle" data-drag="${what}"><title>${esc(title)}</title></circle>`;
     const arrow = (x, y, dir, what, title) => { // a double arrow across the edge
@@ -1083,7 +1083,19 @@ function bindSketch(svg) {
     svg.addEventListener('pointerdown', (e) => {
         if (e.button !== 0) return; // a right-click opens the sketch's menu instead
         if(e.target.closest('[data-sketch-dim],[data-sketch-pin]'))return;
-        if(tool==='select'&&e.target.closest('[data-sketch-edge]')){e.preventDefault();selectEdge(e.target.closest('[data-sketch-edge]'));return;}
+        const edgeHit=e.target.closest('[data-sketch-edge]');
+        if(tool==='select'&&edgeHit){
+            e.preventDefault();
+            if(edgeHit.dataset.sketchEdge.startsWith('top:')){
+                const p=cur(),q=wallPoint(e),s=G.shapeTop(p.shape),height=topAt(s.top,q[0],s.heightIn),scale=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b);
+                // The painted line is clickable, including its outer half; the wider invisible selection band is not an insertion area.
+                const dx=Number(edgeHit.getAttribute('x2'))-Number(edgeHit.getAttribute('x1')),dy=Number(edgeHit.getAttribute('y2'))-Number(edgeHit.getAttribute('y1'));
+                if((SK.pointInPanel(p,q)||Math.abs(q[1]-height)*scale*Math.abs(dx)/Math.hypot(dx,dy)<=1.5)&&addPointAt(p,[q[0],height],true)){
+                    renderElevHead();renderShapeTable();renderHint();changed();
+                }
+            }
+            selectEdge(edgeHit);return;
+        }
         if (tool === 'select' && e.target.closest('[data-member-key]')) { e.preventDefault(); selectMember(e.target.closest('[data-member-key]')); return; }
         if(sketchEdge&&!e.target.closest('[data-drag]')){sketchEdge=null;sketchControls.render();}
         const p = cur(), q = wallPoint(e), h = e.target.closest('[data-drag]');
@@ -1130,7 +1142,7 @@ function bindSketch(svg) {
         // Keep the original grip alive through click/double-click dispatch when it has not moved.
         if(!d.moved&&/^(pt:|pg:|peak$)/.test(d.what))return;
         if (!d.moved && d.what === 'none') {
-            if (p.shape.kind === 'custom' && addPointAt(p, wallPoint(e))) { renderShapeTable(); changed(); }
+            if (addPointAt(p, wallPoint(e))) { renderElevHead(); renderShapeTable(); renderHint(); changed(); }
             else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); }
         }
         if (d.moved) { renderShapeFields(); syncCatalogueFields(); changed(); }
@@ -1187,13 +1199,14 @@ function applyDrag(d, [x, y]) {
         if (o.kind !== 'door') o.sillIn = Math.max(3, snap(o0.sillIn + y - d.start[1]));
     }
 }
-function addPointAt(p, [x, y]) {
+function addPointAt(p, [x, y], onTop = false) {
     if(!G.canEdit(p,'shape')||SK.pinned(p,'top')||!SK.pointInPanel(p,[x,y]))return false;
-    const pts = p.shape.points, L = G.shapeTop(p.shape).lengthIn;
+    const shape=G.changeShape(p.shape,'custom'),pts=shape.points,{lengthIn:L,heightIn:H,top}=G.shapeTop(p.shape);
     if (!(x > 1 && x < L - 1 && y > 12) || pts.some(pt => Math.abs(pt[0] - x) < 3)) return false;
-    const point=[snap(x),snap(y)];if(!SK.pointInPanel(p,point))return false;
+    const point=onTop?[round16(x),topAt(top,round16(x),H)]:[snap(x),snap(y)];if(!SK.pointInPanel(p,point)||pts.some(pt=>Math.abs(pt[0]-point[0])<3))return false;
     pts.push(point);
     pts.sort((a, b) => a[0] - b[0]);
+    p.shape=shape;
     return true;
 }
 function finishRect() {
@@ -1417,12 +1430,9 @@ function setLayoutStart(p, x) {
 // "Add a control point here" on the top: the top becomes a drawn one (the same line), with a point here to drag.
 function addControlPoint(p, x) {
     if (!G.canEdit(p, 'shape')) { lockedNotice('its top'); return; }
+    if(SK.pinned(p,'top')){notice('Unlock the top line before changing its points.',true);return;}
     const { lengthIn: L, heightIn: H, top } = G.shapeTop(p.shape);
-    const pts = p.shape.kind === 'custom' ? p.shape.points : G.changeShape(p.shape, 'custom').points;
-    if (!(x >= 3 && x <= L - 3) || pts.some(q => Math.abs(q[0] - x) < 3)) { notice('A point needs to be at least 3" from the ends and the other points.', true); return; }
-    if (p.shape.kind !== 'custom') p.shape = { kind: 'custom', lengthIn: L, points: pts };
-    pts.push([x, round16(topAt(top, x, H))]);
-    pts.sort((a, b) => a[0] - b[0]);
+    if (!(x >= 3 && x <= L - 3) || !addPointAt(p,[x,topAt(top,x,H)],true)) { notice('A point needs to be at least 3" from the ends and the other points.', true); return; }
     renderElevHead(); renderShapeTable(); renderHint(); changed();
     notice(`Point added on the top at ${editDimension(x)}: drag it up or down (double-click or right-click it to remove it).`);
 }
