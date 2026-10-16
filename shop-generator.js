@@ -317,7 +317,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'layout-here': () => setLayoutStart(p, Number(b.dataset.x)),
         'layout-reset': () => { delete p.layoutStartIn; syncToggles(); changed(); notice(`${p.mark}: the first stud is ${p.optimizeOpenings ? 'the optimizer\'s' : 'on the standard layout'} again.`); },
         'layout-from': () => { p.layoutFromRight = b.dataset.side === 'right'; syncToggles(); changed(); notice(`The stud layout now starts from the ${b.dataset.side} end.`); },
-        'add-ctrl': () => addControlPoint(p, Number(b.dataset.x)),
+        'add-ctrl': () => addControlPoint(p, Number(b.dataset.x), Number(b.dataset.y), b.dataset.ontop === 'true'),
         'add-op-at': () => addOpeningAt(p, b.dataset.kind, Number(b.dataset.x), Number(b.dataset.y)),
         'copy-op': () => copyOpening(p, i),
         framing: () => openFraming(i),
@@ -820,7 +820,7 @@ function renderHint() {
     const hints = sketchPan ? [['Drag','pan view'],['Pan / Esc','return to editing'],['Show all','reset view']] : tool === 'perimeter' ? [['Click inside wall','add corner'],['Double-click / Enter','close outline'],['Backspace','undo corner'],['Esc','cancel']]
         : tool === 'opening' ? [['Drag inside wall','draw opening'],['Esc','cancel']]
         : tool === 'clip' ? [['Click stud','add clip'],['Click clip','remove'],['Esc','finish']]
-        : [['Click member','select'],['Click dimension','type size'],...(free ? [['Click top / inside wall','add top point'],['Drag corner / point','reshape freely'],...(custom ? [['Double-click point','remove interior point']] : [])] : [])];
+        : [['Click member','select'],['Click dimension','type size'],...(free ? [['Right-click line / inside wall','add point'],['Drag corner / point','reshape freely'],...(custom ? [['Double-click point','remove interior point']] : [])] : [])];
     help.innerHTML = hints.map(([gesture,action])=>`<span><b>${gesture}</b> ${action}</span>`).join('');
     el.hidden = tool === 'select' || tool === 'opening';
     if (tool === 'perimeter') {
@@ -945,7 +945,7 @@ function renderSketch() {
     // selected opening's corners, diamonds at the middle of its edges (resize it).
     if (tool === 'select') outline.forEach(([x,y],i)=>{
         const [x2,y2]=outline[(i+1)%outline.length],key=i===0?'bottom:0':i===1?'right':i===outline.length-1?'left':`top:${outline.length-2-i}`,selected=sketchEdge?.panelId===p.id&&sketchEdge.key===key;
-        parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit${selected?' sk-edge-selected':''}" data-hover="edge:${i}" data-sketch-edge="${key}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="Select ${key.replace(':',' edge ')}"><title>${key.startsWith('top:')&&free&&!SK.pinned(p,'top')?'Click to add a top point; Tab then Enter selects the edge without adding a point':'Select edge'+(Math.abs(x2-x)>1e-6&&Math.abs(y2-y)>1e-6?' to edit its slope':'')}</title></line>`);
+        parts.push(`<line x1="${x}" y1="${Y(y)}" x2="${x2}" y2="${Y(y2)}" class="sk-hit${selected?' sk-edge-selected':''}" data-hover="edge:${i}" data-sketch-edge="${key}" role="button" tabindex="0" aria-pressed="${selected}" aria-label="Select ${key.replace(':',' edge ')}"><title>${key.startsWith('top:')&&free&&!SK.pinned(p,'top')?'Click to select this edge; right-click to add a point':'Select edge'+(Math.abs(x2-x)>1e-6&&Math.abs(y2-y)>1e-6?' to edit its slope':'')}</title></line>`);
     });
     const handle = (x, y, what, title) => `<circle cx="${x}" cy="${Y(y)}" r="${u * 1.5}" class="sk-handle" data-drag="${what}"><title>${esc(title)}</title></circle>`;
     const arrow = (x, y, dir, what, title) => { // a double arrow across the edge
@@ -1123,14 +1123,6 @@ function bindSketch(svg) {
         const edgeHit=e.target.closest('[data-sketch-edge]');
         if(tool==='select'&&edgeHit){
             e.preventDefault();
-            if(edgeHit.dataset.sketchEdge.startsWith('top:')){
-                const p=cur(),q=wallPoint(e),s=G.shapeTop(p.shape),height=topAt(s.top,q[0],s.heightIn),scale=Math.hypot(svg.getScreenCTM().a,svg.getScreenCTM().b);
-                // The painted line is clickable, including its outer half; the wider invisible selection band is not an insertion area.
-                const dx=Number(edgeHit.getAttribute('x2'))-Number(edgeHit.getAttribute('x1')),dy=Number(edgeHit.getAttribute('y2'))-Number(edgeHit.getAttribute('y1'));
-                if((SK.pointInPanel(p,q)||Math.abs(q[1]-height)*scale*Math.abs(dx)/Math.hypot(dx,dy)<=1.5)&&addPointAt(p,[q[0],height],true)){
-                    renderElevHead();renderShapeTable();renderHint();changed();
-                }
-            }
             selectEdge(edgeHit);return;
         }
         if (tool === 'select' && e.target.closest('[data-member-key]')) { e.preventDefault(); selectMember(e.target.closest('[data-member-key]')); return; }
@@ -1188,8 +1180,7 @@ function bindSketch(svg) {
         // Keep the original grip alive through click/double-click dispatch when it has not moved.
         if(!d.moved&&/^(pt:|pg:|peak$)/.test(d.what))return;
         if (!d.moved && d.what === 'none') {
-            if (addPointAt(p, wallPoint(e))) { renderElevHead(); renderShapeTable(); renderHint(); changed(); }
-            else if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); }
+            if (sel != null) { sel = null; ask = null; renderCatalogue(); renderChips(); }
         }
         if (d.moved) { renderShapeFields(); syncCatalogueFields(); changed(); }
         refresh(true);
@@ -1424,9 +1415,7 @@ function openMenu(e) {
         if (y1 === 0 && y2 === 0) out.push(head('Bottom track', `${editDimension(L)} long`), pick(coreChoice('track'), 'Type'));
         else if (Math.abs(x1 - x2) < 1e-6) endMenu(x1 < L / 2 ? 'left' : 'right');
         else {
-            const cx = round16(snap(Math.min(L - 3, Math.max(3, x))));
-            out.push(head('Top track', `${editDimension(Math.hypot(x2 - x1, y2 - y1))} along here`), pick(coreChoice('topTrack'), 'Type'),
-                btn(`Add a control point here (${editDimension(cx)})`, 'add-ctrl', { x: cx }, { off: !shapeFree, title: shapeFree ? 'A point on the top here, to drag up or down (the top becomes a drawn one)' : 'Locked: the Revit model\'s perimeter' }));
+            out.push(head('Top track', `${editDimension(Math.hypot(x2 - x1, y2 - y1))} along here`), pick(coreChoice('topTrack'), 'Type'));
         }
     } else if (end) endMenu(/^(l|tl|bl)$/.test(end[1]) ? 'left' : 'right');
     else if (pt && p.shape.points?.[Number(pt[1])]) {
@@ -1443,6 +1432,15 @@ function openMenu(e) {
         out.push(head('Add an opening here', `${editDimension(x)} from the left end${y > 1 ? ` · ${editDimension(y)} up` : ''}`),
             `<div class="mi-row">${Object.entries(G.OPENING_TYPES).map(([k, t]) => btn(`+ ${t.name}`, 'add-op-at', { kind: k, x: round16(x), y: round16(y) }, { cls: `mi-add ${k}` })).join('')}</div>`,
             btn(`◫ Add a ${clipType.toLowerCase()} on the nearest stud`, 'clip-here', { x: round16(x), y: round16(y) }));
+    }
+    const scale = Math.hypot(svgEl.getScreenCTM().a, svgEl.getScreenCTM().b);
+    const onTop = !!e.target.closest('[data-sketch-edge^="top:"]') && Math.abs(y - at(x)) * scale <= 1.5;
+    if (onTop || SK.pointInPanel(p, [x, y])) {
+        const px = snap(x), py = onTop ? at(px) : snap(y);
+        const canAdd = shapeFree && !SK.pinned(p, 'top') && px >= 3 && px <= L - 3 && py > 12
+            && SK.pointInPanel(p, [px, py]) && !(p.shape.points || []).some(q => Math.abs(q[0] - px) < 3);
+        out.push(out.length ? '<hr>' : '', btn('Add point here', 'add-ctrl', { x: px, y: py, ontop: onTop },
+            { off: !canAdd, title: canAdd ? 'Add a perimeter control point here, then drag it to reshape' : 'Requires an editable, unlocked top and 3 inches from other points and ends' }));
     }
     // Shortcuts only: every one of these is also in the inspector (Stud layout and facing) or over the views (side).
     out.push(out.length ? '<hr>' : '', btn('Show the framing elevation', 'preview', {}, { title: 'The Elevation view: the framing with its tags and dimensions' }),
@@ -1476,13 +1474,13 @@ function setLayoutStart(p, x) {
     notice(`First stud set by hand: ${inch(st)} from the ${p.layoutFromRight ? 'right' : 'left'} end, then ${sp}" o.c. through this stud${p.optimizeOpenings ? ' (the optimizer gives way)' : ''}. Right-click the sketch to clear it.`);
 }
 // "Add a control point here" on the top: the top becomes a drawn one (the same line), with a point here to drag.
-function addControlPoint(p, x) {
+function addControlPoint(p, x, y, onTop = true) {
     if (!G.canEdit(p, 'shape')) { lockedNotice('its top'); return; }
     if(SK.pinned(p,'top')){notice('Unlock the top line before changing its points.',true);return;}
     const { lengthIn: L, heightIn: H, top } = G.shapeTop(p.shape);
-    if (!(x >= 3 && x <= L - 3) || !addPointAt(p,[x,topAt(top,x,H)],true)) { notice('A point needs to be at least 3" from the ends and the other points.', true); return; }
+    if (!(x >= 3 && x <= L - 3) || !addPointAt(p,[x,onTop ? topAt(top,x,H) : y],onTop)) { notice('A point needs to be at least 3" from the ends and the other points.', true); return; }
     renderElevHead(); renderShapeTable(); renderHint(); changed();
-    notice(`Point added on the top at ${editDimension(x)}: drag it up or down (double-click or right-click it to remove it).`);
+    notice(`Point added at ${editDimension(x)}: drag it up or down (double-click or right-click it to remove it).`);
 }
 // "+ Door" (and the rest) from the menu: the new opening centered where the menu was opened (a window or MEP opening
 // at that height too).
