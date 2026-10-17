@@ -3,14 +3,16 @@
 // thicknessIn, the panel's shape and locked openings) becomes solid vertical strips in panel coordinates, then
 // triangles in the export's own coordinates (inches; X, Y plan, Z up). Display only: the wall is centered on its
 // location line (the export does not say which face the line is on), and nothing here feeds framing or placement.
-import { shapeTop, openingBox, isFromModel } from './generator.mjs';
+import { shapeTop, shapeBottom, openingBox, isFromModel } from './generator.mjs';
 import { topAt } from '../common/framing.mjs';
 
 const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 const point3 = (p) => Array.isArray(p) && p.length === 3 && p.every(finite);
 
 // The panel frame the Revit exporter used (CAS_BIM_Tools.Core ElevationFrame): X runs to the right of someone looking
-// at side A, from the panel's left end; Y is up from the panel's base.
+// at side A, from the panel's left end; Y is up from the panel's base. revit.outlineOffsetIn [along, up] (absent: 0, 0)
+// is where the panel datum (the face's lowest-left corner) sits from the location line's left end at the wall base:
+// joined ends lengthen or shorten the face, and an attached or sloped base sits off the level.
 export function panelFrame(panel, levels = []) {
     const r = panel?.revit;
     if (!r || !point3(r.locationLine?.start) || !point3(r.locationLine?.end) || !Array.isArray(r.orientation) || !finite(r.thicknessIn) || !(r.thicknessIn > 0))
@@ -24,17 +26,19 @@ export function panelFrame(panel, levels = []) {
     const left = leftEnd === 'start' ? s : e;
     const level = levels.find(l => l?.name === r.levelName && finite(l.elevationIn));
     const base = level ? level.elevationIn + (finite(r.baseOffsetIn) ? r.baseOffsetIn : 0) : left[2];
-    return { origin: [left[0], left[1], base], right, outward, leftEnd, thicknessIn: r.thicknessIn, levelName: r.levelName || panel.level || '',
+    const [along, up] = Array.isArray(r.outlineOffsetIn) && r.outlineOffsetIn.length === 2 && r.outlineOffsetIn.every(finite) ? r.outlineOffsetIn : [0, 0];
+    return { origin: [left[0] + right[0] * along, left[1] + right[1] * along, base + up], right, outward, leftEnd, thicknessIn: r.thicknessIn, levelName: r.levelName || panel.level || '',
         lengthIn: Math.hypot(e[0] - s[0], e[1] - s[1]) };
 }
 
 // Solid pieces of the panel face: vertical strips between every x where the top line or an opening changes; in each
 // strip, the panel height minus the openings that cross it. { x0, x1, b0, b1, t0, t1 }: bottom and top at x0 and x1
-// (a strip's top follows a sloped top line; an opening's edges are level).
+// (a strip's top follows a sloped top line and its lowest piece a sloped base; an opening's edges are level).
 export function wallSolids(panel) {
     const { lengthIn: L, heightIn: H, top } = shapeTop(panel.shape);
     if (!(L > 0) || !(H > 0)) return [];
-    const yTop = (x) => topAt(top, x, H);
+    const yTop = (x) => topAt(top, x, H), bottom = shapeBottom(panel.shape);
+    const yBase = (x) => bottom ? bottom[0][1] + (bottom[1][1] - bottom[0][1]) * x / L : 0;
     const boxes = (panel.openings || []).filter(o => !isFromModel(panel) || o.locked).map(o => openingBox(o, Infinity))
         .filter(b => b.right > b.left && b.right > 0 && b.left < L);
     const xs = [...new Set([0, L, ...(top || []).map(q => q[0]), ...boxes.flatMap(b => [b.left, b.right])]
@@ -44,8 +48,9 @@ export function wallSolids(panel) {
         const x0 = xs[i - 1], x1 = xs[i];
         if (x1 - x0 < 1e-6) continue;
         const mid = (x0 + x1) / 2, cuts = boxes.filter(b => b.left <= mid && b.right >= mid).map(b => [Math.max(0, b.bottom), b.top]).sort((a, b) => a[0] - b[0]);
-        let y = 0;
-        const push = (b, t, sloped) => solids.push({ x0, x1, b0: b, b1: b, t0: sloped ? yTop(x0) : t, t1: sloped ? yTop(x1) : t });
+        const base = yBase(mid);
+        let y = base;
+        const push = (b, t, sloped) => solids.push({ x0, x1, b0: b === base ? yBase(x0) : b, b1: b === base ? yBase(x1) : b, t0: sloped ? yTop(x0) : t, t1: sloped ? yTop(x1) : t });
         for (const [lo, hi] of cuts) {
             if (lo > y + 1e-6) push(y, Math.min(lo, yTop(mid)), false);
             y = Math.max(y, hi);
