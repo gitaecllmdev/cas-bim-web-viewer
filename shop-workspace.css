@@ -319,10 +319,67 @@ kbd { display: inline-block; padding: 1px 6px; border: 1px solid #c9ced6; border
 .fs-opt small { display: block; color: #57606a; font-size: 12px; }
 .mini-field { display: block; margin: 4px 0 8px; }
 .mini-field span { display: block; font-size: 12px; color: #57606a; }
-/* Import: what to do with the panels already here. */
+/* The old import dialog (what to do with the panels already here): kept while the published Shop Generator still
+   uses it; the Batch Sheets import preview went out first. Drop with the next full publish. */
 .conflict-dialog { max-width: min(880px, 94vw); }
 .conflict-dialog h3 { margin: 0 0 6px; }
 .conflict-dialog select { max-width: 100%; }
+/* Import preview (import-preview-dialog.js): what the file brings, what happens to the panels here. */
+.import-dialog.import-preview { width: min(1080px, calc(100vw - 32px)); max-width: min(1080px, calc(100vw - 32px)); padding: 16px 18px; }
+.ip-head h3 { margin: 0 0 2px; font-size: 18px; }
+.ip-head p { margin: 0 0 10px; overflow-wrap: anywhere; }
+.ip-tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 8px; margin-bottom: 10px; }
+.ip-tile { display: grid; justify-items: start; gap: 1px; text-align: left; background: #f6f8fa; color: var(--ink); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; }
+.ip-tile b { font-size: 22px; line-height: 1.1; color: var(--accent); }
+.ip-tile span { font-weight: 600; font-size: 14px; }
+.ip-tile small { color: var(--muted); font-size: 12.5px; }
+.ip-tile.ip-warn { background: #fff7e6; border-color: #f0c36d; }
+.ip-tile.ip-warn b { color: #8a5a00; }
+.ip-modes { border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px 8px; margin: 0 0 10px; display: grid; gap: 6px; }
+.ip-modes legend { font-weight: 600; font-size: 14px; padding: 0 4px; }
+.ip-mode { display: flex; gap: 8px; align-items: flex-start; padding: 6px 8px; border-radius: 6px; cursor: pointer; }
+.ip-mode:has(input:checked) { background: #eef3f8; outline: 1px solid #aac3da; }
+.ip-mode.off { cursor: default; opacity: .75; }
+.ip-mode input { margin-top: 4px; }
+.ip-rec { color: #1e5a2c; background: #edf7ee; border-radius: 999px; padding: 0 8px; font-weight: 600; }
+.ip-mode.off .ip-rec { color: var(--muted); background: #eef1f5; }
+.ip-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 6px; }
+.ip-filter { background: #fff; color: var(--ink); border: 1px solid var(--line); border-radius: 999px; padding: 3px 10px; font-size: 13px; }
+.ip-filter span { color: var(--muted); font-weight: 600; margin-left: 2px; }
+.ip-filter.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ip-filter.on span { color: #dbe6f1; }
+.ip-table-wrap { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 8px; }
+.ip-table { margin: 0; }
+.ip-table thead th { position: sticky; top: 0; z-index: 1; }
+.ip-table select { max-width: 100%; font-size: 13px; }
+.ip-table td:last-child { min-width: 190px; }
+.ip-table td:nth-child(-n+3) { white-space: nowrap; }
+.ip-chip { display: inline-block; white-space: nowrap; border-radius: 999px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+.ip-changed { background: #fff1d6; color: #7a4d00; } .ip-new { background: #e3f4e6; color: #1e5a2c; } .ip-same { background: #eef1f5; color: #57606a; }
+.ip-bad { background: #fde7ea; color: var(--warn); } .ip-here { background: #e8eef5; color: var(--accent); }
+.ip-list { margin: 0; padding-left: 18px; }
+.ip-pic summary { cursor: pointer; color: var(--accent); }
+.ip-elevs { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 4px; }
+.ip-elev { margin: 0; } .ip-elev svg { display: block; max-width: 100%; height: auto; }
+.ip-key { margin: 2px 0 0; display: flex; gap: 4px 10px; flex-wrap: wrap; align-items: center; }
+.ip-key i { display: inline-block; width: 10px; height: 10px; border: 1px solid; margin-right: 3px; vertical-align: -1px; }
+.ip-key .k-moved { background: #ffe2a8; border-color: #a36b00; } .ip-key .k-added { background: #c9ecd0; border-color: #1e7a35; } .ip-key .k-gone { background: #fde7ea; border-color: var(--warn); border-style: dashed; }
+.ip-elev figcaption { font-size: 11.5px; color: var(--muted); }
+.ip-wall { fill: #fff6d6; stroke: var(--accent); stroke-width: 1.2; }
+.ip-op { fill: #fff; stroke: #8a95a1; stroke-width: 1; }
+.ip-op.added { fill: #c9ecd0; stroke: #1e7a35; } .ip-op.moved { fill: #ffe2a8; stroke: #a36b00; } .ip-op.gone { fill: #fde7ea; stroke: var(--warn); stroke-dasharray: 3 2; }
+.ip-evidence { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 6px 10px; }
+.ip-evidence > summary { cursor: pointer; font-weight: 600; font-size: 14px; }
+.ip-group { margin: 6px 0 0 6px; } .ip-group > summary { cursor: pointer; font-size: 13.5px; overflow-wrap: anywhere; }
+.ip-ids { overflow-wrap: anywhere; margin: 2px 0 6px; }
+.ip-foot { margin-top: 12px; position: sticky; bottom: -16px; background: #fff; padding: 8px 0 2px; border-top: 1px solid var(--line); }
+@media (max-width: 640px) {
+    .ip-table thead { display: none; }
+    .ip-table tr { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 6px 0; border-bottom: 1px solid var(--line); }
+    .ip-table td { border: 0; padding: 2px 8px; }
+    .ip-table td:nth-child(4), .ip-table td:nth-child(5) { grid-column: 1 / -1; min-width: 0; }
+}
+.ip-table tr[hidden] { display: none; }
 /* Compare. */
 .cmp { padding: 4px 2px; }
 .cmp-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }

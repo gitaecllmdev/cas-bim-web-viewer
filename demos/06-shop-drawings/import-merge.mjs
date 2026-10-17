@@ -7,9 +7,11 @@
 //   (framing-plan-contract.md, Snapshot identity): the source document (set source.documentId), the model wall
 //   (revit.uniqueId: identity.panelUniqueId) and, when the export sends one, its panel number (revit.panelNumber:
 //   identity.displayNumber), which tells several panels of one wall apart. Never by mark or the local id. A match is
-//   skipped, its detailing updated, or added as an unlinked study copy; a panel that cannot be told apart is never
-//   guessed into one (skip or a study copy). A typed-in panel has no identity: added as before.
-import { cleanPanel, isFromModel, copyPanel, nextMark, openingKeys, exportSet, SET_FIELDS } from './generator.mjs';
+//   kept, updated from the model (its wall and openings again, the detailing here kept: updateGeometry), given the
+//   file's detailing, or added as an unlinked study copy; a panel that cannot be told apart is never guessed into one
+//   (skip or a study copy). A typed-in panel has no identity: added as before. The page shows all of it first
+//   (import-preview.mjs).
+import { cleanPanel, isFromModel, copyPanel, nextMark, openingKeys, openingName, exportSet, SET_FIELDS } from './generator.mjs';
 
 const str = (v) => (v == null ? '' : String(v).trim());
 // A model panel's identity, or null for a panel typed here.
@@ -103,16 +105,48 @@ export function updateDetailing(existing, incoming) {
     return { panel: cleanPanel(out), changed, geometryDiffers: lockedGeometry(a) !== lockedGeometry(b), markDiffers: a.mark !== b.mark };
 }
 
-// The panels Add brings, by the choices for the rows that need one (choices: index -> 'skip' | 'update' | 'copy'; a
-// match or an ambiguous row with no choice is skipped). -> { panels, report: { added, renamed, updated, copies,
-// skipped, notes } }. Never a second linked panel for one model panel; never the locked geometry overwritten.
+// The model's wall again (a fresh export of a wall that changed), the detailing here kept: the file's locked geometry
+// (shape, outline, revit block with its framing settings, level, wall type, group) and its model openings, each taking
+// the framing chosen here for the opening with the same key; the openings added here stay. Never the mark, id,
+// revisions or panel detailing. -> { panel, dropped: [opening names here whose model opening is gone], moved: bool }
+const OPENING_KEEP = [...OPENING_FRAMING, 'profile', 'insertId', 'offsets'];
+export function updateGeometry(existing, incoming) {
+    const a = cleanPanel(existing), b = cleanPanel(incoming), keysA = openingKeys(a), keysB = openingKeys(b);
+    const framingByKey = new Map(a.openings.map((o, i) => [keysA[i], o]).filter(([, o]) => o.locked));
+    const openings = b.openings.filter(o => o.locked).map((o, i) => {
+        const from = framingByKey.get(keysB[b.openings.indexOf(o)]);
+        return from ? { ...o, ...Object.fromEntries(OPENING_KEEP.filter(k => from[k] !== undefined).map(k => [k, structuredClone(from[k])])) } : o;
+    });
+    const kept = new Set(b.openings.filter(o => o.locked).map(o => keysB[b.openings.indexOf(o)]));
+    const dropped = a.openings.map((o, i) => (o.locked && !kept.has(keysA[i]) ? openingName(a.openings, i) : null)).filter(Boolean);
+    const out = { ...a, shape: structuredClone(b.shape), level: b.level, wallType: b.wallType, group: b.group,
+        openings: [...openings, ...a.openings.filter(o => !o.locked).map(o => structuredClone(o))] };
+    if (b.revit) out.revit = structuredClone(b.revit); else delete out.revit;
+    if (b.outline) out.outline = structuredClone(b.outline); else delete out.outline;
+    return { panel: cleanPanel(out), dropped, moved: canon(a.shape) !== canon(b.shape) };
+}
+
+// The panels Add brings, by the choices for the rows that need one (choices: index -> 'skip' | 'keep' | 'update' |
+// 'geometry' | 'copy'; a match or an ambiguous row with no choice is skipped). 'keep' is a skip of a panel that stays
+// as it is here; 'geometry' takes the model's wall and openings again and keeps the detailing here (updateGeometry).
+// -> { panels, report: { added, renamed, updated, fromModel, kept, copies, skipped, notes } }. Never a second linked
+// panel for one model panel.
 export function mergeAdd(current, rows, choices, newId) {
     const panels = (current.panels || []).map(p => p), marks = panels.map(p => p.mark);
-    const report = { added: [], renamed: [], updated: [], copies: [], skipped: [], notes: [] };
+    const report = { added: [], renamed: [], updated: [], fromModel: [], kept: [], copies: [], skipped: [], notes: [] };
     const free = (mark) => { let m = mark; while (marks.includes(m)) m = nextMark(m); marks.push(m); return m; };
     for (const r of rows) {
         const choice = r.status === 'standalone' || r.status === 'new' ? 'add' : choices[r.index] || 'skip';
         if (choice === 'skip') { report.skipped.push(r.panel.mark); continue; }
+        if (choice === 'keep' && r.status === 'match') { report.kept.push(panels.find(p => p.id === r.match)?.mark ?? r.panel.mark); continue; }
+        if (choice === 'geometry' && r.status === 'match') {
+            const i = panels.findIndex(p => p.id === r.match), u = updateGeometry(panels[i], r.panel);
+            panels[i] = { ...u.panel, id: panels[i].id };
+            report.fromModel.push(panels[i].mark);
+            if (u.dropped.length) report.notes.push(`${panels[i].mark}: the model no longer has ${u.dropped.join(', ')}; the framing chosen for ${u.dropped.length === 1 ? 'it' : 'them'} was dropped.`);
+            if (u.moved && ['studFlips', 'clips', 'manual'].some(k => panels[i][k])) report.notes.push(`${panels[i].mark}: the wall's size or shape changed; check its stud flips, clips and members placed by hand (kept where they were).`);
+            continue;
+        }
         if (choice === 'add') {
             const mark = free(r.panel.mark);
             if (mark !== r.panel.mark) report.renamed.push(`${r.panel.mark} as ${mark}`);

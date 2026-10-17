@@ -33,7 +33,7 @@ import * as ST from './demos/06-shop-drawings/stock.mjs';
 import * as TY from './demos/06-shop-drawings/typical.mjs';
 import * as RV from './demos/06-shop-drawings/revisions.mjs';
 import * as IM from './demos/06-shop-drawings/import-merge.mjs';
-import { exportEvidence } from './demos/06-shop-drawings/exchange.mjs';
+import { showImportPreview } from './demos/06-shop-drawings/import-preview-dialog.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 import { siteHits, mountHits } from './hits.js';
@@ -3816,64 +3816,21 @@ function exportJson() {
     markExported();
     notice(`Exported ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} as JSON. Import the file here (any browser) to carry on.`);
 }
-// Replace, Add or Cancel (Cancel never adds). reason: why Add is not offered.
-function chooseImport(name, count, reason, evidence = { skipped: [], notes: [] }) {
-    return new Promise(resolve => {
-        const d = document.createElement('dialog');
-        d.className = 'import-dialog';
-        d.innerHTML = `<form method="dialog"><p><b>${esc(name)}</b>: ${count} panel${count === 1 ? '' : 's'}.</p>${reason ? `<p class="muted small">${esc(reason)}</p>` : ''}
-            ${evidence.skipped.length || evidence.notes.length ? `<details class="export-evidence" open><summary>Revit export: ${evidence.skipped.length} skipped walls · ${evidence.notes.length} notes (read-only)</summary><ul>${[...evidence.skipped, ...evidence.notes].map(line => `<li>${esc(line)}</li>`).join('')}</ul></details>` : ''}
-            <div class="row"><button value="replace">Replace the panels here</button><button value="add" class="secondary" ${reason ? 'disabled' : ''}>Add to the panels here</button><span class="spacer"></span><button value="" class="link">Cancel</button></div></form>`;
-        document.body.append(d);
-        d.addEventListener('close', () => { resolve(d.returnValue || null); d.remove(); });
-        d.showModal();
-    });
-}
-// Add: the panels of the file that are already here, or cannot be told apart (import-merge.mjs matchIncoming), one row
-// each with what to do; Skip unless chosen. -> { index: 'skip' | 'update' | 'copy' } or null (Cancel: nothing imported).
-function chooseConflicts(name, rows) {
-    const list = rows.filter(r => r.status === 'match' || r.status === 'ambiguous'), others = rows.length - list.length;
-    const here = (id) => set.panels.find(p => p.id === id)?.mark || '?';
-    return new Promise(resolve => {
-        const d = document.createElement('dialog');
-        d.className = 'import-dialog conflict-dialog';
-        d.innerHTML = `<form method="dialog"><h3>${esc(name)}</h3>
-            <p>${list.length} of its panels ${list.length === 1 ? 'is' : 'are'} the model's panels already here, or cannot be told apart from them: choose for each. ${others ? `The other ${others} ${others === 1 ? 'is' : 'are'} added.` : ''}
-                Nothing here is overwritten without your choice, and a panel's locked model geometry never is.</p>
-            <table class="sd-table"><thead><tr><th>In the file</th><th>Here</th><th>What to do</th></tr></thead><tbody>
-            ${list.map(r => `<tr><td><b>${esc(r.panel.mark)}</b></td><td>${r.status === 'match' ? `<b>${esc(here(r.match))}</b> (the same model panel)` : `<span class="warning small">${esc(r.reason)}</span>`}</td>
-                <td><select data-conflict="${r.index}" aria-label="What to do with ${esc(r.panel.mark)}"><option value="skip">Skip it</option>
-                ${r.status === 'match' ? `<option value="update">Update ${esc(here(r.match))}'s detailing (members, layout, opening framing, clips, edits by hand)</option>` : ''}
-                <option value="copy">Add an unlinked study copy</option></select></td></tr>`).join('')}</tbody></table>
-            <div class="row"><span class="small muted">All:</span><button type="button" class="link small" data-all="skip">Skip</button>${list.some(r => r.status === 'match') ? '<button type="button" class="link small" data-all="update">Update the matches</button>' : ''}<button type="button" class="link small" data-all="copy">Study copies</button>
-                <span class="spacer"></span><button value="ok">Import</button><button value="" class="link">Cancel</button></div></form>`;
-        d.addEventListener('click', (e) => {
-            const all = e.target.closest('[data-all]');
-            if (all) for (const sel of d.querySelectorAll('[data-conflict]')) sel.value = [...sel.options].some(o => o.value === all.dataset.all) ? all.dataset.all : sel.value;
-        });
-        document.body.append(d);
-        d.addEventListener('close', () => { resolve(d.returnValue === 'ok' ? Object.fromEntries([...d.querySelectorAll('[data-conflict]')].map(x => [x.dataset.conflict, x.value])) : null); d.remove(); });
-        d.showModal();
-    });
-}
 const newPanelId = () => `p-${Math.random().toString(36).slice(2, 10)}`;
-// Import a set file. Replace: the file faithfully (import-merge.mjs replaceSet: nothing of the old set kept, nothing
-// re-detailed; "Exported" only when the set is exactly the file). Add: the file's panels beside these, the model's
-// matched by identity (never duplicated as a second linked panel). Cancel, or a file that cannot be read, changes nothing;
-// every import is one Undo step.
+// Import a set file, after its preview (import-preview-dialog.mjs: what the file brings, what happens to the panels
+// here). Replace: the file faithfully (import-merge.mjs replaceSet: nothing of the old set kept, nothing re-detailed;
+// "Exported" only when the set is exactly the file). Update (the same model's panels only): new walls added, changed
+// walls updated from the model with their web settings kept, the rest kept, as chosen per panel; never a second
+// linked panel for one model panel. Cancel, or a file that cannot be read, changes nothing; every import is one Undo step.
 async function importJson(file) {
     try {
         const text = await file.text(), { set: incoming, warnings } = G.importSet(text);
         let parsed = null;
         try { parsed = JSON.parse(text); } catch { parsed = null; }
         if (!incoming.panels.length) { notice(`No panels read from ${file.name}. ${warnings.join(' ')}`, true); return; }
-        // One model per set: panels from another model's export are never added under this set's source.
-        const here = set.source?.documentId ?? null, there = incoming.source?.documentId ?? null;
-        const otherModel = set.panels.length && here !== there && (here || there);
-        const choice = await chooseImport(file.name, incoming.panels.length, !otherModel ? '' : !here ? 'These panels are from a model; the panels here are not: replace them, or keep the model\'s panels in a set of their own.'
-            : !there ? 'These panels are not from a model; the panels here are: replace them, or keep them in a set of their own.' : 'These panels are from another model than the panels here: replace them, or keep each model in its own set.', exportEvidence(parsed));
-        if (!choice) { notice(`Nothing imported from ${file.name}.`); return; }
-        if (choice === 'replace') {
+        const pick = await showImportPreview({ name: file.name, current: set, incoming, data: parsed });
+        if (!pick) { notice(`Nothing imported from ${file.name}.`); return; }
+        if (pick.mode === 'replace') {
             const r = IM.replaceSet(incoming, parsed, warnings, newPanelId);
             set = { ...r.set, current: r.set.panels[0]?.id ?? null };
             checked.clear(); sel = null; ask = null; selection = W.NONE;
@@ -3885,13 +3842,11 @@ async function importJson(file) {
             return;
         }
         const rows = IM.matchIncoming(set, incoming);
-        let choices = {};
-        if (rows.some(r => r.status === 'match' || r.status === 'ambiguous')) {
-            choices = await chooseConflicts(file.name, rows);
-            if (!choices) { notice(`Nothing imported from ${file.name}.`); return; }
+        const before = new Set(set.panels.map(p => p.id)), merged = IM.mergeAdd(set, rows, pick.choices, newPanelId), rep = merged.report;
+        if (!rep.added.length && !rep.updated.length && !rep.copies.length && !rep.fromModel.length) {
+            notice(`Nothing changed from ${file.name}: ${[rep.kept.length && `${rep.kept.length} kept as they are`, rep.skipped.length && `${rep.skipped.length} skipped`].filter(Boolean).join(', ') || 'nothing chosen'}.`);
+            return;
         }
-        const before = new Set(set.panels.map(p => p.id)), merged = IM.mergeAdd(set, rows, choices, newPanelId), rep = merged.report;
-        if (!rep.added.length && !rep.updated.length && !rep.copies.length) { notice(`Nothing imported from ${file.name}: ${rep.skipped.length} skipped.`); return; }
         // The set's framing by model type (and the file's): given to the panels added that have none chosen (reported).
         const typeFr = { ...(set.typeFraming || {}), ...(incoming.typeFraming || {}) };
         // The file's opening profiles join the set's (a name the set has already: the set's kept, said when they differ);
@@ -3915,13 +3870,14 @@ async function importJson(file) {
         if (colors != null) context.legendColors = colors;
         // Unknown fields of the file (a newer exporter's) ride along to Export JSON.
         const extra = { ...(incoming.extra || {}), ...(set.extra || {}) };
-        const first = panels.find(p => !before.has(p.id)) || panels.find(p => rep.updated.some(u => u.startsWith(p.mark)));
+        const first = panels.find(p => !before.has(p.id)) || panels.find(p => rep.fromModel.includes(p.mark) || rep.updated.some(u => u.startsWith(p.mark)));
         set = { project: set.project || incoming.project, drawnBy: set.drawnBy || incoming.drawnBy, ...context, ...(Object.keys(extra).length ? { extra } : {}), panels, current: first?.id ?? set.current };
         checked.clear(); sel = null; ask = null; selection = W.NONE;
-        historyHint = { label: `importing ${file.name}` };
+        historyHint = { label: `updating from ${file.name}` };
         save(); renderAll();
-        const what = [rep.added.length ? `added ${rep.added.join(', ')}` : '', rep.updated.length ? `updated ${rep.updated.join('; ')}` : '', rep.copies.length ? `study copies ${rep.copies.join(', ')}` : '',
-            rep.skipped.length ? `skipped ${rep.skipped.join(', ')}` : ''].filter(Boolean).join('; ');
+        const what = [rep.added.length ? `added ${rep.added.join(', ')}` : '', rep.fromModel.length ? `updated from the model (web settings kept) ${rep.fromModel.join(', ')}` : '',
+            rep.updated.length ? `took the file's settings ${rep.updated.join('; ')}` : '', rep.copies.length ? `study copies ${rep.copies.join(', ')}` : '',
+            rep.kept.length ? `kept ${rep.kept.length} as they are` : '', rep.skipped.length ? `skipped ${rep.skipped.join(', ')}` : ''].filter(Boolean).join('; ');
         notice([`From ${file.name}: ${what}${rep.renamed.length ? ` (marks taken: ${rep.renamed.join(', ')})` : ''}.`,
             linked ? `${linked} opening${linked === 1 ? '' : 's'} took the profile named for their Revit type.` : '',
             typed ? `${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.` : '',
