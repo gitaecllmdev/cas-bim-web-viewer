@@ -10,7 +10,7 @@ export async function resolvePlanBatch(set, engineering = null, { chunkSize = 25
     const out = exportPlans({ ...set, panels: [] }, engineering), cache = new Map();
     const stats = { panels: set.panels?.length || 0, resolved: 0, templateHits: 0, cacheEntries: 0 };
     for (let i=0;i<stats.panels;i++) {
-        const panel = cleanPanel(set.panels[i]), snapshot = snapshotFromPanel(panel, { documentId: set.source?.documentId ?? null });
+        const panel = cleanPanel(set.panels[i]), snapshot = snapshotFromPanel(panel, { documentId: set.source?.documentId ?? null, source: set.source ?? null });
         const key = !panel.revit && !engineering ? JSON.stringify({ ...panel, id: '', mark: '', group: '', level: '', wallType: '' }) : null;
         let plan;
         if (key && cache.has(key)) {

@@ -38,7 +38,7 @@ const finite = (v) => typeof v === 'number' && Number.isFinite(v);
 const canonical = (v) => JSON.stringify(v, (k, x) => (isObj(x) ? Object.fromEntries(Object.keys(x).sort().map(key => [key, x[key]])) : x));
 
 // --- Splitting a generator panel into the locked snapshot and the editable detailing --------------------------------
-export function snapshotFromPanel(panel, { documentId = null } = {}) {
+export function snapshotFromPanel(panel, { documentId = null, source = null } = {}) {
     const p = G.cleanPanel(panel), model = G.isFromModel(p), keys = G.openingKeys(p);
     const { lengthIn, heightIn, top } = G.shapeTop(p.shape);
     const inserts = model && Array.isArray(p.revit.inserts) ? p.revit.inserts : [];
@@ -61,9 +61,22 @@ export function snapshotFromPanel(panel, { documentId = null } = {}) {
         wall: { thicknessIn: model && finite(p.revit.thicknessIn) ? p.revit.thicknessIn : null },
         openings,
         lock: model ? verifyLockedSource(p) : { status: 'not-applicable', hashVersion: null, exported: null, computed: null },
+        // The model's frame and export evidence, exactly as exported, for the native importer's freshness check. Outside
+        // the fingerprint: the cas-profile-v1 lock hash already binds side A, left end, location line and normal.
+        frame: model ? frameOf(p.revit, source) : null,
+        export: model ? exportOf(source) : null,
     };
     snapshot.fingerprint = snapshotFingerprint(snapshot);
     return snapshot;
+}
+const FRAME_FIELDS = ['sideA', 'leftEnd', 'locationLine', 'orientation', 'baseOffsetIn', 'levelName', 'heightIn', 'thicknessIn'];
+function frameOf(revit, source) {
+    const frame = Object.fromEntries(FRAME_FIELDS.map(k => [k, revit[k] === undefined ? null : structuredClone(revit[k])]));
+    frame.basis = source?.coordinates?.basis ?? null;
+    return frame;
+}
+function exportOf(source) {
+    return { exportId: source?.exportId ?? null, documentVersion: source?.documentVersion ? structuredClone(source.documentVersion) : null, exportedAt: source?.exportedAt ?? null };
 }
 // Exact values (no display rounding), openings in key order (their list order does not matter), outline order does.
 export function snapshotFingerprint(s) {
@@ -220,7 +233,8 @@ export function resolveFramingPlan(snapshot, detailing, catalog = null, engineer
     const model = snapshot.kind === 'model', panel = panelFrom(snapshot, detailing), H = snapshot.profile.heightIn;
     // Source facts, as given (the actual rough openings) and as they will be framed.
     plan.source = { kind: snapshot.kind, identity: { ...snapshot.identity }, fingerprint: snapshotFingerprint(snapshot), lock: snapshot.lock ? { ...snapshot.lock } : null,
-        profile: { lengthIn: snapshot.profile.lengthIn, heightIn: H, top: snapshot.profile.top,...(snapshot.profile.bottom?{bottom:snapshot.profile.bottom}:{}) }, openings: [] };
+        profile: { lengthIn: snapshot.profile.lengthIn, heightIn: H, top: snapshot.profile.top,...(snapshot.profile.bottom?{bottom:snapshot.profile.bottom}:{}) }, openings: [],
+        frame: snapshot.frame ? structuredClone(snapshot.frame) : null, export: snapshot.export ? { ...snapshot.export } : null };
     if (model && snapshot.lock?.status === 'mismatch') issue('source.lock_mismatch', 'error', snapshot.identity.panelUniqueId, 'The locked geometry differs from what the model exported (its profile hash does not match): re-export the wall; nothing is framed.');
     if (model && snapshot.lock?.status === 'not-provided') issue('source.lock_not_provided', 'warning', snapshot.identity.panelUniqueId, 'The export has no profile hash: the locked geometry cannot be checked against the model.');
     if (model && snapshot.lock?.status === 'unverifiable') issue('source.lock_unverifiable', 'warning', snapshot.identity.panelUniqueId, 'The profile hash cannot be computed from this export (location line, height, thickness or orientation missing).');
@@ -505,5 +519,5 @@ export function exportPlans(set, engineering = null) {
     return { format: `${PLAN_FORMAT}-set`, contractVersion: CONTRACT_VERSION, ruleVersion: RULE_VERSION,
         ...(engineering?.read ? { engineering: { catalogId: engineering.read.catalog.catalogId, catalogRevision: engineering.read.catalog.revision, catalogSha256: engineering.read.sha256,
             selection: engineering.selection ? { project: engineering.selection.project, approval: { ...engineering.selection.approval } } : null } } : {}),
-        plans: (set.panels || []).map(p => resolveFramingPlan(snapshotFromPanel(p, { documentId }), detailingFromPanel(p), null, engineering)) };
+        plans: (set.panels || []).map(p => resolveFramingPlan(snapshotFromPanel(p, { documentId, source: set.source ?? null }), detailingFromPanel(p), null, engineering)) };
 }

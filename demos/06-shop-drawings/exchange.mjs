@@ -91,6 +91,9 @@ export function readExchange(input) {
     const basis = data.source?.coordinates?.basis;
     if (basis != null && basis !== 'internal' && basis !== 'shared') throw new Error('Unknown coordinate basis.');
     if (!Array.isArray(data.panels) || data.panels.length > MAX_PANELS) throw new Error('Panels must be an array of at most 2,000 entries.');
+    if (data.source?.skipped != null && (!Array.isArray(data.source.skipped) || data.source.skipped.some(s =>
+        !s || typeof s !== 'object' || typeof s.wallUniqueId !== 'string' || typeof s.code !== 'string' || typeof s.reason !== 'string')))
+        throw new Error('Export skipped-wall evidence must be an array of wallUniqueId, code and reason records.');
     for (const p of data.panels) {
         sourceFraming(p);
         if (!p || typeof p !== 'object' || Array.isArray(p)) throw new Error('Expected a JSON object.');
@@ -124,4 +127,13 @@ export function readExchange(input) {
         }
     }
     return data;
+}
+
+// Read-only import-summary evidence. The original source/unknown fields travel untouched through the project file.
+export function exportEvidence(data) {
+    return {
+        skipped: Array.isArray(data?.source?.skipped) ? data.source.skipped.map(s =>
+            `${s.wallUniqueId} (Element ${s.elementId ?? '?'}) · ${s.code}: ${s.reason}`) : [],
+        notes: Array.isArray(data?._casExportNotes) ? data._casExportNotes.map(String) : []
+    };
 }
