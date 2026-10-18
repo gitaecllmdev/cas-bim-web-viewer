@@ -35,8 +35,10 @@ function elevation(panel, marks, title, s) {
     return `<figure class="ip-elev"><svg width="${(w + 4).toFixed(0)}" height="${(h + 4).toFixed(0)}" viewBox="-2 -2 ${(w + 4).toFixed(1)} ${(h + 4).toFixed(1)}" role="img" aria-label="${esc(title)}"><polygon class="ip-wall" points="${outline}"/>${ops}</svg><figcaption>${esc(title)} · ${fmtFtIn(L)} x ${fmtFtIn(H)}</figcaption></figure>`;
 }
 
-export function showImportPreview({ name, current, incoming, data }) {
-    const pv = previewImport(current, incoming, data), ev = pv.evidence, c = pv.counts;
+// guard (optional; Batch Sheets: batch-import-guard.mjs importGuard): its match, warnings and preferKeep go to the preview.
+export function showImportPreview({ name, current, incoming, data, guard = null }) {
+    const pv = previewImport(current, incoming, data, guard || {}), ev = pv.evidence, c = pv.counts;
+    const checks = pv.warnings.length ? `<ul class="ip-list ip-checks" role="note" aria-label="Checks on this file">${pv.warnings.map(w => `<li class="small${w.level === 'warn' ? ' warn' : ' muted'}">${esc(w.text)}</li>`).join('')}</ul>` : '';
     const byId = new Map((current.panels || []).map(p => [p.id, p]));
     const fixable = ev.skipped.filter(g => g.fixable).reduce((n, g) => n + g.items.length, 0);
     let mode = pv.relation === 'empty' ? 'replace' : pv.merge.ok ? 'update' : 'replace', filter = 'all';
@@ -101,6 +103,7 @@ export function showImportPreview({ name, current, incoming, data }) {
             const count = (f) => f === 'all' ? rows.length + pv.hereOnly.length : f === 'here' ? pv.hereOnly.length : f === 'new' ? c.new : rows.filter(r => r.status === f).length;
             d.innerHTML = `<form method="dialog">
                 <header class="ip-head"><h3>Import preview</h3><p class="small muted"><b>${esc(name)}</b> · ${esc(from)}. Nothing changes until you press the button below.</p></header>
+                ${checks}
                 <div class="ip-tiles">
                     ${tile(c.file, 'panels to panelize', [c.new && `${c.new} new`, c.changed && `${c.changed} changed in the model`, c.same && `${c.same} unchanged`, c.ambiguous && `${c.ambiguous} can't match`].filter(Boolean).join(' · ') || 'none', '', 'all')}
                     ${tile(ev.skippedWalls, 'walls not panelized', ev.skippedWalls ? (fixable ? `${fixable} can be fixed in the model` : 'never framed here (curtain, curved)') : 'the export skipped none', fixable ? 'ip-warn' : '', 'skipped')}

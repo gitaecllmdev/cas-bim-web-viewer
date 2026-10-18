@@ -120,7 +120,11 @@ export function groupEvidence(data) {
 // rows: one per panel of the file: { index, panel, mark, level, status, here, wall: [..], openings: [..], settings: [..],
 //   choices: [values], choice } with status 'new' | 'changed' | 'same' | 'ambiguous' | 'standalone'.
 // hereOnly: the model panels here that the file does not have (with the export's reason when it skipped the wall).
-export function previewImport(current, incoming, data = null) {
+// options (Batch Sheets' batch-import-guard.mjs; none: as before): match (instead of matchIncoming; a match row's notes
+// are listed as model changes), warnings ([{ level, text }], returned for the page), preferKeep (walls changed in the
+// model offer Keep first: an older export).
+export function previewImport(current, incoming, data = null, options = {}) {
+    const match = options.match || matchIncoming;
     const here = current.panels || [], docHere = str(current.source?.documentId) || null, docThere = str(incoming.source?.documentId) || null;
     const relation = !here.length ? 'empty' : docHere === docThere ? 'same' : !docHere ? 'here-not-model' : !docThere ? 'file-not-model' : 'other-model';
     const merge = relation === 'same' ? { ok: true, reason: '' } : relation === 'empty' ? { ok: false, reason: '' } : { ok: false,
@@ -128,16 +132,16 @@ export function previewImport(current, incoming, data = null) {
             : relation === 'file-not-model' ? 'This file\'s panels are not from a model, and the panels here are: Replace them, or open the file in a set of its own.'
                 : 'This file is from another model than the panels here: Replace them, or keep each model in its own set.' };
     const evidence = groupEvidence(data);
-    const matched = merge.ok ? matchIncoming(current, incoming) : (incoming.panels || []).map((panel, index) => ({ index, panel, status: isFromModel(panel) ? 'new' : 'standalone' }));
+    const matched = merge.ok ? match(current, incoming) : (incoming.panels || []).map((panel, index) => ({ index, panel, status: isFromModel(panel) ? 'new' : 'standalone' }));
     const byId = new Map(here.map(p => [p.id, p]));
     const rows = matched.map(r => {
         const p = cleanPanel(r.panel), row = { index: r.index, panel: r.panel, mark: p.mark, level: p.level, wall: [], openings: [], settings: [], reason: r.reason || '' };
         if (r.status === 'match') {
             const h = cleanPanel(byId.get(r.match));
             row.here = { id: h.id, mark: h.mark };
-            row.wall = wallChanges(h, p); row.openings = openingChanges(h, p); row.settings = webSettings(h, p);
+            row.wall = [...(r.notes || []), ...wallChanges(h, p)]; row.openings = openingChanges(h, p); row.settings = webSettings(h, p);
             row.status = row.wall.length || row.openings.length ? 'changed' : 'same';
-            row.choices = row.status === 'changed' ? ['geometry', 'keep', 'copy'] : ['keep', ...(webSettings(p, h).length ? ['update'] : []), 'copy'];
+            row.choices = row.status === 'changed' ? (options.preferKeep ? ['keep', 'geometry', 'copy'] : ['geometry', 'keep', 'copy']) : ['keep', ...(webSettings(p, h).length ? ['update'] : []), 'copy'];
         } else if (r.status === 'ambiguous') { row.status = 'ambiguous'; row.choices = ['skip', 'copy']; }
         else { row.status = r.status; row.choices = ['add']; }
         row.choice = row.choices[0];
@@ -150,7 +154,7 @@ export function previewImport(current, incoming, data = null) {
         .map(p => ({ id: p.id, mark: p.mark, level: p.level, model: isFromModel(p), settings: isFromModel(p) ? webSettings(p, null) : [],
             reason: !isFromModel(p) ? 'Typed here (not from a model).' : skipReason.get(str(p.revit.uniqueId)) ? `The export skipped this wall: ${skipReason.get(str(p.revit.uniqueId))}` : 'Not in this export (deleted in the model, or not selected for export).' }));
     const count = (s) => rows.filter(r => r.status === s).length;
-    return { relation, merge, rows, hereOnly, here: here.length, evidence,
+    return { relation, merge, rows, hereOnly, here: here.length, evidence, warnings: options.warnings || [],
         counts: { file: rows.length, new: count('new') + count('standalone'), changed: count('changed'), same: count('same'), ambiguous: count('ambiguous'),
             wallChanged: rows.filter(r => r.wall.length).length, openingsChanged: rows.filter(r => r.openings.length).length,
             withSettings: rows.filter(r => r.settings.length).length + hereOnly.filter(h => h.settings.length).length } };

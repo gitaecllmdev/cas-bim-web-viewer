@@ -34,6 +34,7 @@ import * as TY from './demos/06-shop-drawings/typical.mjs';
 import * as RV from './demos/06-shop-drawings/revisions.mjs';
 import * as IM from './demos/06-shop-drawings/import-merge.mjs';
 import { showImportPreview } from './demos/06-shop-drawings/import-preview-dialog.mjs';
+import * as BG from './demos/06-shop-drawings/batch-import-guard.mjs';
 import * as SC from './demos/06-shop-drawings/style-catalog.mjs';
 import { formatLength } from './demos/06-shop-drawings/criteria-names.mjs';
 import { siteHits, mountHits } from './hits.js';
@@ -3828,8 +3829,12 @@ async function importJson(file) {
         let parsed = null;
         try { parsed = JSON.parse(text); } catch { parsed = null; }
         if (!incoming.panels.length) { notice(`No panels read from ${file.name}. ${warnings.join(' ')}`, true); return; }
-        const pick = await showImportPreview({ name: file.name, current: set, incoming, data: parsed });
+        // MWF lessons (batch-import-guard.mjs): a renumbered wall is never linked twice, a copy of the model or an older
+        // export is said before anything changes, and this set's own link problems are listed. The merge uses the same match.
+        const guard = BG.importGuard(set, incoming);
+        const pick = await showImportPreview({ name: file.name, current: set, incoming, data: parsed, guard });
         if (!pick) { notice(`Nothing imported from ${file.name}.`); return; }
+        const linkNote = () => BG.linkAudit(set).map(x => `Check: ${x.text}`).join(' ');
         if (pick.mode === 'replace') {
             const r = IM.replaceSet(incoming, parsed, warnings, newPanelId);
             set = { ...r.set, current: r.set.panels[0]?.id ?? null };
@@ -3837,11 +3842,12 @@ async function importJson(file) {
             historyHint = { label: `replacing with ${file.name}` };
             save(); renderAll();
             if (!r.transformed.length) markExported(); // what is here now is that file
-            notice(r.transformed.length ? `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}. ${r.transformed.join(' ')} Not the file as it was: export to keep it as read.`
-                : `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}, as the file has them.`, r.transformed.length > 0);
+            const links = linkNote();
+            notice((r.transformed.length ? `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}. ${r.transformed.join(' ')} Not the file as it was: export to keep it as read.`
+                : `Replaced with ${set.panels.length} panel${set.panels.length === 1 ? '' : 's'} from ${file.name}, as the file has them.`) + (links ? ` ${links}` : ''), r.transformed.length > 0 || !!links);
             return;
         }
-        const rows = IM.matchIncoming(set, incoming);
+        const rows = guard.match(set, incoming);
         const before = new Set(set.panels.map(p => p.id)), merged = IM.mergeAdd(set, rows, pick.choices, newPanelId), rep = merged.report;
         if (!rep.added.length && !rep.updated.length && !rep.copies.length && !rep.fromModel.length) {
             notice(`Nothing changed from ${file.name}: ${[rep.kept.length && `${rep.kept.length} kept as they are`, rep.skipped.length && `${rep.skipped.length} skipped`].filter(Boolean).join(', ') || 'nothing chosen'}.`);
@@ -3881,7 +3887,7 @@ async function importJson(file) {
         notice([`From ${file.name}: ${what}${rep.renamed.length ? ` (marks taken: ${rep.renamed.join(', ')})` : ''}.`,
             linked ? `${linked} opening${linked === 1 ? '' : 's'} took the profile named for their Revit type.` : '',
             typed ? `${typed} opening${typed === 1 ? '' : 's'} took the set's framing for their model type.` : '',
-            keptMine.length ? `Opening profiles kept as this set has them (the file's differ): ${keptMine.join(', ')}.` : '', ...rep.notes, ...warnings].filter(Boolean).join(' '), !!(rep.notes.length || warnings.length || typed || linked || keptMine.length));
+            keptMine.length ? `Opening profiles kept as this set has them (the file's differ): ${keptMine.join(', ')}.` : '', ...rep.notes, ...warnings, linkNote()].filter(Boolean).join(' '), !!(rep.notes.length || warnings.length || typed || linked || keptMine.length || linkNote()));
     } catch (err) { notice(`Could not read ${file.name}: ${err.message} Nothing was changed.`, true); }
 }
 async function copyLink(p) {
@@ -3958,4 +3964,7 @@ main.addEventListener('keydown', (e) => {
 main.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('.insp-sec')) { prefs.sections[d.dataset.sec] = d.open; storePrefs(); } }, true);
 applyPrefs();
 renderAll();
+// This set's model links, checked once on opening (never repaired): a wall linked twice, or panels of one wall that the
+// next import cannot tell apart.
+{ const links = BG.linkAudit(set); if (links.length) notice(links.map(x => `Check: ${x.text}`).join(' '), true); }
 new ResizeObserver(() => { if (cur() && prefs.view === 'sketch' && !drag) renderSketch(); }).observe(main.querySelector('.sketch-wrap'));
