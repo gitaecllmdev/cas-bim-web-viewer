@@ -12,10 +12,10 @@ export const MAX_LABELS = 5000;
 // Each has its own default layout and text sizes (a layout does not carry over from one size to another), where a
 // piece number and a review warning go, and its slots across then down.
 export const STOCKS = {
-    '5137': { id:'5137', name:'2" × 4" · 10 per sheet (Avery 5137)', pageW:8.5,pageH:11,cols:2,rows:5,w:4,h:2,left:0.15625,top:0.5,pitchX:4.1875,pitchY:2,
+    '5137': { id:'5137', name:'2" × 4" · 10 per sheet (Avery 5137)', short:'2" × 4"', pageW:8.5,pageH:11,cols:2,rows:5,w:4,h:2,left:0.15625,top:0.5,pitchX:4.1875,pitchY:2,
         fonts:{panelPt:34,markPt:40,notesPt:18,projectPt:7}, piece:{x:3.7,y:.2,pt:7}, review:{x:1.655,y:1.67,w:2.35,pt:7},
         layout:{panel:{x:1.155,y:.55-34/72,w:1.65,h:34/72},mark:{x:1.155,y:1.19-40/72,w:1.65,h:40/72},notes:{x:1.155,y:1.47-18/72,w:1.65,h:18/72},project:{x:.48,y:1.82-7/72,w:2.35,h:2.1*7/72},logo:{x:2.85,y:.88,w:1.03,h:1.03},qr:{x:.14,y:.49,w:.94,h:.94}} },
-    '5160': { id:'5160', name:'1" × 2 5/8" · 30 per sheet (Avery 5160)', pageW:8.5,pageH:11,cols:3,rows:10,w:2.625,h:1,left:0.1875,top:0.5,pitchX:2.75,pitchY:1,
+    '5160': { id:'5160', name:'1" × 2 5/8" · 30 per sheet (Avery 5160)', short:'1" × 2 5/8"', pageW:8.5,pageH:11,cols:3,rows:10,w:2.625,h:1,left:0.1875,top:0.5,pitchX:2.75,pitchY:1,
         fonts:{panelPt:14,markPt:22,notesPt:8,projectPt:5}, piece:{x:2.55,y:.95,pt:5}, review:{x:1.73,y:.96,w:1.6,pt:5},
         layout:{panel:{x:.92,y:.06,w:1.62,h:14/72},mark:{x:.92,y:.27,w:1.12,h:22/72},notes:{x:.92,y:.6,w:1.12,h:8/72},project:{x:.92,y:.76,w:1.12,h:2.1*5/72},logo:{x:2.08,y:.33,w:.46,h:.46},qr:{x:.06,y:.1,w:.8,h:.8}} },
 };
@@ -119,6 +119,18 @@ export function printFileName(project,{kind='labels',date=new Date()}={}) {
     const day=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
     const head=[project.project,part,kind].filter(Boolean).join('_').replace(/[^a-z0-9_.-]+/gi,'-').replace(/-{2,}/g,'-').replace(/^[-_.]+|[-_.]+$/g,'').slice(0,120);
     return `${head||'panel-labels'}_${day}`;
+}
+// The print history kept in this browser (newest first): one record per panel in each label PDF downloaded, with its
+// project, label count, label size, time and file. HISTORY_MAX records are kept.
+export const HISTORY_KEY='cas-label-maker:printed', HISTORY_MAX=60;
+export function printRecords(project,{at=new Date(),file=''}={}) {
+    const counts=new Map();
+    for(const r of project.rows.filter(r=>r.ready!==false)){const v=rowValue(r,project),n=Number.isSafeInteger(r.qty)&&r.qty>0?r.qty:0;if(v.panel&&n)counts.set(v.panel,(counts.get(v.panel)||{project:v.project||project.project||'',labels:0})).get(v.panel).labels+=n;}
+    return [...counts].map(([panel,c])=>({panel,project:c.project,labels:c.labels,stock:stockOf(project.design).id,at:at.toISOString(),file}));
+}
+export function addToHistory(history,records,max=HISTORY_MAX) {
+    const clean=(Array.isArray(history)?history:[]).filter(h=>h&&typeof h.panel==='string'&&typeof h.at==='string');
+    return [...records,...clean].slice(0,max);
 }
 // What one print sheet holds: its label numbers and its panels (the first slots of sheet 1 may be left empty).
 export function sheetSummary(project,pageIndex) {
