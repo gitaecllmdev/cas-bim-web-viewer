@@ -42,6 +42,12 @@ export const skipDateMark=mark=>/DATE/i.test(String(mark||''));
 const str = v => String(v ?? '').trim();
 const bounded = (v,lo,hi,fallback) => Number.isFinite(Number(v)) ? Math.max(lo,Math.min(hi,Number(v))) : fallback;
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+// Reset: a clear screen that keeps what the user set up: the project name and the label design (size, layout, text
+// sizes, QR / logo / notes, numbering, slot and shifts) with the logo. Labels, links, notes and sources go.
+export const DESIGN_KEY='cas-label-maker:design';
+export function resetProject(project) {
+    return cleanProject({project:project.project,design:project.design,logo:project.logo,logoSource:project.logoSource});
+}
 export function cleanProject(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Open a label project object.');
     const given=value.design || {}, design={...DEFAULT_DESIGN}, s=stockOf(given);
