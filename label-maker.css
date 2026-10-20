@@ -73,3 +73,11 @@
 .lm-design-tools { display:flex;flex-direction:column;align-items:stretch;gap:4px;margin-left:auto; }
 .lm-stock { display:flex;flex-direction:column;gap:2px;font-size:11px;color:#617284; }
 .lm-preview .lm-section-head .lm-stock select { width:auto;max-width:260px;font-size:12px;padding:3px 6px; }
+/* Sheet navigation: previous / next, the sheet list, what the sheet holds. */
+.lm-page-controls button { padding:3px 9px;font-size:12px; }
+.lm-page-controls button:disabled { opacity:.45;cursor:default; }
+.lm-page-list { display:flex;flex-wrap:wrap;gap:4px;margin-top:6px; }
+.lm-page-list button { min-width:26px;padding:2px 6px;font-size:11px;background:white;color:#20354a;border:1px solid #c9d4df;border-radius:4px;box-shadow:none; }
+.lm-page-list button.on { background:#20354a;color:white;border-color:#20354a; }
+.lm-sheet-summary { margin:6px 0 0;font-size:12px;color:#617284; }
+#lm-preview-sheet:focus-visible { outline:2px solid #2679c8;outline-offset:2px; }

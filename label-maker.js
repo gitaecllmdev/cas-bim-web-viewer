@@ -32,9 +32,12 @@ function render({table=true,forceFields=false}={}){
  $('#lm-candidate-summary').textContent=`${project.rows.length} member rows · ${total} proposed labels`;
  const count=state.count;$('#lm-print-count').textContent=count?`${count} checked labels · ${state.pages} sheet${state.pages===1?'':'s'}`:'Check label rows to print';
  page=Math.max(0,Math.min(page,state.pages-1));$('#lm-page').value=page+1;$('#lm-page').max=Math.max(1,state.pages);$('#lm-pages').textContent='of '+state.pages;
+ $('#lm-page-prev').disabled=page<=0;$('#lm-page-next').disabled=page>=state.pages-1;
+ $('#lm-page-list').innerHTML=state.pages>1&&state.pages<=40?Array.from({length:state.pages},(_,i)=>`<button type="button" data-page="${i}" class="${i===page?'on':''}" aria-current="${i===page?'page':'false'}" title="Sheet ${i+1}">${i+1}</button>`).join(''):'';
  const blocked=!print.rows.length||state.errors.length>0||(project.design.showLogo&&!project.logo);$('#lm-pdf').disabled=$('#lm-csv').disabled=$('#lm-proof').disabled=blocked;$('#lm-pdf').textContent=count?`Download PDF · ${count}`:'Download PDF';$('#lm-header-count').textContent=count?`${state.pages} sheets`:'';$('#lm-pdf-mobile').disabled=blocked;$('#lm-pdf-mobile').textContent=$('#lm-pdf').textContent;
  $('#lm-errors').innerHTML=!print.rows.length?'<p>Select rows or a whole panel using the Print checkboxes.</p>':[...state.errors.slice(0,6).map(s=>`<p class="error">${esc(s)}</p>`),...state.warnings.slice(0,6).map(s=>`<p class="warning">${esc(s)}</p>`)].join('');
- if(!blocked){try{$('#lm-preview-sheet').innerHTML=L.labelPageSvg(print,L.expandRows(print),page);}catch(e){$('#lm-preview-sheet').textContent=e.message;$('#lm-pdf').disabled=true;}}
+ $('#lm-sheet-summary').textContent='';
+ if(!blocked){try{$('#lm-preview-sheet').innerHTML=L.labelPageSvg(print,L.expandRows(print),page);const s=L.sheetSummary(print,page);$('#lm-sheet-summary').textContent=s.to>=s.from?`Labels ${s.from}–${s.to} of ${s.total} · ${s.panels.join(', ')}`:'';}catch(e){$('#lm-preview-sheet').textContent=e.message;$('#lm-pdf').disabled=true;}}
  else $('#lm-preview-sheet').innerHTML='<p style="padding:18px;color:#617284">Your checked labels appear here. Imports are already in the Labels table.</p>';
 }
 function renderTable(){
@@ -62,6 +65,7 @@ function commitImport(batch,replace){
 
 function download(bytes,name,type){if(!bytes?.length)throw new Error('The print file was empty. Select valid label rows first.');const url=URL.createObjectURL(new Blob([bytes],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
 const filename=()=>(project.project||'panel-labels').replace(/[^a-z0-9_.-]+/gi,'-').slice(0,80);
+const printName=(kind)=>L.printFileName(visibleProject(),{kind}); // project, panel numbers, kind, date last
 async function importTable(file) {
 
     if(!file)return;importName=file.name;if(file.size>16*1024*1024)throw new Error('Use a list smaller than 16 MB.');
@@ -170,7 +174,12 @@ document.addEventListener('paste',safe(async e=>{const f=[...e.clipboardData.ite
 document.querySelector('.lm-workspace').ondragover=e=>e.preventDefault();document.querySelector('.lm-workspace').ondrop=safe(async e=>{e.preventDefault();await queueFiles(e.dataTransfer.files);});
 $('#lm-logo-file').onchange=safe(async e=>{if(!e.target.files[0])return;const logo=await jpegLogo(e.target.files[0]);try{localStorage.setItem('cas-label-maker:preferred-logo',JSON.stringify(logo));}catch{}mutate(()=>{project.logo=logo;project.logoSource='custom';});e.target.value='';});$('#lm-default-logo').onclick=safe(async()=>{const logo=await defaultLogo();try{localStorage.removeItem('cas-label-maker:preferred-logo');}catch{}mutate(()=>{project.logo=logo;project.logoSource='default-cw';project.design.showLogo=true;});});
 $('#lm-filter').onchange=e=>{filter=e.target.value;page=0;render({table:false});};$('#lm-page').onchange=e=>{page=Number(e.target.value)-1;render({table:false});};
-$('#lm-pdf').onclick=safe(()=>download(L.labelPdf(visibleProject()),filename()+'.pdf','application/pdf'));$('#lm-proof').onclick=safe(()=>download(L.labelPdf(visibleProject(),{guides:true}),filename()+'-alignment-proof.pdf','application/pdf'));$('#lm-csv').onclick=safe(()=>download(L.expandedCsv(visibleProject(),{header:$('#lm-csv-header').checked}),filename()+'.csv','text/csv;charset=utf-8'));
+// Sheets: previous / next, a sheet's number, or the arrow keys (and Page Up / Down) on the preview.
+const goPage=i=>{page=i;render({table:false});};
+$('#lm-page-prev').onclick=()=>goPage(page-1);$('#lm-page-next').onclick=()=>goPage(page+1);
+$('#lm-page-list').onclick=e=>{const b=e.target.closest('[data-page]');if(b)goPage(Number(b.dataset.page));};
+document.querySelector('.lm-preview').addEventListener('keydown',e=>{if(e.target.closest('input,select,textarea'))return;const step={ArrowRight:1,PageDown:1,ArrowLeft:-1,PageUp:-1}[e.key];if(!step)return;e.preventDefault();goPage(page+step);});
+$('#lm-pdf').onclick=safe(()=>download(L.labelPdf(visibleProject()),printName('labels')+'.pdf','application/pdf'));$('#lm-proof').onclick=safe(()=>download(L.labelPdf(visibleProject(),{guides:true}),printName('alignment-proof')+'.pdf','application/pdf'));$('#lm-csv').onclick=safe(()=>download(L.expandedCsv(visibleProject(),{header:$('#lm-csv-header').checked}),printName('labels')+'.csv','text/csv;charset=utf-8'));
 $('#lm-demo').onclick=()=>addImport({rows:[{panel:'DEMO-01',mark:'C0',qty:12,url:'https://example.com/drawings/DEMO-01'},{panel:'DEMO-01',mark:'T0',qty:2},{panel:'DEMO-02',mark:'C1',qty:3}],issues:[]});
 document.addEventListener('keydown',e=>{if(e.key==='Escape'&&embedded&&!sourceViewer.dialog.open&&!document.querySelector('#lm-context-dialog')?.open&&!$('#lm-settings-drawer').open&&!$('#lm-import-choice').open&&!layoutEditor.dialog.open&&!$('#lm-snapshot-dialog').open){e.preventDefault();parent.postMessage({type:'cas-label-maker:close'},location.origin);}if((e.ctrlKey||e.metaKey)&&!sourceViewer.dialog.open&&!/INPUT|TEXTAREA|SELECT/.test(e.target.tagName)&&e.key.toLowerCase()==='z'){e.preventDefault();history(e.shiftKey);}});
 window.addEventListener('message',e=>{if(embedded&&e.origin===location.origin&&e.source===parent&&e.data?.type==='cas-label-maker:shop-context'){for(const g of e.data.groups||[])contexts.set(g.panel,g);renderContext();}});

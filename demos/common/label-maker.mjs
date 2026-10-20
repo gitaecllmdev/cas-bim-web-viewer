@@ -111,6 +111,21 @@ export function validateProject(project) {
     if(project.design.showQr && project.rows.some(r=>!rowValue(r,project).url))warnings.push('Some labels have no QR link; their QR area will be blank.');
     return {errors:[...new Set(errors)],warnings:[...new Set(warnings)],count,pages:count?Math.ceil((count+project.design.startSlot-1)/perSheet(stockOf(project.design))):0};
 }
+// A print file's name: the project, the panel numbers it holds, what it is, and the date last (local), e.g.
+// "SKYRIVER_P2001_labels_2026-10-20". Two or three panels are all named; more: the first to the last and the count.
+export function printFileName(project,{kind='labels',date=new Date()}={}) {
+    const panels=[...new Set(project.rows.filter(r=>r.ready!==false).map(r=>rowValue(r,project).panel).filter(Boolean))];
+    const part=panels.length<=3?panels.join('_'):`${panels[0]}-to-${panels.at(-1)}_${panels.length}-panels`;
+    const day=`${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;
+    const head=[project.project,part,kind].filter(Boolean).join('_').replace(/[^a-z0-9_.-]+/gi,'-').replace(/-{2,}/g,'-').replace(/^[-_.]+|[-_.]+$/g,'').slice(0,120);
+    return `${head||'panel-labels'}_${day}`;
+}
+// What one print sheet holds: its label numbers and its panels (the first slots of sheet 1 may be left empty).
+export function sheetSummary(project,pageIndex) {
+    const pieces=expandRows(project),per=perSheet(stockOf(project.design)),skip=project.design.startSlot-1;
+    const first=Math.max(0,pageIndex*per-skip),last=Math.min(pieces.length,(pageIndex+1)*per-skip);
+    return {from:first+1,to:last,total:pieces.length,panels:[...new Set(pieces.slice(first,last).map(p=>p.panel))]};
+}
 export function expandRows(project) {
     const state=validateProject(project);
     if(state.errors.length)throw new Error(state.errors[0]);
