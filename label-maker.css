@@ -123,7 +123,7 @@
 .lm-snip-banner button.link { color:#c9dcf0;white-space:nowrap; }
 /* The page's own title with the company logo (a page of its own: no link away). */
 .lm-title { display:flex;align-items:center;gap:10px;min-width:0; }
-.lm-title-logo { width:30px;height:30px;padding:2px;background:white;border-radius:6px;object-fit:contain; }
+.lm-title-logo { width:40px;height:32px;padding:2px 3px;background:white;border-radius:6px;object-fit:contain; } /* Component West */
 .lm-title b { font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis; }
 @media(max-width:700px) { .lm-title b { display:none; } .lm-bar #lm-undo,.lm-bar #lm-redo { min-width:0;padding:6px 8px; } }
 /* A snapshot to review: the image, what was captured, Use / Retake / Discard. */
