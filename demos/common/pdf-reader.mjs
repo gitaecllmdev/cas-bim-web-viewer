@@ -64,6 +64,42 @@ export async function renderPdfPage(bytes, number, canvas, { scale = 1.5, maxPix
     } finally { await task.destroy(); }
 }
 
+// Bounded thumbnail batches; no text extraction or OCR. Single-page PDFs skip thumbnails.
+// PDFDocumentLoadingTask.destroy: https://mozilla.github.io/pdf.js/api/draft/module-pdfjsLib-PDFDocumentLoadingTask.html#destroy
+export async function renderPdfThumbnails(bytes, { maxPixels = 60000, start = 1, limit = 12, onDocument = () => {}, onPage = () => {}, signal } = {}) {
+    const abort = () => { if (signal?.aborted) throw new DOMException('Preview cancelled', 'AbortError'); };
+    abort();
+    library ||= import(`${base}build/pdf.min.mjs`).catch(err => { library = null; throw new Error(`PDF reader could not load. Check your connection to jsDelivr. ${err.message}`); });
+    const pdfjs = await library;
+    abort();
+    pdfjs.GlobalWorkerOptions.workerSrc = `${base}build/pdf.worker.min.mjs`;
+    const task = pdfjs.getDocument({ data: bytes.slice(), isEvalSupported: false, cMapUrl: `${base}cmaps/`, cMapPacked: true, standardFontDataUrl: `${base}standard_fonts/` });
+    let destroyed;
+    const destroy = () => destroyed ||= task.destroy().catch(() => {});
+    signal?.addEventListener('abort', destroy, { once: true });
+    try {
+        const pdf = await task.promise;
+        abort();
+        const first = Math.min(pdf.numPages, Math.max(1, Math.trunc(start) || 1));
+        const last = Math.min(pdf.numPages, first + Math.min(12, Math.max(1, Math.trunc(limit) || 12)) - 1);
+        onDocument(pdf.numPages, first, last);
+        if (pdf.numPages === 1) return 1;
+        abort();
+        for (let n = first; n <= last; n++) {
+            const page = await pdf.getPage(n), at1 = page.getViewport({ scale: 1 }), viewport = page.getViewport({ scale: Math.sqrt(maxPixels / (at1.width * at1.height)) });
+            abort();
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.max(1, Math.round(viewport.width)); canvas.height = Math.max(1, Math.round(viewport.height));
+            await page.render({ canvasContext: canvas.getContext('2d'), viewport, background: 'white' }).promise;
+            abort();
+            onPage(n, canvas, pdf.numPages);
+            page.cleanup();
+        }
+        return pdf.numPages;
+    } catch (error) { abort(); throw error; }
+    finally { signal?.removeEventListener('abort', destroy); await destroy(); }
+}
+
 // Render only a selected window at reading resolution; avoid allocating a full large-format page at 300 DPI.
 export async function renderPdfRegion(bytes,number,rect,{scale=4,maxPixels=8000000}={}){
     library ||= import(`${base}build/pdf.min.mjs`);const pdfjs=await library;
