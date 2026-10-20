@@ -116,3 +116,8 @@
 .lm-row-sep { display:inline-block;width:1px;height:18px;margin:0 10px;background:#d9e2eb;vertical-align:middle; }
 .lm-row-delete { display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;padding:0;background:white;color:#b42318;border:1px solid #f1b4ad;border-radius:4px;box-shadow:none;vertical-align:middle; }
 .lm-row-delete:hover { background:#fdecea;border-color:#b42318; }
+/* Waiting for a snip: a bar over the page with Paste now and Cancel. */
+.lm-snip-banner { position:fixed;top:64px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:10px;max-width:min(760px,calc(100vw - 24px));padding:10px 14px;background:#20354a;color:white;border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,.25);font-size:13px; }
+.lm-snip-banner[hidden] { display:none; }
+.lm-snip-banner button.secondary { background:white;color:#20354a;padding:4px 10px;font-size:12px;white-space:nowrap; }
+.lm-snip-banner button.link { color:#c9dcf0;white-space:nowrap; }

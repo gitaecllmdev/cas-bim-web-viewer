@@ -62,3 +62,23 @@ export async function captureScreen({ media = globalThis.navigator?.mediaDevices
         video.srcObject = null;
     }
 }
+
+// The system's own region snip: on Windows the Snipping Tool overlay (the ms-screenclip: link; the browser asks once to
+// open it), where you drag around any part of any screen and the snip is copied. Elsewhere, the keys that copy a region.
+export function snipGuide(platform = globalThis.navigator?.userAgentData?.platform || globalThis.navigator?.platform || '') {
+    if (/win/i.test(platform)) return { launch: 'ms-screenclip:', keys: 'Windows + Shift + S' };
+    if (/mac/i.test(platform)) return { launch: null, keys: 'Control + Shift + Command + 4' };
+    return { launch: null, keys: 'your screenshot keys for a region (copy to clipboard)' };
+}
+// The image on the clipboard, if the browser lets the page read it: { blob, key } (key: its SHA-1 and size), else null.
+export async function clipboardImage(clip = globalThis.navigator?.clipboard) {
+    if (!clip?.read) return null;
+    for (const item of await clip.read()) {
+        const type = item.types.find(t => t.startsWith('image/'));
+        if (!type) continue;
+        const blob = await item.getType(type), bytes = new Uint8Array(await blob.arrayBuffer());
+        const sha = new Uint8Array(await globalThis.crypto.subtle.digest('SHA-1', bytes));
+        return { blob, key: `${[...sha].map(b => b.toString(16).padStart(2, '0')).join('')}:${bytes.length}` };
+    }
+    return null;
+}

@@ -3,7 +3,7 @@ import { panelFromText } from './demos/common/label-text.mjs';
 import { readWorkbook } from './demos/common/xlsx.mjs';
 import { LabelLayoutEditor } from './demos/common/label-layout-editor.mjs';
 import { LabelSourceViewer } from './demos/common/label-source-viewer.mjs';
-import { captureScreen, captureError } from './demos/common/screen-capture.mjs';
+import { captureScreen, captureError, snipGuide, clipboardImage } from './demos/common/screen-capture.mjs';
 const $=s=>document.querySelector(s),KEY='cas-label-maker:project',embedded=new URLSearchParams(location.search).get('embedded')==='1'&&parent!==window;
 if(embedded)document.body.classList.add('lm-embedded');
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -167,12 +167,29 @@ $('#lm-save').onclick=()=>download(JSON.stringify(project,null,2),filename()+'.l
 $('#lm-import').onclick=()=>$('#lm-data-file').click();$('#lm-data-file').onchange=safe(async e=>{const files=[...e.target.files];e.target.value='';await queueFiles(files);});
 $('#lm-read-paste').onclick=safe(()=>addImport(L.rowsFromTable(L.parseDelimited($('#lm-paste').value),{panel:project.defaultPanel,url:'',cutList:$('#lm-cutlist').checked})));
 $('#lm-paste-recognized').onclick=()=>{const text=$('#lm-paste').value;addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);};
-$('#lm-snapshot').onclick=()=>{$('#lm-snapshot-status').textContent='';$('#lm-snapshot-dialog').showModal();};$('#lm-snapshot-close').onclick=()=>$('#lm-snapshot-dialog').close();
+$('#lm-snapshot').onclick=()=>{$('#lm-snapshot-status').textContent='';$('#lm-snapshot-dialog').showModal();snapBefore=null;clipboardImage().then(g=>{snapBefore=g?.key||null;}).catch(()=>{});$('#lm-snapshot-snip').focus();};
+// Snip a region: the computer's own snip (any screen, any window), then the image comes in from the clipboard when the
+// page is back in front (checked every 1.5 s while waiting), with Paste now, or with Ctrl+V. The clipboard is read when
+// Snapshot opens, so an image already there is not taken for the snip. Waits 3 minutes at most.
+let snip=null,snapBefore=null;
+const snipStamp=()=>new Date().toISOString().slice(0,19).replace(/[:T]/g,'-');
+function endSnip(){if(!snip)return;clearInterval(snip.timer);clearTimeout(snip.expire);snip=null;$('#lm-snip-banner').hidden=true;}
+async function checkSnip(){if(!snip||snip.busy||!document.hasFocus())return;snip.busy=true;try{const got=await clipboardImage();if(!got||got.key===snip.before)return;endSnip();notice('Snip received: drag around the schedule (and any custom items below it) to read it.');await queueFiles([new File([got.blob],`snip-${snipStamp()}.png`,{type:got.blob.type||'image/png'})]);}catch(e){if(!snip)notice(e.message,true);}finally{if(snip)snip.busy=false;}}
+$('#lm-snapshot-snip').onclick=()=>{const g=snipGuide();
+ if(g.launch){const a=document.createElement('a');a.href=g.launch;document.body.append(a);a.click();a.remove();} // first, while the click counts
+ $('#lm-snapshot-dialog').close();endSnip();
+ snip={before:snapBefore,busy:false,timer:setInterval(checkSnip,1500),expire:setTimeout(()=>{endSnip();notice('Snip timed out. Snapshot to try again, or press Ctrl+V.');},180000)};
+ $('#lm-snip-text').textContent=g.launch?`✂ Drag around the schedule on any screen (nothing opened? press ${g.keys}). It comes in here when you finish, or press Ctrl+V.`:`✂ Press ${g.keys}, drag around the schedule, then come back: it comes in here, or press Ctrl+V.`;
+ $('#lm-snip-banner').hidden=false;};
+$('#lm-snip-cancel').onclick=()=>{endSnip();notice('Snip cancelled.');};
+$('#lm-snip-paste').onclick=async()=>{if(!snip)return;snip.before=null;await checkSnip();if(snip)notice('No snip on the clipboard yet: finish the snip, or press Ctrl+V.',true);};
+window.addEventListener('focus',()=>setTimeout(checkSnip,250));
+$('#lm-snapshot-close').onclick=()=>$('#lm-snapshot-dialog').close();
 $('#lm-snapshot-upload').onclick=()=>{$('#lm-snapshot-dialog').close();$('#lm-image-file').click();};
 $('#lm-snapshot-paste').onclick=safe(async()=>{if(!navigator.clipboard?.read)throw new Error('Paste your screenshot with Ctrl+V or use Upload image.');const items=await navigator.clipboard.read();for(const item of items){const type=item.types.find(t=>t.startsWith('image/'));if(type){const file=new File([await item.getType(type)],'snapshot.png',{type});$('#lm-snapshot-dialog').close();await queueFiles([file]);return;}}throw new Error('No screenshot found. Copy an image first or use Upload image.');});
 $('#lm-snapshot-screen').onclick=safe(async()=>{$('#lm-snapshot-dialog').close();let file;try{file=await captureScreen();}catch(e){$('#lm-snapshot-status').textContent='';$('#lm-snapshot-dialog').showModal();throw new Error(captureError(e));}notice('Snapshot captured: drag around the schedule (and any custom items below it) to read it.');await queueFiles([file]);});
 $('#lm-image-file').onchange=safe(async e=>{const files=[...e.target.files];e.target.value='';await queueFiles(files);});
-document.addEventListener('paste',safe(async e=>{const f=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();if(f){e.preventDefault();await queueFiles([f]);}else if(!/INPUT|TEXTAREA/.test(e.target.tagName)&&e.clipboardData.getData('text/plain')){e.preventDefault();const text=e.clipboardData.getData('text/plain');importName='Clipboard';if(/[,\t]/.test(text))addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:'',cutList:true}));else addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);}}));
+document.addEventListener('paste',safe(async e=>{const f=[...e.clipboardData.items].find(i=>i.type.startsWith('image/'))?.getAsFile();if(f){e.preventDefault();endSnip();await queueFiles([f]);}else if(!/INPUT|TEXTAREA/.test(e.target.tagName)&&e.clipboardData.getData('text/plain')){e.preventDefault();const text=e.clipboardData.getData('text/plain');importName='Clipboard';if(/[,\t]/.test(text))addImport(L.rowsFromTable(L.parseDelimited(text),{panel:project.defaultPanel,url:'',cutList:true}));else addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);}}));
 document.querySelector('.lm-workspace').ondragover=e=>e.preventDefault();document.querySelector('.lm-workspace').ondrop=safe(async e=>{e.preventDefault();await queueFiles(e.dataTransfer.files);});
 $('#lm-logo-file').onchange=safe(async e=>{if(!e.target.files[0])return;const logo=await jpegLogo(e.target.files[0]);try{localStorage.setItem('cas-label-maker:preferred-logo',JSON.stringify(logo));}catch{}mutate(()=>{project.logo=logo;project.logoSource='custom';});e.target.value='';});$('#lm-default-logo').onclick=safe(async()=>{const logo=await defaultLogo();try{localStorage.removeItem('cas-label-maker:preferred-logo');}catch{}mutate(()=>{project.logo=logo;project.logoSource='default-cw';project.design.showLogo=true;});});
 $('#lm-filter').onchange=e=>{filter=e.target.value;page=0;render({table:false});};$('#lm-page').onchange=e=>{page=Number(e.target.value)-1;render({table:false});};
