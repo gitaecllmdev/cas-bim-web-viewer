@@ -60,7 +60,7 @@
 
 /* Dense rows keep every column visible; actions and overrides never stack below a field. */
 .lm-rows-head { flex-wrap:wrap;gap:6px; }.lm-rows-head h2 { margin-right:auto; }.lm-rows-head .lm-selection { margin:0;gap:3px; }
-.lm-table-wrap table { min-width:760px;table-layout:fixed; }.lm-table-wrap th:first-child { width:26px; }.lm-table-wrap th:nth-child(2) { width:72px; }.lm-table-wrap th:nth-child(3) { width:62px; }.lm-table-wrap th:nth-child(4) { width:52px; }.lm-table-wrap th:last-child { width:90px; }.lm-table-wrap .lm-extra input { min-width:0; }.lm-table-wrap th:first-child,.lm-table-wrap tr[data-context-row]>td:first-child { position:sticky;left:0;background:white;z-index:2; }.lm-table-wrap th:first-child { z-index:3;background:#edf2f6; }.lm-table-wrap th,.lm-table-wrap td { padding:2px 3px;vertical-align:middle; }.lm-table-wrap th { padding-block:5px; }
+.lm-table-wrap table { min-width:760px;table-layout:fixed; }.lm-table-wrap th:first-child { width:26px; }.lm-table-wrap th:nth-child(2) { width:72px; }.lm-table-wrap th:nth-child(3) { width:62px; }.lm-table-wrap th:nth-child(4) { width:52px; }.lm-table-wrap th:last-child { width:150px; } /* Duplicate, the divider, Delete */.lm-table-wrap .lm-extra input { min-width:0; }.lm-table-wrap th:first-child,.lm-table-wrap tr[data-context-row]>td:first-child { position:sticky;left:0;background:white;z-index:2; }.lm-table-wrap th:first-child { z-index:3;background:#edf2f6; }.lm-table-wrap th,.lm-table-wrap td { padding:2px 3px;vertical-align:middle; }.lm-table-wrap th { padding-block:5px; }
 .lm-table-wrap input:not([type=checkbox]) { flex:none;height:28px;min-height:28px;max-height:28px;padding:3px 5px;line-height:20px;border-radius:3px; }.lm-table-wrap input[type=number] { width:48px; }.lm-table-wrap input[type=checkbox] { width:16px;height:16px;margin:0;vertical-align:middle; }
 .lm-table-wrap td:first-child { text-align:center;width:28px; }.lm-table-wrap td:last-child { white-space:nowrap; }.lm-cell { position:relative; }.lm-cell.has-override input { padding-right:22px; }.lm-cell .lm-use-master { position:absolute;right:2px;top:2px;display:inline-flex;align-items:center;justify-content:center;height:24px;min-width:20px;padding:0;font-size:15px; }
 .lm-row-actions { display:flex;align-items:center;gap:2px;white-space:nowrap; }.lm-row-actions button { height:28px;line-height:20px;padding:2px 5px;font-size:11px; }.lm-row-actions button[data-copy] { color:#2468a8; }.lm-row-actions button[data-delete] { font-size:18px; }
@@ -110,3 +110,9 @@
 .lm-history-list li small { grid-column:1/-1;color:#888; }
 .lm-workspace.is-empty>.lm-history { max-width:900px;margin:12px auto 0; }
 @media(min-width:1001px) { .lm-workspace { grid-template-rows:auto 1fr; }.lm-source-panel { grid-column:1;grid-row:1; }.lm-history { grid-column:1;grid-row:2; }.lm-edit { grid-column:2;grid-row:1 / span 2; }.lm-preview { grid-column:3;grid-row:1 / span 2; } }
+/* Row actions: Duplicate (blue outline) and Delete (red trash) look different, with a divider between them. */
+.lm-row-copy { padding:2px 8px;font-size:12px;background:#eef4fb;color:#20548a;border:1px solid #b9cfe6;border-radius:4px;box-shadow:none;white-space:nowrap; }
+.lm-row-copy:hover { background:#dfeaf7; }
+.lm-row-sep { display:inline-block;width:1px;height:18px;margin:0 10px;background:#d9e2eb;vertical-align:middle; }
+.lm-row-delete { display:inline-flex;align-items:center;justify-content:center;width:26px;height:24px;padding:0;background:white;color:#b42318;border:1px solid #f1b4ad;border-radius:4px;box-shadow:none;vertical-align:middle; }
+.lm-row-delete:hover { background:#fdecea;border-color:#b42318; }

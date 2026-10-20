@@ -3540,7 +3540,7 @@ function openLabelMaker() {
         let dialog = document.getElementById('shop-label-maker');
         if (!dialog) {
             dialog = document.createElement('dialog'); dialog.id = 'shop-label-maker'; dialog.className = 'label-maker-dialog';
-            dialog.innerHTML = '<header><b>Panel Label Maker</b><button type="button" class="secondary small" data-label-close>Back to panel shops</button></header><iframe title="Panel Label Maker" src="about:blank"></iframe>';
+            dialog.innerHTML = '<header><b>Panel Label Maker</b><button type="button" class="secondary small" data-label-close>Back to panel shops</button></header><iframe title="Panel Label Maker" allow="display-capture; clipboard-read; clipboard-write" src="about:blank"></iframe>';
             document.body.append(dialog);
             dialog.querySelector('[data-label-close]').addEventListener('click', () => dialog.close());
             dialog.addEventListener('close', () => dialog.querySelector('iframe').src = 'about:blank');
