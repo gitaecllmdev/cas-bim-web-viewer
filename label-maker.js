@@ -182,6 +182,19 @@ $('#lm-snapshot-snip').onclick=()=>{const g=snipGuide();
  $('#lm-snip-text').textContent=g.launch?`✂ Drag around the schedule on any screen (nothing opened? press ${g.keys}). It comes in here when you finish, or press Ctrl+V.`:`✂ Press ${g.keys}, drag around the schedule, then come back: it comes in here, or press Ctrl+V.`;
  $('#lm-snip-banner').hidden=false;};
 $('#lm-snip-cancel').onclick=()=>{endSnip();notice('Snip cancelled.');};
+// Reset: a clear screen (the labels, the project fields and links, the source drawings and recognized text, the design
+// and label size, the filter and sheet), as a fresh page. The printed panels list (this browser's print history) stays.
+// One Undo step brings the labels back. Not in the Shop Generator's locked labels (they come from the shop).
+$('#lm-reset').disabled=locked;if(locked)$('#lm-reset').title='The labels come from Panel Shop Generator: close Labels there to start over.';
+$('#lm-reset').onclick=()=>{if(locked)return;if(!confirm('Reset the Label Maker?\n\nThis clears the screen: the labels, the project fields and links, the source drawings and the label design. The printed panels list stays.\n\nUndo brings the labels back.'))return;
+ endSnip();pendingImport=null;activeBatch=null;sourceViewer.batchPosition=null;
+ mutate(()=>{project=L.cleanProject();contexts=new Map();});
+ filter='';page=0;focusPanel='';importName='Pasted table';
+ if(sourceViewer.dialog.open)sourceViewer.dialog.close();sourceViewer.controller?.abort();sourceViewer.loaded=false;$('#lm-source-reopen').disabled=true;
+ $('#lm-recognized-edit').value='';$('#lm-ocr-text').textContent='';$('#lm-import-issues').textContent='';$('#lm-import-issues').hidden=true;
+ for(const d of document.querySelectorAll('dialog[open]'))d.close();
+ render({forceFields:true});notice('Reset: the screen is clear. The printed panels list is kept; Undo brings the labels back.');};
+
 $('#lm-snip-paste').onclick=async()=>{if(!snip)return;snip.before=null;await checkSnip();if(snip)notice('No snip on the clipboard yet: finish the snip, or press Ctrl+V.',true);};
 window.addEventListener('focus',()=>setTimeout(checkSnip,250));
 $('#lm-snapshot-close').onclick=()=>$('#lm-snapshot-dialog').close();
