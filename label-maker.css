@@ -69,3 +69,7 @@
 @media(max-width:700px) { .lm-table-wrap { max-height:calc(100dvh - 420px);min-height:180px; }.lm-row-actions button { height:32px; }.lm-table-wrap input:not([type=checkbox]) { height:30px;min-height:30px;max-height:30px; } }
 
 .lm-snapshot-actions { display:flex;gap:8px;flex-wrap:wrap;margin:16px 0; }.lm-embedded #lm-snapshot { display:none; }
+/* The label size, right under Edit design. */
+.lm-design-tools { display:flex;flex-direction:column;align-items:stretch;gap:4px;margin-left:auto; }
+.lm-stock { display:flex;flex-direction:column;gap:2px;font-size:11px;color:#617284; }
+.lm-preview .lm-section-head .lm-stock select { width:auto;max-width:260px;font-size:12px;padding:3px 6px; }

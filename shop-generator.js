@@ -10,7 +10,7 @@ import { reviewInfo, sourceInfo, labelReview } from './demos/06-shop-drawings/sh
 import { barPosition } from './demos/06-shop-drawings/quick-bar.mjs';
 import { topAt, topMin, underMin, underAt, frameWall, webOnRight } from './demos/common/framing.mjs';
 import { renderSheet, renderSheetPdf, renderSheetsPdf, renderSheetRegion, renderIsoView, partLines, lapLines, seatOf } from './demos/06-shop-drawings/sheet.mjs';
-import { projectFromShop, STOCK as LABEL_STOCK, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
+import { projectFromShop, STOCKS as LABEL_STOCKS, HANDOFF_KEY as LABEL_HANDOFF_KEY } from './demos/common/label-maker.mjs';
 import * as W from './demos/06-shop-drawings/workspace.mjs';
 import { sha256Hex } from './demos/common/sha256.mjs';
 import { thumbnailSvg } from './demos/06-shop-drawings/panels.mjs';
@@ -3428,7 +3428,7 @@ function floorTab(list) {
             <section class="sd-card"><h3>Shop drawing sheets (.pdf)</h3><p class="small">One sheet per panel, with a bookmark for each. Stock and purchasing information stays in the separate CSV downloads.</p>
                 <div class="acts"><button data-act="set-pdf" ${items.length?'':'disabled'}>Download shop sheets PDF (${items.length} sheet${items.length === 1 ? '' : 's'})</button>
                 ${skip.size ? `<button class="secondary" data-act="set-pdf-typ">One per typical (${items.length - skip.size})</button>` : ''}</div></section>
-            <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">The same Label Maker output: 2 &times; 4 inch labels, ${LABEL_STOCK.cols*LABEL_STOCK.rows} per Letter sheet. Panel, mark, project, notes and logo; QR code when a link is supplied. No cut length.</p><p class="small">${count} labels. Open the labels, enter drawing links if needed, then Download PDF.</p>
+            <section class="sd-card"><h3>Member labels (.pdf)</h3><p class="small">The same Label Maker output, on the label size chosen there: ${Object.values(LABEL_STOCKS).map(s => esc(s.name)).join(' or ')}. Panel, mark, project, notes and logo; QR code when a link is supplied. No cut length.</p><p class="small">${count} labels. Open the labels, enter drawing links if needed, then Download PDF.</p>
                 <div class="acts"><button data-act="sd-label-maker" ${count?'':'disabled'}>Open labels &amp; download PDF</button></div></section>
             <section class="sd-card"><h3>Framing config (.json)</h3><p class="small">All ${set.panels.length} panels, regardless of checks: resolved members, cut lists, issues and review states for CAS Revit.</p><button class="secondary" data-act="set-export-plan">Download framing config</button></section>
             <section class="sd-card"><h3>Editable project (.json)</h3><p class="small">All ${set.panels.length} panels and settings. Reopen with Import project to continue editing.</p><button class="secondary" data-act="set-export">Save project file</button></section>

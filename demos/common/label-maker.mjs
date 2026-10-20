@@ -1,5 +1,5 @@
 // Panel identification labels: shared by the standalone tool and the Shop Generator handoff.
-// Avery 5137: https://www.avery.com/templates/5137 (2 x 4 inches, ten per Letter sheet).
+// Avery 5160 (1 x 2 5/8 inches, thirty per Letter sheet; the default) or 5137 (2 x 4 inches, ten per sheet): STOCKS.
 // No framing arithmetic; quantities and review status come from the supplied cut list.
 import { qrEncode, qrRects } from './qr.mjs';
 import { textWidth, toPdfSheets } from '../06-shop-drawings/pdf.mjs';
@@ -7,9 +7,36 @@ import { csvText } from './table-export.mjs';
 
 export const HANDOFF_KEY = 'cas-label-maker:handoff';
 export const MAX_LABELS = 5000;
-export const STOCK = { pageW:8.5,pageH:11,cols:2,rows:5,w:4,h:2,left:0.15625,top:0.5,pitchX:4.1875,pitchY:2 };
-export const DEFAULT_DESIGN = { panelPt:34,markPt:40,notesPt:18,projectPt:7,showQr:true,showLogo:true,showNotes:true,numbered:false,startSlot:1,offsetXmm:0,offsetYmm:0 };
-export const DEFAULT_LAYOUT={panel:{x:1.155,y:.55-34/72,w:1.65,h:34/72},mark:{x:1.155,y:1.19-40/72,w:1.65,h:40/72},notes:{x:1.155,y:1.47-18/72,w:1.65,h:18/72},project:{x:.48,y:1.82-7/72,w:2.35,h:2.1*7/72},logo:{x:2.85,y:.88,w:1.03,h:1.03},qr:{x:.14,y:.49,w:.94,h:.94}};
+// Label stock, Letter sheets (inches): Avery 5137 (2 x 4, ten per sheet) and Avery 5160 / 8160 / 5960
+// (1 x 2 5/8, thirty per sheet: https://www.avery.com/templates/5160; the Shop Generator's member labels use it too).
+// Each has its own default layout and text sizes (a layout does not carry over from one size to another), where a
+// piece number and a review warning go, and its slots across then down.
+export const STOCKS = {
+    '5137': { id:'5137', name:'2" × 4" · 10 per sheet (Avery 5137)', pageW:8.5,pageH:11,cols:2,rows:5,w:4,h:2,left:0.15625,top:0.5,pitchX:4.1875,pitchY:2,
+        fonts:{panelPt:34,markPt:40,notesPt:18,projectPt:7}, piece:{x:3.7,y:.2,pt:7}, review:{x:1.655,y:1.67,w:2.35,pt:7},
+        layout:{panel:{x:1.155,y:.55-34/72,w:1.65,h:34/72},mark:{x:1.155,y:1.19-40/72,w:1.65,h:40/72},notes:{x:1.155,y:1.47-18/72,w:1.65,h:18/72},project:{x:.48,y:1.82-7/72,w:2.35,h:2.1*7/72},logo:{x:2.85,y:.88,w:1.03,h:1.03},qr:{x:.14,y:.49,w:.94,h:.94}} },
+    '5160': { id:'5160', name:'1" × 2 5/8" · 30 per sheet (Avery 5160)', pageW:8.5,pageH:11,cols:3,rows:10,w:2.625,h:1,left:0.1875,top:0.5,pitchX:2.75,pitchY:1,
+        fonts:{panelPt:14,markPt:22,notesPt:8,projectPt:5}, piece:{x:2.55,y:.95,pt:5}, review:{x:1.73,y:.96,w:1.6,pt:5},
+        layout:{panel:{x:.92,y:.06,w:1.62,h:14/72},mark:{x:.92,y:.27,w:1.12,h:22/72},notes:{x:.92,y:.6,w:1.12,h:8/72},project:{x:.92,y:.76,w:1.12,h:2.1*5/72},logo:{x:2.08,y:.33,w:.46,h:.46},qr:{x:.06,y:.1,w:.8,h:.8}} },
+};
+// New projects use Avery 5160 (the user's choice, 2026-10-20). A project saved before sizes were offered has a layout
+// but no stock: it was made on the 2 x 4 labels. Left with the 2 x 4 layout and text sizes as they came, it moves to
+// the default size; a design someone changed stays on 2 x 4 until another size is chosen.
+export const DEFAULT_STOCK = STOCKS['5160'];
+export const STOCK = STOCKS['5137']; // the 2 x 4 stock (projects saved before sizes were offered)
+const sameLayout = (a, b) => Object.keys(b).every(k => a?.[k] && ['x','y','w','h'].every(f => Math.abs(Number(a[k][f]) - b[k][f]) < 1e-6));
+const untouched = (d) => sameLayout(d.layout, STOCK.layout) && Object.entries(STOCK.fonts).every(([k, v]) => d[k] == null || Number(d[k]) === v);
+export const stockOf = (design) => STOCKS[design?.stock] || (design?.layout && !untouched(design) ? STOCK : DEFAULT_STOCK);
+// The size list, the default first.
+export const stockList = () => [DEFAULT_STOCK, ...Object.values(STOCKS).filter(s => s !== DEFAULT_STOCK)];
+export const perSheet = (stock) => stock.cols * stock.rows;
+export const DEFAULT_DESIGN = { stock:'5160',panelPt:14,markPt:22,notesPt:8,projectPt:5,showQr:true,showLogo:true,showNotes:true,numbered:false,startSlot:1,offsetXmm:0,offsetYmm:0 };
+export const DEFAULT_LAYOUT = STOCK.layout; // the 2 x 4 layout (older callers)
+// A design moved to another label size: that size's layout and text sizes, from its first slot.
+export function designForStock(design, id) {
+    const s = STOCKS[id] || DEFAULT_STOCK;
+    return { ...design, stock: s.id, ...s.fonts, layout: structuredClone(s.layout), startSlot: 1 };
+}
 export const FONT_KEYS={panel:'panelPt',mark:'markPt',notes:'notesPt',project:'projectPt'};
 export const skipDateMark=mark=>/DATE/i.test(String(mark||''));
 const str = v => String(v ?? '').trim();
@@ -17,13 +44,17 @@ const bounded = (v,lo,hi,fallback) => Number.isFinite(Number(v)) ? Math.max(lo,M
 const esc = v => String(v ?? '').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function cleanProject(value = {}) {
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Open a label project object.');
-    const d=value.design || {}, design={...DEFAULT_DESIGN};
-    for(const k of ['panelPt','markPt']) design[k]=bounded(d[k],5,72,design[k]);
-    design.projectPt=bounded(d.projectPt,5,72,7);
-    design.notesPt=bounded(d.notesPt,6,72,18);
-    design.layout={};for(const [key,def] of Object.entries(DEFAULT_LAYOUT)){const v=d.layout?.[key]||{},w=bounded(v.w,.12,key==='qr'?2:4,def.w),h=FONT_KEYS[key]?Math.min(2,design[FONT_KEYS[key]]/72*(key==='project'?2.1:1)):key==='qr'?w:bounded(v.h,.12,2,def.h);design.layout[key]={x:bounded(v.x,0,4-w,def.x),y:bounded(v.y,0,Math.max(0,2-h),def.y),w,h};}
+    const given=value.design || {}, design={...DEFAULT_DESIGN}, s=stockOf(given);
+    // An unchanged 2 x 4 design moved to the default size: that size's own layout, text sizes and first slot.
+    const d=!STOCKS[given.stock] && given.layout && s!==STOCK ? {...given,layout:undefined,panelPt:undefined,markPt:undefined,notesPt:undefined,projectPt:undefined,startSlot:undefined} : given;
+    design.stock=s.id;
+    for(const k of ['panelPt','markPt']) design[k]=bounded(d[k],5,72,s.fonts[k]);
+    design.projectPt=bounded(d.projectPt,5,72,s.fonts.projectPt);
+    design.notesPt=bounded(d.notesPt,6,72,s.fonts.notesPt);
+    // Each element inside the label (its size's own layout when none is given).
+    design.layout={};for(const [key,def] of Object.entries(s.layout)){const v=d.layout?.[key]||{},w=bounded(v.w,.12,key==='qr'?Math.min(2,s.h):s.w,def.w),h=FONT_KEYS[key]?Math.min(s.h,design[FONT_KEYS[key]]/72*(key==='project'?2.1:1)):key==='qr'?w:bounded(v.h,.12,s.h,def.h);design.layout[key]={x:bounded(v.x,0,s.w-w,def.x),y:bounded(v.y,0,Math.max(0,s.h-h),def.y),w,h};}
     for(const k of ['showQr','showLogo','showNotes','numbered']) if(typeof d[k]==='boolean')design[k]=d[k];
-    design.startSlot=Math.round(bounded(d.startSlot,1,10,1));
+    design.startSlot=Math.round(bounded(d.startSlot,1,perSheet(s),1));
     for(const k of ['offsetXmm','offsetYmm'])design[k]=bounded(d[k],-3,3,0);
     if(value.rows && (!Array.isArray(value.rows)||value.rows.length>5000))throw new Error('Use at most 5,000 table rows.');
     const rows=(value.rows || []).map(r=>({panel:str(r.panel).slice(0,100),mark:str(r.mark).slice(0,100),qty:Number(r.qty ?? 1),
@@ -78,7 +109,7 @@ export function validateProject(project) {
     });
     if(count>MAX_LABELS)errors.push(`This batch has ${count.toLocaleString()} labels; split it into batches of at most ${MAX_LABELS.toLocaleString()}.`);
     if(project.design.showQr && project.rows.some(r=>!rowValue(r,project).url))warnings.push('Some labels have no QR link; their QR area will be blank.');
-    return {errors:[...new Set(errors)],warnings:[...new Set(warnings)],count,pages:count?Math.ceil((count+project.design.startSlot-1)/10):0};
+    return {errors:[...new Set(errors)],warnings:[...new Set(warnings)],count,pages:count?Math.ceil((count+project.design.startSlot-1)/perSheet(stockOf(project.design))):0};
 }
 export function expandRows(project) {
     const state=validateProject(project);
@@ -163,15 +194,15 @@ function footerLines(s,pt,w) {
     return lines;
 }
 export function labelPageOps(project,pieces,pageIndex=0,{guides=false,qrCache=new Map()}={}) {
-    const {design:d}=project,ops=[],skip=d.startSlot-1,l=d.layout||DEFAULT_LAYOUT;
-    for(let slot=0;slot<10;slot++) {
-        const x=STOCK.left+(slot%2)*STOCK.pitchX+d.offsetXmm/25.4,y=STOCK.top+Math.floor(slot/2)*2+d.offsetYmm/25.4;
-        if(guides)ops.push(rect(x,y,4,2,{fill:'none',stroke:'#bbbbbb',width:.004}));
-        const p=pieces[pageIndex*10+slot-skip];if(!p)continue;
+    const {design:d}=project,ops=[],skip=d.startSlot-1,s=stockOf(d),per=perSheet(s),l=d.layout||s.layout;
+    for(let slot=0;slot<per;slot++) { // across, then down
+        const x=s.left+(slot%s.cols)*s.pitchX+d.offsetXmm/25.4,y=s.top+Math.floor(slot/s.cols)*s.pitchY+d.offsetYmm/25.4;
+        if(guides)ops.push(rect(x,y,s.w,s.h,{fill:'none',stroke:'#bbbbbb',width:.004}));
+        const p=pieces[pageIndex*per+slot-skip];if(!p)continue;
         ops.push(text(x+l.panel.x+l.panel.w/2,y+l.panel.y+d.panelPt/72,p.panel,fitted(p.panel,d.panelPt,l.panel.w)));
         ops.push(text(x+l.mark.x+l.mark.w/2,y+l.mark.y+d.markPt/72,p.mark,fitted(p.mark,d.markPt,l.mark.w)));
         if(d.showNotes && p.notes)ops.push(text(x+l.notes.x+l.notes.w/2,y+l.notes.y+(d.notesPt||18)/72,p.notes,fitted(p.notes,d.notesPt||18,l.notes.w)));
-        if(d.numbered)ops.push(text(x+3.7,y+.2,`${p.piece}/${p.pieces}`,7,{anchor:'end',fill:'#555555'}));
+        if(d.numbered)ops.push(text(x+s.piece.x,y+s.piece.y,`${p.piece}/${p.pieces}`,s.piece.pt,{anchor:'end',fill:'#555555'}));
         if(d.showQr && p.url) {
             if(!qrCache.has(p.url)){const q=qrEncode(p.url);qrCache.set(p.url,{q,rects:qrRects(q)});}
             const {q,rects}=qrCache.get(p.url),size=l.qr.w,m=size/(q.size+8),qx=x+l.qr.x,qy=y+l.qr.y;
@@ -180,7 +211,7 @@ export function labelPageOps(project,pieces,pageIndex=0,{guides=false,qrCache=ne
         }
         if(d.showLogo && project.logo){const scale=Math.min(l.logo.w/project.logo.px[0],l.logo.h/project.logo.px[1]),w=project.logo.px[0]*scale,h=project.logo.px[1]*scale;
             ops.push({t:'image',id:'logo',href:project.logo.href,px:project.logo.px,x:x+l.logo.x+(l.logo.w-w)/2,y:y+l.logo.y+(l.logo.h-h)/2,w,h});}
-        if(p.review)ops.push(text(x+1.655,y+1.67,p.review,fitted(p.review,7,2.35),{fill:'#b00020',weight:'bold'}));
+        if(p.review)ops.push(text(x+s.review.x,y+s.review.y,p.review,fitted(p.review,s.review.pt,s.review.w),{fill:'#b00020',weight:'bold'}));
         let pt=d.projectPt,shown=footerLines(p.project,pt,l.project.w);
         for(let i=0;i<4&&shown.length*pt/72*1.1>l.project.h;i++){pt=Math.min(pt,l.project.h*72/(shown.length*1.1));shown=footerLines(p.project,pt,l.project.w);}
         shown.forEach((ln,k)=>ops.push(text(x+l.project.x+l.project.w/2,y+l.project.y+pt/72+k*pt/72*1.1,ln,fitted(ln,pt,l.project.w),{fill:'#888888'})));
