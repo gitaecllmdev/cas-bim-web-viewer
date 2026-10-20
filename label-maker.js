@@ -66,7 +66,6 @@ function commitImport(batch,replace){
 }
 
 function download(bytes,name,type){if(!bytes?.length)throw new Error('The print file was empty. Select valid label rows first.');const url=URL.createObjectURL(new Blob([bytes],{type})),a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),30000);}
-const filename=()=>(project.project||'panel-labels').replace(/[^a-z0-9_.-]+/gi,'-').slice(0,80);
 const printName=(kind)=>L.printFileName(visibleProject(),{kind}); // project, panel numbers, kind, date last
 async function importTable(file) {
 
@@ -165,7 +164,7 @@ $('#lm-context-panel').onchange=e=>{focusPanel=e.target.value;renderContext();};
 $('#lm-context-image').onclick=()=>{let d=document.querySelector('#lm-context-dialog');if(!d){d=document.createElement('dialog');d.id='lm-context-dialog';d.innerHTML='<button class="secondary">Close source</button><img style="display:block;max-width:90vw;max-height:85dvh">';document.body.append(d);d.querySelector('button').onclick=()=>d.close();}d.querySelector('img').src=$('#lm-context-image').src;d.showModal();};
 $('#lm-recognized-read').onclick=()=>{if(locked)return;const text=$('#lm-recognized-edit').value,panel=panelFromText(text)||focusPanel||project.defaultPanel;addImport(L.rowsFromOcr(text,{panel,url:''}),text);};
 $('#lm-open').onclick=()=>$('#lm-project-file').click();$('#lm-project-file').onchange=safe(async e=>{if(locked)throw new Error('Resolved cut-list fields are locked.');const f=e.target.files[0];if(!f)return;const v=JSON.parse(await f.text());if(v.format!=='cas-label-project'||v.version!==1)throw new Error('Use a version 1 Label Maker project.');mutate(()=>project=L.cleanProject({...v,rows:(v.rows||[]).filter(r=>!L.skipDateMark(r.mark))}));contexts.clear();renderContext();e.target.value='';if(!project.logo&&project.design.showLogo){await ensureLogo();}});
-$('#lm-save').onclick=()=>download(JSON.stringify(project,null,2),filename()+'.labels.json','application/json');
+$('#lm-save').onclick=()=>download(JSON.stringify(project,null,2),L.printFileName(project,{kind:'labels'})+'.labels.json','application/json'); // the PDF's name: project, panels, date
 $('#lm-import').onclick=()=>$('#lm-data-file').click();$('#lm-data-file').onchange=safe(async e=>{const files=[...e.target.files];e.target.value='';await queueFiles(files);});
 $('#lm-read-paste').onclick=safe(()=>addImport(L.rowsFromTable(L.parseDelimited($('#lm-paste').value),{panel:project.defaultPanel,url:'',cutList:$('#lm-cutlist').checked})));
 $('#lm-paste-recognized').onclick=()=>{const text=$('#lm-paste').value;addImport(L.rowsFromOcr(text,{panel:panelFromText(text)||project.defaultPanel,url:''}),text);};
