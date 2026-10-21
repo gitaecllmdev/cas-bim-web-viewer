@@ -46,7 +46,7 @@ export class LabelSourceViewer {
     }
     status(text){this.$('#ls-progress').textContent=text;}
     async open(file){
-        if(!file)return;if(file.size>30*1024*1024)throw new Error('Use an image or PDF smaller than 30 MB.');
+        if(!file)return;if(file.size>100*1024*1024)throw new Error('Use an image or PDF no larger than 100 MB.');
         this.controller?.abort();this.finishPick(null);const job=++this.job;this.regions=[];this.items=[];this.bytes=null;this.page=this.pages=1;this.draft=this.start=null;this.loading=true;this.busy=false;this.loaded=false;this.$('#ls-repick').hidden=true;this.canvas.width=this.canvas.height=0;this.paint();
         this.fileName=file.name||'Pasted screenshot';this.$('#ls-file').textContent=(this.batchPosition?`File ${this.batchPosition.index} of ${this.batchPosition.total} - `:'')+this.fileName;this.dialog.showModal();this.status('Loading drawing…');
         try{
