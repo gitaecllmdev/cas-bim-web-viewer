@@ -21,3 +21,13 @@
     .model-pane { height: 46vh; resize: none; }
     .model-legend { display: none; }
 }
+
+/* Walls meeting a panel (junctions.mjs): context only, like grids */
+.sk-junction { pointer-events: visiblePainted; }
+.sk-junction rect { fill: rgba(0, 120, 140, 0.10); stroke: none; }
+.sk-junction line, .sk-junction path { stroke: #00788c; stroke-width: 1.2px; stroke-dasharray: 6 3; fill: none; vector-effect: non-scaling-stroke; }
+.sk-junction.butts path { stroke-dasharray: none; stroke-width: 1.6px; }
+.sk-junction-t { fill: #00606f; font-weight: 600; }
+.jx-list { list-style: none; margin: 6px 0; padding: 0; display: grid; gap: 4px; }
+.jx-list li { font-size: 0.86rem; }
+.jx-list li b { display: inline-block; min-width: 1.4em; color: #00606f; }

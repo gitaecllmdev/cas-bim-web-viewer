@@ -27,6 +27,7 @@ import * as R from './demos/06-shop-drawings/opening-rules.mjs';
 import * as MAN from './demos/06-shop-drawings/manual.mjs';
 import * as CUT from './demos/06-shop-drawings/cutlist-types.mjs';
 import * as CL from './demos/06-shop-drawings/context-lines.mjs';
+import * as JX from './demos/06-shop-drawings/junctions.mjs';
 import * as OC from './demos/06-shop-drawings/opening-context.mjs';
 import * as OP from './demos/06-shop-drawings/opening-profiles.mjs';
 import * as ST from './demos/06-shop-drawings/stock.mjs';
@@ -365,6 +366,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'ctx-grid-del': () => contextEdit(c => { c.grids.splice(i, 1); }),
         'ctx-model': () => { const m = CL.modelContext(set, p); if (!m) return; p.context = { show: true, levels: { bottom: m.levels.bottom, top: m.levels.top }, grids: m.grids }; renderContextSec(); fit(); changed(); notice('Levels and grids from the model.'); },
         'ctx-toggle': () => contextEdit(c => { c.show = !c.show; }),
+        'jx-open': () => { const id = b.dataset.v; if (set.panels.some(x => String(x.id) === id)) openPanel(set.panels.find(x => String(x.id) === id).id); },
         'man-step': () => { manStep = Number(b.dataset.v); renderWorkspace(); },
         'man-type-preview': () => typePreview(b.dataset.key),
         'man-type-apply': () => typeApply(),
@@ -580,7 +582,7 @@ function renderAll(fromHistory = false) {
     syncModel();
     if (!set.panels.length) { renderEmpty(); return; }
     leaveEmpty();
-    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet(); renderLayoutSec(); renderContextSec();
+    renderPanel(); renderElevHead(); renderCore(); renderTools(); renderShapeTable(); renderCatalogue(); renderChips(); renderDatalists(); renderSet(); renderLayoutSec(); renderContextSec(); renderJunctionsSec();
     fit(); refresh(true);
 }
 let refreshTimer = 0;
@@ -923,6 +925,7 @@ function renderSketch() {
         for (const [x, h] of top ? top.slice(1, -1) : []) parts.push(t(x, Y(h) - fs * 0.7, editDimension(h), { cls: 'sk-dim-t' }));
     }
     if (tool !== 'perimeter' && valid) parts.push(contextLayer(p, L, H, top, fs, t, Y));
+    if (tool !== 'perimeter' && valid) parts.push(junctionLayer(p, L, H, top, fs, t, Y));
     // Where the studs will be: their centerlines (side A), cripples as short ones.
     if (tool !== 'perimeter' && valid) parts.push(centerlines(p, H, top));
     // Openings.
@@ -2747,6 +2750,47 @@ function contextLayer(p, L, H, top, fs, t, Y) {
     for (const g of ctx.grids) {
         const r = fs * 0.95, yb = Y(hi) - fs * 1.6 - r;
         out.push(`<g class="sk-gridline"><line x1="${g.xIn}" y1="${Y(0) + fs}" x2="${g.xIn}" y2="${yb + r}"/><circle cx="${g.xIn}" cy="${yb}" r="${r}"/>${t(g.xIn, yb + r * 0.38, g.name, { cls: 'sk-grid-t', size: fs * 0.95 })}<title>${esc(`Grid ${g.name}: ${editDimension(g.xIn)} from the left end`)}</title></g>`);
+    }
+    return out.join('');
+}
+// --- Walls meeting this panel (junctions.mjs): tees and corners from the set's other exported walls; never a member ---
+// Shown per viewer (this browser), not saved with the panel: it is read from the model every time.
+const JX_KEY = 'cas-batchsheets:junctions';
+let showJunctions = load(JX_KEY, true) !== false;
+function renderJunctionsSec() {
+    const p = cur(), box = $('#junctions-sec');
+    if (!p || !box) return;
+    const found = p.revit ? JX.wallJunctions(set, p) : [];
+    $('#junctions-sum').textContent = found.length ? `Walls meeting it (${found.length})` : 'Walls meeting it';
+    if (!p.revit) { box.innerHTML = '<p class="muted small">Only for walls exported from the model: their location lines show where other walls meet them.</p>'; return; }
+    const at = (j) => (j.role === 'through' ? `${editDimension(j.fromIn)} to ${editDimension(j.toIn)} from the left end` : `at the ${j.end} end`);
+    box.innerHTML = `<label class="fd-check"><input type="checkbox" data-jx-show ${showJunctions ? 'checked' : ''}> Show them in the sketch</label>
+        ${found.length ? `<ul class="jx-list">${found.map(j => `<li class="jx-${j.kind} jx-${j.role}"><b>${j.kind === 'corner' ? 'L' : 'T'}</b> ${esc(j.text)} <small class="muted">${esc(at(j))}</small>
+            ${j.other.id != null ? `<button class="link small" data-act="jx-open" data-v="${esc(j.other.id)}" title="Open ${esc(j.other.mark)}">Open</button>` : ''}</li>`).join('')}</ul>`
+            : '<p class="muted small">No other exported wall of this level meets it.</p>'}
+        <p class="muted small">Context only: nothing is added to the framing. ${esc(JX.APPROXIMATE)} At a corner the longer wall runs through.</p>`;
+}
+main.addEventListener('change', (e) => {
+    if (!e.target.matches?.('[data-jx-show]')) return;
+    showJunctions = e.target.checked; store(JX_KEY, showJunctions); renderSketch();
+});
+// The sketch's layer: a band where a wall meets a face (its faces, approximately), named under the panel; an arrow at an
+// end that butts into another wall.
+function junctionLayer(p, L, H, top, fs, t, Y) {
+    if (!showJunctions || !p.revit) return '';
+    const hi = top ? Math.max(...top.map(q => q[1])) : H, out = [];
+    for (const j of JX.wallJunctions(set, p)) {
+        const title = `<title>${esc(`${j.text} (${j.role === 'through' ? `${editDimension(j.fromIn)} to ${editDimension(j.toIn)} from the left end` : `${j.end} end`}). Context only; approximate.`)}</title>`;
+        if (j.role === 'through') {
+            // The band is at least visible on a long wall (centered); the dashed lines stay on the wall's faces.
+            const mid = (j.fromIn + j.toIn) / 2, w = Math.max(j.toIn - j.fromIn, fs * 0.3);
+            out.push(`<g class="sk-junction ${j.kind}"><rect x="${mid - w / 2}" y="${Y(hi)}" width="${w}" height="${hi}"/><line x1="${j.fromIn}" y1="${Y(0)}" x2="${j.fromIn}" y2="${Y(hi)}"/><line x1="${j.toIn}" y1="${Y(0)}" x2="${j.toIn}" y2="${Y(hi)}"/>
+                ${t(mid, Y(0) + fs * 3.2, `${j.other.mark} (${j.side})`, { cls: 'sk-junction-t', size: fs * 0.8 })}${title}</g>`);
+        } else {
+            const x = j.end === 'left' ? 0 : L, d = j.end === 'left' ? -1 : 1, y = Y(Math.min(hi, H) / 2);
+            out.push(`<g class="sk-junction butts"><path d="M${x} ${y} l${d * fs * 1.6} 0 m${-d * fs * 0.6} ${-fs * 0.5} l${d * fs * 0.6} ${fs * 0.5} l${-d * fs * 0.6} ${fs * 0.5}"/>
+                ${t(x + d * fs * 2, y - fs * 0.6, j.other.mark, { a: j.end === 'left' ? 'end' : 'start', cls: 'sk-junction-t', size: fs * 0.8 })}${title}</g>`);
+        }
     }
     return out.join('');
 }
