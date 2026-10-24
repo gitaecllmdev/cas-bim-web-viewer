@@ -112,6 +112,7 @@ main.addEventListener('keydown', e => {
 }, true);
 const typing = new Set(); // member cards showing a box to type a size in
 const cur = () => set.panels.find(p => p.id === set.current) || set.panels[0];
+let page = 'overview', pushedEdit = false; // the page shown (two pages: the overview and the panel editor, below)
 const sketchControls=new WallSketchControls({root:main,current:cur,layout:()=>layoutA(),notice,format:editDimension,parse:parseDimension,perimeter:()=>peri,redraw:()=>{renderSketch();renderHint();},dimensionFormat:()=>dimensionFormat,selectedEdge:()=>sketchEdge?.panelId===cur()?.id?sketchEdge.key:null,
     change:(next,label)=>{historyHint={label};replacePanel(next);changed();renderAll();},selectMember:key=>{const record=current.plan?.members.find(m=>m.memberKey===key||m.memberKey.startsWith(key+':'));if(record)selectTarget({kind:'member',key:record.memberKey});}});
 const studName = (m) => G.parseMember(m.stud)?.name || m.stud;
@@ -410,7 +411,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         'sd-close': () => setDialog().close(),
         'sd-tab': () => { setTab = b.dataset.v; renderSetDialog(); setDialog().querySelector('[role=tab][aria-selected=true]')?.focus(); },
         'sd-csv': () => setCsv(b.dataset.v),
-        'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); },
+        'sd-filter': () => { sdFilter = b.dataset.v; renderSetDialog(); renderOverview(); },
         'fs-apply': () => applyFramingSettings(),
         'fs-reset': () => { fsDraft = null; renderSetDialog(); },
         'fs-source': () => {
@@ -420,7 +421,7 @@ document.addEventListener('click', (e) => { // the title bar's buttons too
         },
         'sd-labels': () => openLabelMaker(),
         'sd-label-maker': () => openLabelMaker(),
-        'sd-open': () => { setDialog().close(); openPanel(b.dataset.id); },
+        'sd-open': () => { if (setDialog().open) setDialog().close(); editPanel(b.dataset.id); },
         'sd-rules': () => rulesOnChecked(),
         'set-check-all': () => { set.panels.forEach(x => checked.add(x.id)); renderSet(); },
         'set-check-none': () => { checked.clear(); renderSet(); },
@@ -522,13 +523,14 @@ function saveTemplate(p) {
     store(KEYS.templates, templates);
     notice(`Template "${name}" saved: + New panel ▾ starts a panel from it (its shape, openings, members and layout; not the model's link).`);
 }
-function openPanel(id) { set.current = id; sel = null; ask = null; selection = W.NONE; stylePending = null; schChecked = new Set(); schPick = null; main.classList.remove('nav-open'); setTool('select', false); renderAll(); }
+function openPanel(id) { set.current = id; sel = null; ask = null; selection = W.NONE; stylePending = null; schChecked = new Set(); schPick = null; main.classList.remove('nav-open'); setTool('select', false); renderAll(); if (page === 'edit') history.replaceState(null, '', editUrl()); }
 function addPanel(panel) {
     set.panels.push(panel);
     set.current = panel.id;
     sel = null; ask = null;
     selection = W.NONE;
     renderAll();
+    showPage('edit');
     notice(`${panel.mark} added at the end of the list. Its shape and members follow the panel before it: type a name over its mark, change what differs.`);
     $('#set-card .nav-item.on')?.scrollIntoView({ block: 'nearest' });
     renameFocus();
@@ -3084,6 +3086,7 @@ document.addEventListener('keydown', event => {
 // --- Empty project ---------------------------------------------------------------------------------------------------
 function renderEmpty() {
     main.classList.add('ws-is-empty');
+    if (page === 'edit') showPage('overview', { push: false });
     selection = W.NONE; current = { panel: null, plan: null, layout: null, errors: [], notes: [] };
     renderSet();
     for (const v of main.querySelectorAll('.view')) v.hidden = true;
@@ -3339,7 +3342,7 @@ function startModel(host, msg) {
 function pickWall(id, { additive }) {
     if (!id) return;
     if (additive) { if (checked.has(id)) checked.delete(id); else checked.add(id); renderSet(); return; }
-    if (cur()?.id !== id) openPanel(id);
+    if (page === 'overview') editPanel(id); else if (cur()?.id !== id) openPanel(id);
 }
 function hoverWall(h) {
     const tip = document.getElementById('model-tip'); if (!tip) return;
@@ -3386,6 +3389,7 @@ let navQuery = '';
 function renderSet() {
     const box = $('#set-card'), toggle = main.querySelector('.nav-toggle');
     if (toggle) toggle.textContent = `◧ Panels (${set.panels.length})${cur() ? ` · ${cur().mark}` : ''}`;
+    const crumb = document.getElementById('crumb-mark'); if (crumb) crumb.textContent = cur()?.mark || '';
     const groups = [...new Set(set.panels.map(p => p.group || ''))].sort();
     const q = navQuery.trim().toLowerCase();
     const shown = set.panels.filter(p => !q || [p.mark, p.group, p.wallType, p.level].join(' ').toLowerCase().includes(q));
@@ -3411,8 +3415,7 @@ function renderSet() {
         <div id="set-actions" class="nav-actions"></div>
         <div class="nav-actions"><button class="secondary" data-act="set-open" title="Every panel at a glance, the set's cut list and stock, labels and the set PDF">Set overview, stock, labels</button></div>` : '<p class="nav-empty muted">No panels yet.</p>'}
         <details class="nav-project" data-nav-project ${projectOpen ? 'open' : ''}><summary>Project details</summary><div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
-            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div></details>
-        ${set.panels.length ? '<section id="nav-export" class="nav-export" aria-labelledby="nav-export-title"></section>' : ''}`;
+            ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div></details>`;
     renderSetActions();
     restoreFocus(box, fx);
 }
@@ -3437,6 +3440,7 @@ function typBadge(p, groups) {
 }
 function renderSetActions() {
     syncModel();
+    renderOverview();
     const el = main.querySelector('#set-actions');
     if (!el) return;
     const some = checked.size > 0;
@@ -3446,7 +3450,7 @@ function renderSetActions() {
     renderExportActions();
 }
 function renderExportActions() {
-    const el = main.querySelector('#nav-export'); if (!el) return;
+    const el = main.querySelector('#ov-export'); if (!el) return;
     const list = chosen(), { items, skipped } = setItems(list), p = cur();
     const scope = checked.size ? `${list.length} checked panel${list.length===1?'':'s'}` : `All ${list.length} panel${list.length===1?'':'s'}`;
     el.innerHTML = `<h3 id="nav-export-title">Export &amp; print</h3><p class="export-help">Download sheets here. Open the PDF to print at <b>100% / actual size</b>.</p>
@@ -3957,11 +3961,81 @@ function openLinkedPanel() {
     } catch { notice('This link\'s panel could not be read.', true); }
 }
 
+// --- Two pages: the overview (home) and the panel editor -----------------------------------------------------------------
+// One document, so the set, undo and the saved state stay one; the address says which page (#edit=<panel id>), so the
+// browser's Back returns to the overview. The overview: the project, the model's walls, every panel's state, export and
+// print. The editor: one panel's views and properties, the panel list beside them; Save & close returns to the overview.
+const editUrl = () => `${location.pathname}${location.search}#edit=${encodeURIComponent(cur()?.id ?? '')}`;
+function showPage(next, { push = true } = {}) {
+    if (next === 'edit' && !cur()) next = 'overview';
+    const turned = next !== page;
+    if (turned && next === 'edit') pushedEdit = push;
+    if (next === 'overview') pushedEdit = false;
+    page = next; document.body.dataset.page = page;
+    const url = page === 'edit' ? editUrl() : location.pathname + location.search;
+    if (url !== location.pathname + location.search + location.hash) history[push && turned ? 'pushState' : 'replaceState'](null, '', url);
+    if (page === 'overview') { syncModel(); renderOverview(); renderExportActions(); }
+    else if (turned) { applyPrefs(); renderSet(); refresh(true); }
+    if (turned) window.scrollTo(0, 0);
+}
+function fromAddress() {
+    if (location.hash.startsWith('#p=')) return; // a panel link: openLinkedPanel's
+    const m = /^#edit=(.+)$/.exec(location.hash), id = m ? decodeURIComponent(m[1]) : null;
+    if (id && set.panels.some(p => p.id === id)) { if (cur()?.id !== id) openPanel(id); showPage('edit', { push: false }); }
+    else showPage('overview', { push: false });
+}
+function editPanel(id) { if (cur()?.id !== id) openPanel(id); showPage('edit'); }
+function flushSave() { clearTimeout(saveTimer); store(KEYS.set, { ...set, current: cur()?.id ?? null }); }
+function saveAndClose() {
+    const p = cur();
+    flushSave();
+    if (pushedEdit) history.back(); else showPage('overview'); // Back to the overview it came from, or to a new one
+    if (p) notice(`${p.mark} is saved in this browser. Save project writes the file to keep or share.`);
+}
+function renderOverview() {
+    const sched = document.getElementById('ov-schedule'), head = document.getElementById('ov-head'), proj = document.getElementById('ov-project');
+    if (!sched || page !== 'overview') return;
+    const src = set.source || {}, n = set.panels.length, when = src.exportedAt ? new Date(src.exportedAt) : null;
+    head.innerHTML = `<div class="ov-title"><p class="ov-eyebrow">Project${src.document ? ` · ${esc(src.document)}` : ''}</p><h1 id="ov-h">${esc(set.project || 'Untitled set')}</h1>
+        <p class="ov-lede">${n ? `${n} panel${n === 1 ? '' : 's'}${when && !isNaN(when) ? ` from the model export of ${esc(when.toLocaleDateString())}` : ''}. Open a panel (or click its wall) to edit it; check panels to print or change several at once.`
+            : 'No panels yet: import a Revit wall export, or add a panel and draw it.'}</p></div><div class="ov-figures" id="ov-figures"></div>`;
+    const fx = focusOf(proj);
+    proj.innerHTML = `<h2 class="ov-strip-head">Project</h2><div class="fields">${field('Project', 'set.project', set.project, { r: 'project', list: 'project', ph: 'Project name' })}
+        ${field('Drawn by', 'set.drawnBy', set.drawnBy, { r: 'drawnBy', list: 'drawnBy', ph: 'Your name' })}</div>`;
+    restoreFocus(proj, fx);
+    if (!n) {
+        sched.innerHTML = `<div class="ov-empty"><p>Import a model's walls (a Revit wall export) or a project file saved here before, or start a panel from scratch.</p>
+            <div class="row"><button class="ov-go" data-act="set-import">Import project</button><button class="secondary" data-act="new">+ New panel</button></div></div>`;
+        const ex = document.getElementById('ov-export'); if (ex) ex.innerHTML = '';
+        return;
+    }
+    const top = sched.querySelector('.ov-table-wrap')?.scrollTop || 0, sfx = focusOf(sched);
+    const html = overviewTab(), at = html.lastIndexOf('<table');
+    sched.innerHTML = `${html.slice(0, at)}<div class="ov-table-wrap">${html.slice(at)}</div>`;
+    sched.querySelector('.ov-table-wrap').scrollTop = top;
+    restoreFocus(sched, sfx);
+    const stats = sched.querySelector('.sd-stats'); if (stats) document.getElementById('ov-figures').append(stats);
+}
+document.addEventListener('click', (e) => {
+    const go = e.target.closest('[data-go]');
+    if (go) { if (go.dataset.go === 'close') saveAndClose(); else showPage(go.dataset.go); return; }
+    const row = e.target.closest('#ov-schedule tbody tr');
+    if (row && !e.target.closest('input, button, select, a, label')) { const open = row.querySelector('[data-act="sd-open"]'); if (open) editPanel(open.dataset.id); }
+});
+main.addEventListener('change', (e) => {
+    if (!e.target.matches('#ov-schedule [data-sd-all]')) return;
+    for (const box of main.querySelectorAll('#ov-schedule [data-check]')) e.target.checked ? checked.add(box.dataset.check) : checked.delete(box.dataset.check);
+    renderSet();
+});
+window.addEventListener('popstate', fromAddress);
+window.addEventListener('hashchange', () => { if (!location.hash.startsWith('#p=')) fromAddress(); });
+
 // --- Start ----------------------------------------------------------------------------------------------------------------
 // The site's views (hits.js): this visit counted (once per 30 minutes a browser), the count in the title bar.
 siteHits().then(h => mountHits(document.getElementById('site-hits'), h, { compact: true })).catch(() => {});
+const linkedAtStart = location.hash.startsWith('#p=');
 openLinkedPanel();
-window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p=')) { openLinkedPanel(); sel = null; ask = null; renderAll(); } }); // a link pasted into this tab
+window.addEventListener('hashchange', () => { if (location.hash.startsWith('#p=')) { openLinkedPanel(); sel = null; ask = null; renderAll(); showPage('edit', { push: false }); } }); // a link pasted into this tab
 fetch(LOGO_URL).then(r => (r.ok ? r.blob() : null)).then(b => b && new Promise(res => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.readAsDataURL(b); }))
     .then(href => { logoHref = href || null; renderPreview(); }).catch(() => {});
 // The workspace's own clicks and keys: views, cut list rows, issues and their actions, members in the views.
@@ -4008,6 +4082,7 @@ main.addEventListener('keydown', (e) => {
 main.addEventListener('toggle', (e) => { const d = e.target; if (d.matches?.('.insp-sec')) { prefs.sections[d.dataset.sec] = d.open; storePrefs(); } }, true);
 applyPrefs();
 renderAll();
+if (linkedAtStart) showPage('edit', { push: false }); else fromAddress(); // the page the address names (a panel link: the editor)
 // This set's model links, checked once on opening (never repaired): a wall linked twice, or panels of one wall that the
 // next import cannot tell apart.
 { const links = BG.linkAudit(set); if (links.length) notice(links.map(x => `Check: ${x.text}`).join(' '), true); }
